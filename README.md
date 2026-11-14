@@ -35,6 +35,11 @@ fig, eng = DrumMachine.run(block = false)
 | Raster | 16tel, Triolen (Shuffle/Jazz/12/8), 16tel-Triolen (Half-Time Shuffle) oder 8tel; die Kopfzeile zählt mit (`1 e + a`, `1 + a`, `1 la li + la li`) |
 | Swing | 50 % = gerade, 66 % ≈ triolisch (wirkt bei 16tel/8tel) |
 | M / S | Spur stumm / solo; **Mute gilt auch beim Export** |
+| Neu | leerer Groove mit freiem Namen (BPM, Raster und Kit bleiben) |
+| Duplizieren | Kopie des aktuellen Songs („… Kopie“), das Original bleibt unangetastet |
+| Speichern | schreibt `songs/<Name>.toml`. Existiert die Datei schon, fragt der Button erst „Überschreiben?“, ein zweiter Klick bestätigt |
+| Preset laden … | Groove aus der Bibliothek (siehe unten) |
+| Eigenen Song laden … | alle gespeicherten Songs aus `songs/` |
 
 ## Groove-Bibliothek
 

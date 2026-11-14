@@ -72,7 +72,7 @@ function build_gui(song::Song; audio::Bool = true)
     eng.song.kit = kitnames[kitidx]
     audio && start_audio!(eng)
 
-    fig = Figure(size = (1320, 980), backgroundcolor = C_BG, fontsize = 14)
+    fig = Figure(size = (1320, 1020), backgroundcolor = C_BG, fontsize = 14)
     HELP = "Bereit.  Linksklick: Schlag an/aus · Rechtsklick: Ghost → normal → Akzent · Leertaste: Play/Stop"
     status = Observable(HELP)
 
@@ -91,7 +91,7 @@ function build_gui(song::Song; audio::Bool = true)
 
     top2 = fig[2, 1] = GridLayout(tellwidth = false, halign = :left)
     Label(top2[1, 1], "Raster", halign = :right)
-    raster_menu = Menu(top2[1, 2], options = first.(RASTER_OPTS), width = 240)
+    raster_menu = Menu(top2[1, 2], options = first.(RASTER_OPTS), width = 225)
     Label(top2[1, 3], "Kit", halign = :right)
     kit_menu = Menu(top2[1, 4], options = kitnames, default = kitnames[kitidx], width = 130)
     Label(top2[1, 5], "FX", halign = :right)
@@ -99,7 +99,7 @@ function build_gui(song::Song; audio::Bool = true)
     Label(top2[1, 7], "Anteil", halign = :right)
     fx_sl = Slider(top2[1, 8], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
     Label(top2[1, 9], "Master", halign = :right)
-    mst_sl = Slider(top2[1, 10], range = 0:0.01:1.5, startvalue = song.master, width = 120)
+    mst_sl = Slider(top2[1, 10], range = 0:0.01:1.5, startvalue = song.master, width = 100)
 
     # ---------------------------------------------------------------- Patterns
     pbar = fig[3, 1] = GridLayout(tellwidth = false, halign = :left)
@@ -169,14 +169,19 @@ function build_gui(song::Song; audio::Bool = true)
                 halign = :left, color = :gray40, fontsize = 12)
 
     # ---------------------------------------------------------------- Datei / Export
-    bot = fig[6, 1] = GridLayout(tellwidth = false, halign = :left)
-    Label(bot[1, 1], "Datei:", font = :bold)
-    preset_menu = Menu(bot[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 300)
-    Label(bot[1, 3], "Name", halign = :right)
-    name_tb = Textbox(bot[1, 4], stored_string = song.name, width = 200, reset_on_defocus = true)
-    savebtn = Button(bot[1, 5], label = "Speichern", buttoncolor = C_BTN)
-    load_menu = Menu(bot[1, 6], options = vcat(["—"], list_songs()), default = nothing, prompt = "Song laden …",
-                     width = 200)
+    fbox = fig[6, 1] = GridLayout(tellwidth = false, halign = :left)
+    bot = fbox[1, 1] = GridLayout(halign = :left)
+    Label(bot[1, 1], "Datei:", font = :bold, width = 60, halign = :left)
+    newbtn = Button(bot[1, 2], label = "Neu", buttoncolor = C_BTN)
+    dupbtn = Button(bot[1, 3], label = "Duplizieren", buttoncolor = C_BTN)
+    Label(bot[1, 4], "Name", halign = :right)
+    name_tb = Textbox(bot[1, 5], stored_string = song.name, width = 300, reset_on_defocus = true)
+    savebtn = Button(bot[1, 6], label = "Speichern", buttoncolor = C_BTN, width = 130)
+    lbox = fbox[2, 1] = GridLayout(halign = :left)
+    Label(lbox[1, 1], "Laden:", font = :bold, width = 60, halign = :left)
+    preset_menu = Menu(lbox[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 320)
+    load_menu = Menu(lbox[1, 3], options = vcat(["—"], list_songs()), default = nothing, prompt = "Eigenen Song laden …",
+                     width = 260)
 
     bot2 = fig[7, 1] = GridLayout(tellwidth = false, halign = :left)
     Label(bot2[1, 1], "Export:", font = :bold)
@@ -266,7 +271,27 @@ function build_gui(song::Song; audio::Bool = true)
         refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
     end
 
+    safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")
+    song_path(name) = joinpath(SONG_DIR, safe(name) * ".toml")
+    "Erster freier Name: `base`, `base 2`, `base 3`, …"
+    function unique_name(base)
+        name = base; k = 2
+        while isfile(song_path(name))
+            name = "$base $k"; k += 1
+        end
+        return name
+    end
+    pending_overwrite = Ref("")
+    function cancel_overwrite!()
+        pending_overwrite[] == "" && return
+        pending_overwrite[] = ""
+        savebtn.label[] = "Speichern"
+        savebtn.buttoncolor[] = C_BTN
+        savebtn.labelcolor[] = :black
+    end
+
     function set_song!(s::Song)
+        cancel_overwrite!()
         was = eng.playing
         was && stop!(eng)
         lock(eng.lock) do
@@ -406,13 +431,42 @@ function build_gui(song::Song; audio::Bool = true)
         set_song!(preset(sel))
         status[] = "Preset \"$sel\" geladen."
     end
-    on(str -> str === nothing || (eng.song.name = str), name_tb.stored_string)
-    safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")
+    on(name_tb.stored_string) do str
+        str === nothing && return
+        eng.song.name = str
+        cancel_overwrite!()
+    end
     on(savebtn.clicks) do _
-        path = joinpath(SONG_DIR, safe(eng.song.name) * ".toml")
+        path = song_path(eng.song.name)
+        if isfile(path) && pending_overwrite[] != path
+            # Erster Klick auf eine vorhandene Datei: nur nachfragen
+            pending_overwrite[] = path
+            savebtn.label[] = "Überschreiben?"
+            savebtn.buttoncolor[] = C_MUTE
+            savebtn.labelcolor[] = :white
+            status[] = "\"$(basename(path))\" gibt es schon. Nochmal klicken zum Überschreiben, " *
+                       "oder einen anderen Namen eingeben bzw. „Duplizieren“."
+            return
+        end
+        cancel_overwrite!()
         save_song(path, eng.song)
         load_menu.options[] = vcat(["—"], list_songs())
         status[] = "Gespeichert: $path"
+    end
+    on(newbtn.clicks) do _
+        old = eng.song
+        spb = old.steps_per_beat
+        s = Song(name = unique_name("Neuer Groove"), bpm = old.bpm, steps_per_beat = spb,
+                 patterns = [Pattern(spb in (2, 4) ? 16 : 4spb)], kit = old.kit,
+                 repeats = old.repeats, countin = old.countin, click = old.click)
+        set_song!(s)
+        status[] = "Neuer Groove \"$(s.name)\" angelegt (BPM, Raster und Kit übernommen)."
+    end
+    on(dupbtn.clicks) do _
+        s = copy(eng.song)
+        s.name = unique_name(s.name * " Kopie")
+        set_song!(s)
+        status[] = "Kopie \"$(s.name)\" angelegt – das Original bleibt unverändert."
     end
     on(load_menu.selection) do sel
         (sel === nothing || sel == "—") && return
