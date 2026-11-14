@@ -42,7 +42,11 @@ struct Kit
     pan::Vector{Float32}
     gain::Vector{Float32}
     choke::Vector{Int}
+    level_gain::NTuple{3,Float32}            # Zusatzpegel für Ghost/normal/Akzent
 end
+"Standard-Zusatzpegel: Dynamik über den Pegel, für Kits mit wenigen Layern."
+const DEFAULT_LEVEL_GAIN = (0.5f0, 0.8f0, 1.0f0)
+Kit(name, layers, pan, gain, choke) = Kit(name, layers, pan, gain, choke, DEFAULT_LEVEL_GAIN)
 
 # ---------------------------------------------------------------------------
 # Synthese
@@ -136,15 +140,8 @@ end
 # WAV-Kits
 # ---------------------------------------------------------------------------
 
-"Lineares Resampling auf `SR`."
-function resample(x::AbstractVector, fs::Real)
-    round(Int, fs) == SR && return Float32.(x)
-    r = fs / SR
-    m = floor(Int, (length(x) - 1) / r)
-    return Float32[let p = 1 + (k - 1) * r, i = floor(Int, p), fr = p - i
-                       x[i] * (1 - fr) + x[min(i + 1, end)] * fr
-                   end for k in 1:m]
-end
+"Resampling auf `SR` (Sinc, siehe `resample_sinc`)."
+resample(x::AbstractVector, fs::Real) = resample_sinc(x, fs, SR)
 
 "Lädt eine WAV-Datei als `Sample` (Mono oder Stereo, mehr Kanäle werden auf Stereo gemischt)."
 function load_sample(path; stereo::Bool = true)
@@ -209,7 +206,8 @@ function load_kit(dir::AbstractString; fallback::Kit = synth_kit())
         gain[k] = get(t, "gain", 1.0)
         choke[k] = get(t, "choke", 0)
     end
-    return Kit(name, layers, pan, gain, choke)
+    lg = get(cfg, "level_gain", collect(DEFAULT_LEVEL_GAIN))
+    return Kit(name, layers, pan, gain, choke, Tuple(Float32.(lg)))
 end
 
 function load_prefix_layers(dir, prefix)

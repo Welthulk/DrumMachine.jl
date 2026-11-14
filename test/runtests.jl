@@ -87,6 +87,20 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
+    @testset "CrocellKit (falls installiert)" begin
+        k = findfirst(k -> k.name == "CrocellKit", kits)
+        if k === nothing
+            @info "CrocellKit nicht installiert (tools/build_crocell.jl) – Test übersprungen"
+        else
+            cr = kits[k]
+            @test all(length(l) == 5 for l in cr.layers)
+            @test all(DrumMachine.isstereo(s) for ls in cr.layers for l in ls for s in l)
+            @test cr.level_gain == (0.9f0, 1.0f0, 1.0f0)
+            y = render_song(preset("Rock: 8tel"), cr; repeats = 2)
+            @test 0.3 < maximum(abs, y) < 0.98
+        end
+    end
+
     @testset "Velocity-Layer & Round-Robin" begin
         L = DrumMachine.level_layers
         @test (L(1, 5), L(2, 5), L(3, 5)) == (1:2, 3:4, 5:5)

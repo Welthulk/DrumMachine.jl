@@ -214,3 +214,34 @@ end
     end
     return l, r
 end
+
+# ---------------------------------------------------------------------------
+# Resampling
+# ---------------------------------------------------------------------------
+
+"""
+    resample_sinc(x, fs_in, fs_out; taps = 32) -> Vector{Float32}
+
+Bandbegrenztes Resampling mit Blackman-gefensterter Sinc-Interpolation (±`taps` Stützstellen).
+Vermeidet das Aliasing linearer Interpolation, das vor allem Becken verfärbt.
+"""
+function resample_sinc(x::AbstractVector{<:Real}, fs_in::Real, fs_out::Real; taps::Int = 32)
+    round(Int, fs_in) == round(Int, fs_out) && return Float32.(x)
+    r = fs_out / fs_in
+    fc = min(1.0, r) * 0.95                 # Grenzfrequenz relativ zur Eingangs-Nyquist
+    n = length(x)
+    m = floor(Int, n * r)
+    y = Vector{Float32}(undef, m)
+    @inbounds for k in 0:m-1
+        t = k / r
+        i0 = floor(Int, t)
+        acc = 0.0
+        for j in max(0, i0 - taps + 1):min(n - 1, i0 + taps)
+            d = t - j
+            w = 0.42 + 0.5 * cospi(d / taps) + 0.08 * cospi(2d / taps)
+            acc += x[j+1] * fc * sinc(fc * d) * w
+        end
+        y[k+1] = acc
+    end
+    return y
+end

@@ -8,9 +8,8 @@ const BLOCK = 512
 const NVOICES = 64
 const FADE_SAMPLES = round(Int, 0.008 * SR)     # Ausblendzeit beim Abwürgen (Hi-Hat-Choke)
 
-# Velocity-Stufe (Ghost, normal, Akzent) -> Anteil der Kit-Layer (leise → laut) und Pegel
+# Velocity-Stufe (Ghost, normal, Akzent) -> Anteil der Kit-Layer (leise → laut)
 const LEVEL_RANGE = ((0.0, 0.4), (0.4, 0.8), (0.8, 1.0))
-const LEVEL_GAIN = (0.5f0, 0.8f0, 1.0f0)
 
 "Layer-Indizes (1…nl) für Velocity-Stufe `level`; bei 5 Layern: 1–2, 3–4, 5."
 function level_layers(level::Int, nl::Int)
@@ -134,7 +133,7 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
     kit = eng.kit
     smp = pick_sample(eng.rng, kit.layers[t], level, eng.last[t])
     eng.last[t] = smp
-    gain = LEVEL_GAIN[level] * kit.gain[t] * tp.vol
+    gain = kit.level_gain[level] * kit.gain[t] * tp.vol
     rate = 2.0^(tp.pitch / 12)
     start_voice!(eng, smp, gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t])
     return

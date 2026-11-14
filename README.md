@@ -110,15 +110,34 @@ export_wav("songs/MeinGroove_80.wav", song, kit; repeats = 16, countin = 2, clic
 
 ## Kits
 
+- **CrocellKit** (empfohlen, Standard): akustisches Studio-Kit aus dem DrumGizmo-Projekt, als Stereo-Mix
+  von Henry Järvinen. Pro Instrument 5 Velocity-Stufen mit bis zu 4 Round-Robin-Aufnahmen, Stereo.
+  Lizenz CC BY 4.0 (Lars Muldjord / DrumGizmo-Team, Crocell, Jacob Olsen; Details in
+  `kits/CrocellKit/LICENSE.txt`). Wegen der Größe (~70 MB) ist es nicht im Repo, sondern wird einmalig gebaut:
+
+  ```bash
+  julia --project=. tools/build_crocell.jl
+  ```
+
+  Das Skript lädt den Stereo-Mix (561 MB, Cache in `~/.cache/DrumMachine`), entpackt ihn mit
+  `bsdtar` (Paket *libarchive-tools*) oder `unrar` und erzeugt `kits/CrocellKit/`. Es wählt die
+  Velocity-Stufen nach gemessenem Pegel, resampelt per Sinc von 48 auf 44,1 kHz und kalibriert
+  die Balance (Becken hörbar genug zum Üben). Ist das Kit nicht installiert, wird BlackPearl genommen.
 - **BlackPearl** (`kits/BlackPearl/`): akustisches Kit der *AVL Drumkits* von Glen MacArthur,
   CC BY-SA 3.0, siehe [kits/BlackPearl/LICENSE.txt](kits/BlackPearl/LICENSE.txt).
   Jeder Sound hat 5 Velocity-Layer. Ghost, normal und Akzent nutzen dabei unterschiedliche
   Aufnahmen und wechseln per Round-Robin.
 - **Synth**: vollständig synthetisch und dient als Ersatz, wenn Samples fehlen.
 
-Ein eigenes Kit legst du als Ordner `kits/<Name>/` an, mit WAV-Dateien und einer `kit.toml`
-(Vorlage: `kits/BlackPearl/kit.toml`). Erwartet wird `<file>-1.wav … <file>-5.wav` (leise → laut)
-oder eine einzelne `<file>.wav`.
+Ein eigenes Kit legst du als Ordner `kits/<Name>/` mit einer `kit.toml` an. Pro Spur gibt es zwei Formate:
+
+- `file = "Prefix"`: `Prefix-1.wav … Prefix-N.wav` (leise → laut), Vorlage `kits/BlackPearl/kit.toml`
+- `folder = "Kick"`: Ordner mit `<stufe>-<rr>.wav`, z. B. `1-1.wav 1-2.wav 2-1.wav …`
+  (Stufen leise → laut, mehrere Round-Robin-Aufnahmen je Stufe), Vorlage `kits/CrocellKit/kit.toml`
+
+Mono- und Stereo-Samples werden unterstützt, andere Abtastraten per Sinc auf 44,1 kHz gebracht.
+`level_gain = [ghost, normal, akzent]` legt fest, wie stark die Velocity-Stufen zusätzlich über
+den Pegel unterschieden werden (Standard `[0.5, 0.8, 1.0]`; für Kits mit vielen echten Stufen eher `[0.9, 1, 1]`).
 
 ## Tests
 

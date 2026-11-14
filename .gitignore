@@ -1,3 +1,6 @@
+# Mit tools/build_crocell.jl erzeugtes Kit (~70 MB)
+kits/CrocellKit/
+
 # Exportierte Audiodateien (werden aus den .toml-Songs erzeugt)
 songs/*.wav
 *.wav.tmp

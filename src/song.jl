@@ -47,7 +47,7 @@ end
 default_swing(steps_per_beat) = steps_per_beat in (3, 6) ? 2 / 3 : 0.5
 
 function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,
-              patterns = [Pattern(16)], chain = [1], kit = "BlackPearl", fx = "Clean",
+              patterns = [Pattern(16)], chain = [1], kit = "CrocellKit", fx = "Clean",
               fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false, mono = false)
     swing_on in (0, 8, 16) || error("swing_on muss 0 (Auto), 8 oder 16 sein")
     swing = something(swing, default_swing(steps_per_beat))
@@ -128,7 +128,7 @@ function song_from_dict(d::AbstractDict)
     s = Song(name = get(d, "name", "Neu"), bpm = get(d, "bpm", 100.0), swing = get(d, "swing", 0.5),
              swing_on = get(d, "swing_on", 0),
              steps_per_beat = get(d, "steps_per_beat", 4), patterns = pats,
-             chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "BlackPearl"), fx = get(d, "fx", "Clean"),
+             chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "CrocellKit"), fx = get(d, "fx", "Clean"),
              fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = get(d, "repeats", 8),
              countin = get(d, "countin", 1), click = get(d, "click", false),
              mono = get(d, "mono", false))
