@@ -52,13 +52,16 @@ mit Crash am Anfang und Fill im letzten Takt angelegt.
 |---|---|
 | Rock / Pop | 8tel (mit Crash & Fill), 16tel, Half-Time, Punk, Rock'n'Roll, Ballade (mit Fill), Motown, Disco |
 | Country | Train Beat |
-| Funk | Ghost Notes, Oakland (Tower-of-Power-Stil, mit Variation), Linear, 16tel Zwei-Hand-Hihat |
-| Shuffle | Rock-Shuffle (mit Crash & Fill), Ride-Shuffle, Snare-Shuffle (Chicago), Half-Time (8tel-Triolen), Purdie Half-Time (16tel-Triolen), Rosanna-Stil (Porcaro/Purdie), Laid-back 58 %, Hart punktiert 75 %, 8tel-Swing im geraden Raster, 16tel-Swing |
+| Funk | Ghost Notes, Oakland (Tower-of-Power-Stil, mit Variation), What-Is-Hip-Stil (Tower of Power, mit Variation), Garibaldi Linear, Oakland Half-Time, Linear, 16tel Zwei-Hand-Hihat |
+| Shuffle | Rock-Shuffle (mit Crash & Fill), Ride-Shuffle, Snare-Shuffle (Chicago), Half-Time (8tel-Triolen), Purdie Half-Time (16tel-Triolen), Rosanna-Stil (Porcaro/Purdie), Rule-the-World-Stil (Tears for Fears, 12/8), Laid-back 58 %, Hart punktiert 75 %, 8tel-Swing im geraden Raster, 16tel-Swing |
 | Blues | Shuffle (12 Takte), Double Shuffle (Texas), Slow Blues 12/8, Jump / Swing |
 | Jazz | Swing Ride, Jazz-Walzer 3/4 |
 | Latin / Reggae | Bossa Nova, Samba, Afro 6/8, One Drop, Rockers |
 | Hip-Hop / R&B | Boom Bap, Neo Soul |
 | Taktarten | Walzer 3/4, 6/8 Ballade, 5/4, 7/8 (2+2+3) |
+
+Die „…-Stil“-Grooves sind Annäherungen an den typischen Groove des genannten Songs bzw. Drummers
+zum Üben, keine Transkriptionen.
 
 Eigene Grooves kommen in [src/presets.jl](src/presets.jl) dazu, oder du speicherst sie einfach als Song.
 

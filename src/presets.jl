@@ -129,6 +129,42 @@ const PRESETS = Pair{String,Function}[
         Song(name = "Funk: Oakland (Tower-of-Power-Stil)", bpm = 104, patterns = [g, v], chain = [1, 1, 1, 2])
     end,
 
+    "Funk: What-Is-Hip-Stil (Tower of Power)" => function ()
+        # Annäherung an den Garibaldi-Groove: schnelles 16tel-Funk-Tempo, synkopierte Bassdrum,
+        # Ghost Notes zwischen den Backbeats, offene Hihat auf der 4+ (Variation zusätzlich auf der 2+).
+        #             1 e + a 2 e + a 3 e + a 4 e + a
+        a = P(HiHat  = "x.x.x.x.x.x.x...",
+              HHOpen = "..............X.",
+              Snare  = ".o..X..o.o..X..o",
+              Kick   = "X..x..x..x....x.")
+        b = P(HiHat  = "x.x.x...x.x.x...",
+              HHOpen = "......X.......X.",
+              Snare  = ".o..X..o.o.oX.o.",
+              Kick   = "X..x..x...X..x..")
+        Song(name = "Funk: What-Is-Hip-Stil (Tower of Power)", bpm = 124, patterns = [a, b], chain = [1, 1, 1, 2])
+    end,
+
+    "Funk: Garibaldi Linear (Oakland)" => function ()
+        # Linear im Tower-of-Power-Stil: auf jedem 16tel genau ein Instrument,
+        # offene Hihat auf der 4+ als Höhepunkt vor der Eins.
+        #             1 e + a 2 e + a 3 e + a 4 e + a
+        g = P(Kick   = "X.....X.X..X...x",
+              Snare  = "..o.X....o..X...",
+              HiHat  = ".x.x.x.x..x..x..",
+              HHOpen = "..............X.")
+        Song(name = "Funk: Garibaldi Linear (Oakland)", bpm = 100, patterns = [g])
+    end,
+
+    "Funk: Oakland Half-Time" => function ()
+        # Half-Time-Funk: Backbeat nur auf der 3, durchlaufende 16tel-Hihat mit Viertel-Akzenten,
+        # Ghost Notes und synkopierte Bassdrum.
+        g = P(HiHat = "XxxxXxxxXxxxXxx.",
+              HHOpen = "...............X",
+              Snare = ".o..o...X.o..o..",
+              Kick  = "X.x.....x..x.x..")
+        Song(name = "Funk: Oakland Half-Time", bpm = 92, patterns = [g])
+    end,
+
     "Funk: Linear" => function ()
         # Linear: nie zwei Instrumente gleichzeitig.
         g = P(Kick  = "X..x...x.x....x.",
@@ -258,6 +294,17 @@ const PRESETS = Pair{String,Function}[
               Kick   = "X..........x...x........")
         Song(name = "Shuffle: Rosanna-Stil (Porcaro/Purdie)", bpm = 86, steps_per_beat = 6,
              patterns = [g, v], chain = [1, 1, 1, 2])
+    end,
+
+    "Shuffle: Rule-the-World-Stil (Tears for Fears, 12/8)" => function ()
+        # Annäherung an den eher untypischen Pop-Shuffle: 12/8 in vier punktierten Schlägen,
+        # Snare nur auf der 3 (Half-Time-Gefühl), Hihat-Shuffle, Bassdrum schiebt in die 3.
+        #             1 + a 2 + a 3 + a 4 + a
+        g = P(HiHat = "x.xx.xx.xx.x",
+              Snare = "......X.....",
+              Kick  = "X....x...x..")
+        Song(name = "Shuffle: Rule-the-World-Stil (Tears for Fears, 12/8)", bpm = 112, steps_per_beat = 3,
+             patterns = [g])
     end,
 
     "Shuffle: Laid-back (58 %)" => function ()
