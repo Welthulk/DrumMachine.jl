@@ -91,10 +91,10 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
-    @testset "CrocellKit (falls installiert)" begin
-        k = findfirst(k -> k.name == "CrocellKit", kits)
+    @testset "$name (falls installiert)" for name in ("CrocellKit", "VirtuosityDrums")
+        k = findfirst(k -> k.name == name, kits)
         if k === nothing
-            @info "CrocellKit nicht installiert (tools/build_crocell.jl) – Test übersprungen"
+            @info "$name nicht installiert (tools/build_*.jl) – Test übersprungen"
         else
             cr = kits[k]
             @test all(length(l) == 5 for l in cr.layers)

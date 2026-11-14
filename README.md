@@ -123,6 +123,14 @@ export_wav("songs/MeinGroove_80.wav", song, kit; repeats = 16, countin = 2, clic
   `bsdtar` (Paket *libarchive-tools*) oder `unrar` und erzeugt `kits/CrocellKit/`. Es wählt die
   Velocity-Stufen nach gemessenem Pegel, resampelt per Sinc von 48 auf 44,1 kHz und kalibriert
   die Balance (Becken hörbar genug zum Üben). Ist das Kit nicht installiert, wird BlackPearl genommen.
+- **VirtuosityDrums** (Jazz): Clubkit, live mit Sticks eingespielt von Austin McMahon bei Virtuosity
+  Musical Instruments, Boston; von Versilian Studios und Karoryfer, Lizenz CC0. Gemischt wie im
+  Hersteller-Preset „Basic Kit“ aus Overheads, Kick- und Snare-Mikrofon. Klingt weicher und offener
+  als das CrocellKit, gut für Jazz, Blues und Shuffles. Einmalig bauen (lädt 1,2 GB, ~56 MB Ergebnis):
+
+  ```bash
+  julia --project=. tools/build_virtuosity.jl
+  ```
 - **BlackPearl** (`kits/BlackPearl/`): akustisches Kit der *AVL Drumkits* von Glen MacArthur,
   CC BY-SA 3.0, siehe [kits/BlackPearl/LICENSE.txt](kits/BlackPearl/LICENSE.txt).
   Jeder Sound hat 5 Velocity-Layer. Ghost, normal und Akzent nutzen dabei unterschiedliche
