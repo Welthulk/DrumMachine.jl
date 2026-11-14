@@ -1,0 +1,8 @@
+# Exportierte Audiodateien (werden aus den .toml-Songs erzeugt)
+songs/*.wav
+*.wav.tmp
+# Julia
+*.jl.cov
+*.jl.mem
+/docs/build/
+.vscode/

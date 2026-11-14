@@ -1,0 +1,395 @@
+# Audio-Engine: sample-genauer Sequencer + Voice-Mixer. Dieselbe `render!`-Funktion wird
+# für die Live-Wiedergabe (PortAudio) und den WAV-Export verwendet.
+
+import PortAudio
+
+const BLOCK = 512
+const NVOICES = 64
+const FADE_SAMPLES = round(Int, 0.008 * SR)     # Ausblendzeit beim Abwürgen (Hi-Hat-Choke)
+
+# Velocity-Stufe -> (Layer-Kandidaten für Round-Robin, Pegel)
+const LEVEL_LAYERS = ((1, 2), (3, 4), (5,))
+const LEVEL_GAIN = (0.5f0, 0.8f0, 1.0f0)
+
+mutable struct Voice
+    buf::Vector{Float32}
+    pos::Float64
+    rate::Float64
+    gl::Float32
+    gr::Float32
+    track::Int
+    choke::Int
+    fade::Int            # > 0: wird ausgeblendet (verbleibende Samples)
+    active::Bool
+end
+Voice() = Voice(Float32[], 0.0, 1.0, 0f0, 0f0, 0, 0, 0, false)
+
+mutable struct Engine
+    song::Song
+    kit::Kit
+    voices::Vector{Voice}
+    rr::Vector{Int}                  # Round-Robin-Zähler je Spur
+    fx::FXState
+    click_hi::Vector{Float32}
+    click_lo::Vector{Float32}
+    # Transport
+    playing::Bool
+    samplepos::Int
+    next_step_at::Float64
+    step::Int                        # nächster Step (0-basiert)
+    seq::Vector{Int}                 # Takte: 0 = Einzähler, -1 = aktuelles Edit-Pattern, sonst Pattern-Index
+    seqpos::Int
+    loop_from::Int                   # 0 = am Ende stoppen
+    pat::Int                         # spielendes Pattern (0 = Einzähler)
+    edit_pat::Int
+    songmode::Bool
+    live_countin::Bool
+    finished::Bool
+    # Anzeige (vom GUI gelesen)
+    shown_step::Threads.Atomic{Int}
+    shown_pat::Threads.Atomic{Int}
+    shown_seqpos::Threads.Atomic{Int}
+    # Vorhören von Spuren (vom GUI befüllt)
+    pads::Channel{Tuple{Int,Int}}
+    lock::ReentrantLock
+    running::Bool
+    task::Union{Task,Nothing}
+end
+
+function Engine(song::Song, kit::Kit)
+    fx = FXState()
+    eng = Engine(song, kit, [Voice() for _ in 1:NVOICES], zeros(Int, NTRACKS), fx,
+                 click_sound(true), click_sound(false),
+                 false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
+                 Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
+                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing)
+    apply_fx!(eng)
+    return eng
+end
+
+"Übernimmt FX-Auswahl und Mix aus dem Song in den Effektzustand."
+function apply_fx!(eng::Engine)
+    k = findfirst(==(eng.song.fx), FX_NAMES)
+    eng.fx.kind = something(k, 1)
+    eng.fx.mix = Float32(eng.song.fxmix)
+    return eng
+end
+
+# ---------------------------------------------------------------------------
+# Voices
+# ---------------------------------------------------------------------------
+
+function start_voice!(eng::Engine, buf::Vector{Float32}, gain::Float32, pan::Float32, rate::Float64,
+                      track::Int, choke::Int)
+    if choke > 0                      # gleiche Choke-Gruppe ausblenden
+        for v in eng.voices
+            if v.active && v.choke == choke && v.fade == 0
+                v.fade = FADE_SAMPLES
+            end
+        end
+    end
+    v = nothing
+    for w in eng.voices
+        if !w.active
+            v = w; break
+        end
+    end
+    if v === nothing                  # ältestes Voice stehlen
+        v = eng.voices[argmax(w.pos for w in eng.voices)]
+    end
+    p = clamp(pan, -1f0, 1f0)
+    θ = (p + 1f0) * Float32(π) / 4
+    v.buf = buf; v.pos = 0.0; v.rate = rate
+    v.gl = gain * cos(θ)
+    v.gr = gain * sin(θ)
+    v.track = track; v.choke = choke; v.fade = 0; v.active = true
+    return v
+end
+
+"Spielt Spur `t` mit Velocity-Stufe `level` (1–3). `seq=true` berücksichtigt Mute/Solo."
+function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
+    tp = eng.song.tracks[t]
+    if seq
+        tp.mute && return
+        anysolo = any(x -> x.solo, eng.song.tracks)
+        anysolo && !tp.solo && return
+    end
+    kit = eng.kit
+    cands = LEVEL_LAYERS[level]
+    eng.rr[t] += 1
+    layer = cands[mod1(eng.rr[t], length(cands))]
+    gain = LEVEL_GAIN[level] * kit.gain[t] * tp.vol
+    rate = 2.0^(tp.pitch / 12)
+    start_voice!(eng, kit.layers[t][layer], gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t])
+    return
+end
+
+function click!(eng::Engine, accent::Bool)
+    start_voice!(eng, accent ? eng.click_hi : eng.click_lo, accent ? 0.7f0 : 0.5f0, 0f0, 1.0, 0, 0)
+end
+
+@inline function mix_voices!(eng::Engine, out::Matrix{Float32}, i0::Int, n::Int)
+    @inbounds for v in eng.voices
+        v.active || continue
+        buf = v.buf; L = length(buf)
+        pos = v.pos; rate = v.rate; gl = v.gl; gr = v.gr; fade = v.fade
+        for i in i0:i0+n-1
+            ip = unsafe_trunc(Int, pos)
+            if ip + 2 > L
+                v.active = false; break
+            end
+            fr = Float32(pos - ip)
+            s = buf[ip+1] * (1f0 - fr) + buf[ip+2] * fr
+            if fade > 0
+                s *= fade / Float32(FADE_SAMPLES)
+                fade -= 1
+                if fade == 0
+                    v.active = false; break
+                end
+            end
+            out[i, 1] += s * gl
+            out[i, 2] += s * gr
+            pos += rate
+        end
+        v.pos = pos; v.fade = fade
+    end
+end
+
+# ---------------------------------------------------------------------------
+# Sequencer
+# ---------------------------------------------------------------------------
+
+current_pattern(eng::Engine) = eng.pat == 0 ? countin_pattern(eng) : eng.song.patterns[eng.pat]
+
+"Erstes echtes Pattern der Sequenz, bestimmt die Länge des Einzählers."
+function countin_pattern(eng::Engine)
+    for p in eng.seq
+        p > 0 && return eng.song.patterns[p]
+        p == -1 && return eng.song.patterns[eng.edit_pat]
+    end
+    return eng.song.patterns[1]
+end
+
+"Dauer von Step `s` (0-basiert) in Samples, inkl. Swing auf Paaren."
+function step_samples(song::Song, s::Int)
+    base = 60.0 / song.bpm / song.steps_per_beat * SR
+    if iseven(song.steps_per_beat) && song.swing != 0.5
+        sw = clamp(song.swing, 0.5, 0.8)
+        return 2base * (iseven(s) ? sw : 1 - sw)
+    end
+    return base
+end
+
+function resolve_pat(eng::Engine, p::Int)
+    p == -1 && return clamp(eng.edit_pat, 1, length(eng.song.patterns))
+    p == 0 && return 0
+    return clamp(p, 1, length(eng.song.patterns))
+end
+
+function do_step!(eng::Engine)
+    song = eng.song
+    s = eng.step
+    if eng.pat == 0
+        if s % song.steps_per_beat == 0
+            click!(eng, s == 0)
+        end
+        steps = countin_pattern(eng).steps
+    else
+        p = song.patterns[eng.pat]
+        steps = p.steps
+        if s < steps
+            for t in 1:NTRACKS
+                lv = p.grid[t, s+1]
+                lv > 0 && trigger!(eng, t, Int(lv))
+            end
+        end
+        if song.click && s % song.steps_per_beat == 0
+            click!(eng, s == 0)
+        end
+    end
+    eng.shown_step[] = s
+    eng.shown_pat[] = eng.pat
+    eng.shown_seqpos[] = eng.seqpos
+    eng.next_step_at += step_samples(song, s)
+    eng.step += 1
+    if eng.step >= steps
+        eng.step = 0
+        eng.seqpos += 1
+        if eng.seqpos > length(eng.seq)
+            if eng.loop_from == 0
+                eng.playing = false
+                eng.finished = true
+                eng.shown_step[] = -1
+                return
+            end
+            eng.seqpos = eng.loop_from
+        end
+        eng.pat = resolve_pat(eng, eng.seq[eng.seqpos])
+    end
+    return
+end
+
+"Startet die Wiedergabe mit Sequenz `seq` (siehe Feld-Doku) ab sofort."
+function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
+    eng.seq = seq
+    eng.loop_from = loop_from
+    eng.seqpos = 1
+    eng.pat = resolve_pat(eng, seq[1])
+    eng.step = 0
+    eng.next_step_at = eng.samplepos + 0.01 * SR
+    eng.finished = false
+    eng.playing = true
+    return eng
+end
+
+"Live: Pattern-Modus (aktuelles Edit-Pattern in Schleife) oder Song-Modus (Kette in Schleife)."
+function play!(eng::Engine)
+    lock(eng.lock) do
+        ci = eng.live_countin ? fill(0, eng.song.countin) : Int[]
+        body = eng.songmode ? copy(eng.song.chain) : [-1]
+        start_seq!(eng, vcat(ci, body), length(ci) + 1)
+    end
+end
+
+function stop!(eng::Engine)
+    lock(eng.lock) do
+        eng.playing = false
+        eng.shown_step[] = -1
+        for v in eng.voices
+            v.active && v.fade == 0 && (v.fade = FADE_SAMPLES)
+        end
+    end
+end
+
+"Rendert einen Block (frames × 2) – sample-genau, Steps können mitten im Block liegen."
+function render!(eng::Engine, out::Matrix{Float32})
+    fill!(out, 0f0)
+    while isready(eng.pads)
+        t, lv = take!(eng.pads)
+        t == 0 ? click!(eng, true) : trigger!(eng, t, lv; seq = false)
+    end
+    N = size(out, 1)
+    i = 1
+    while i <= N
+        if eng.playing
+            due = eng.next_step_at - eng.samplepos
+            if due <= 0
+                do_step!(eng)
+                continue
+            end
+            n = min(N - i + 1, ceil(Int, due))
+        else
+            n = N - i + 1
+        end
+        mix_voices!(eng, out, i, n)
+        eng.samplepos += n
+        i += n
+    end
+    m = Float32(eng.song.master)
+    fx = eng.fx
+    @inbounds for k in 1:N
+        l, r = process(fx, out[k, 1], out[k, 2])
+        out[k, 1] = tanh(l * m)
+        out[k, 2] = tanh(r * m)
+    end
+    return out
+end
+
+# ---------------------------------------------------------------------------
+# Live-Audio
+# ---------------------------------------------------------------------------
+
+"Öffnet das Standard-Audiogerät und startet den Audio-Thread."
+function start_audio!(eng::Engine; device = nothing)
+    eng.running && return eng
+    if Threads.nthreads() < 2
+        @warn "Julia läuft mit nur einem Thread – Audio kann stottern. Starte mit `julia -t auto`."
+    end
+    stream = device === nothing ? PortAudio.PortAudioStream(0, 2; samplerate = SR, latency = 0.03) :
+                                  PortAudio.PortAudioStream(device, 0, 2; samplerate = SR, latency = 0.03)
+    eng.running = true
+    eng.task = Threads.@spawn begin
+        buf = zeros(Float32, BLOCK, 2)
+        try
+            while eng.running
+                lock(eng.lock) do
+                    render!(eng, buf)
+                end
+                write(stream, buf)
+            end
+        catch e
+            @error "Audio-Thread beendet" exception = (e, catch_backtrace())
+        finally
+            close(stream)
+        end
+    end
+    return eng
+end
+
+function stop_audio!(eng::Engine)
+    eng.running = false
+    eng.task === nothing || wait(eng.task)
+    eng.task = nothing
+    return eng
+end
+
+# ---------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------
+
+"""
+    render_song(song, kit; repeats, countin, click, tail=2.0) -> Matrix{Float32}
+
+Rendert Einzähler + `repeats` × Kette offline als Stereo-Matrix (Samples × 2).
+"""
+function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin::Int = song.countin,
+                     click::Bool = song.click, tail::Real = 2.0)
+    s = copy(song)
+    s.click = click
+    eng = Engine(s, kit)
+    seq = vcat(fill(0, countin), repeat(s.chain, max(repeats, 1)))
+    start_seq!(eng, seq, 0)
+    eng.next_step_at = 0.0
+    blocks = Matrix{Float32}[]
+    buf = zeros(Float32, BLOCK, 2)
+    while !eng.finished
+        render!(eng, buf)
+        push!(blocks, copy(buf))
+    end
+    songlen = round(Int, eng.next_step_at)      # Ende des letzten Steps
+    for _ in 1:ceil(Int, tail * SR / BLOCK)
+        render!(eng, buf)
+        push!(blocks, copy(buf))
+    end
+    y = reduce(vcat, blocks)
+    # Ausklingen nach Songende kürzen, sobald es leiser als -70 dB ist
+    last = findlast(>(10^(-70 / 20)), vec(maximum(abs, y; dims = 2)))
+    n = clamp(max(songlen, something(last, 0)), 1, size(y, 1))
+    return y[1:n, :]
+end
+
+"""
+    export_wav(path, song, kit; mono=false, bits=16, kw...) -> path
+
+Schreibt den gerenderten Song als WAV (44,1 kHz). Weitere Schlüsselwörter wie bei [`render_song`](@ref).
+"""
+function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = false, bits::Int = 16, kw...)
+    y = render_song(song, kit; kw...)
+    if mono
+        y = sum(y; dims = 2) ./ 2
+    end
+    mkpath(dirname(abspath(path)))
+    bits in (16, 24) || error("bits muss 16 oder 24 sein")
+    q = 2^(bits - 1) - 1
+    pcm = round.(Int32, clamp.(y, -1, 1) .* q)
+    WAV.wavwrite(bits == 16 ? Int16.(pcm) : pcm, path; Fs = SR, nbits = bits,
+                 compression = WAV.WAVE_FORMAT_PCM)
+    return path
+end
+
+"Länge des Exports in Sekunden (ohne Ausklingen)."
+function song_seconds(song::Song; repeats::Int = song.repeats, countin::Int = song.countin)
+    bar(p) = sum(step_samples(song, s) for s in 0:p.steps-1) / SR
+    first = song.patterns[song.chain[1]]
+    return countin * bar(first) + max(repeats, 1) * sum(bar(song.patterns[i]) for i in song.chain)
+end

@@ -1,0 +1,19 @@
+# Kit-Beschreibung für DrumMachine.jl
+# file   = Dateipräfix; erwartet werden <file>-1.wav ... <file>-5.wav (leise -> laut)
+# pan    = -1 (links) ... +1 (rechts), aus Spielerperspektive (aus der SFZ übernommen)
+# choke  = Instrumente mit gleicher Gruppe > 0 würgen sich gegenseitig ab (Hi-Hat)
+# gain   = Pegelanpassung
+name = "BlackPearl"
+
+[tracks]
+Kick      = { file = "36-Pearl-22-Kick",       pan =  0.00, gain = 1.0 }
+Snare     = { file = "38-Pearl-14-Snare",      pan = -0.20, gain = 0.9 }
+Rim       = { file = "37-Pearl-14-SideStick",  pan = -0.20, gain = 0.8 }
+HiHat     = { file = "42-Sabian-13-HatClosed", pan = -0.36, gain = 0.7, choke = 1 }
+HHOpen    = { file = "46-Sabian-13-HatSemi",   pan = -0.36, gain = 0.7, choke = 1 }
+HHPedal   = { file = "44-Sabian-13-HatPedal",  pan = -0.36, gain = 0.7, choke = 1 }
+Tom       = { file = "45-Pearl-12-Tom",        pan = -0.10, gain = 0.8 }
+FloorTom  = { file = "41-Pearl-16-FloorTom",   pan =  0.40, gain = 0.8 }
+Ride      = { file = "51-SabianAAX-20-Ride",   pan =  0.36, gain = 0.6 }
+RideBell  = { file = "53-SabianAAX-20-RideBell", pan = 0.36, gain = 0.6 }
+Crash     = { file = "49-SabianAA-16-Crash",   pan = -0.42, gain = 0.6 }

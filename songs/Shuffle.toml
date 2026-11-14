@@ -1,0 +1,106 @@
+bpm = 90.0
+chain = [1, 1, 1, 2]
+click = false
+countin = 1
+fx = "Clean"
+fxmix = 0.25
+kit = "BlackPearl"
+master = 0.8
+name = "Shuffle"
+repeats = 8
+steps_per_beat = 3
+swing = 0.5
+
+[[pattern]]
+steps = 12
+
+    [pattern.rows]
+    HiHat = "x.xx.xx.xx.x"
+    Kick = "X.....X....."
+    Snare = "...X.....X.."
+[[pattern]]
+steps = 12
+
+    [pattern.rows]
+    FloorTom = "...........X"
+    HiHat = "x.xx.xx....."
+    Kick = "X.....X....."
+    Snare = "...X.....XoX"
+    Tom = "......xx...."
+
+[track.Crash]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.FloorTom]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HHOpen]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HHPedal]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HiHat]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Kick]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Ride]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.RideBell]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Rim]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Snare]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Tom]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0

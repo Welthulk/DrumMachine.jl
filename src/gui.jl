@@ -1,0 +1,479 @@
+# GLMakie-Oberfläche: Step-Raster, Transport, Patterns/Kette, Speichern/Laden, WAV-Export.
+
+using GLMakie
+
+const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))
+
+const C_BG      = Makie.to_color("#f6f7f9")
+const C_OFF_A   = Makie.to_color("#dfe3e8")     # Step aus, Schlag 1/3/…
+const C_OFF_B   = Makie.to_color("#ccd2da")     # Step aus, Schlag 2/4/…
+const C_HEAD    = Makie.to_color("#9cc3f5")     # Playhead auf leerem Step
+const C_LEVEL   = (Makie.to_color("#f2b47e"), Makie.to_color("#e8771e"), Makie.to_color("#a83806"))
+const C_LEVEL_H = (Makie.to_color("#ffd2a8"), Makie.to_color("#ff9a45"), Makie.to_color("#d85010"))
+const C_BTN     = Makie.to_color("#e4e7ec")
+const C_ACTIVE  = Makie.to_color("#e8771e")
+const C_MUTE    = Makie.to_color("#d9534f")
+const C_SOLO    = Makie.to_color("#f0c419")
+
+const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3), ("8tel (2 pro Schlag)", 2)]
+const STEP_OPTS = [4, 6, 8, 9, 12, 16, 18, 24, 32]
+const MAXPATTERNS = 8
+
+"Zählsilben für die Kopfzeile: 1 e + a / 1 + a / 1 +."
+function count_labels(steps::Int, spb::Int)
+    syl = spb == 4 ? ("", "e", "+", "a") : spb == 3 ? ("", "+", "a") : spb == 2 ? ("", "+") : ntuple(_ -> "", spb)
+    [((s - 1) % spb == 0 ? string((s - 1) ÷ spb + 1) : syl[(s-1)%spb+1]) for s in 1:steps]
+end
+
+function list_songs()
+    isdir(SONG_DIR) || return String[]
+    sort([splitext(f)[1] for f in readdir(SONG_DIR) if endswith(f, ".toml")])
+end
+
+fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 60, 2, '0'))
+
+"""
+    run(; song = preset("Rock 8tel"), block = true)
+
+Startet die Drum-Machine. `block=false` kehrt sofort zurück (für die REPL) und gibt
+`(fig, eng)` zurück.
+"""
+function run(; song::Song = preset("Rock 8tel"), block::Bool = true, audio::Bool = true)
+    GLMakie.activate!(title = "DrumMachine.jl")
+    fig, eng, tick! = build_gui(song; audio)
+    screen = display(fig)
+    # Playhead-Anzeige (läuft auf dem Haupt-Thread)
+    @async begin
+        while isopen(screen)
+            tick!()
+            sleep(1 / 60)
+        end
+        stop_audio!(eng)
+    end
+    if block
+        wait(screen)
+        return nothing
+    end
+    return fig, eng
+end
+
+"""
+    build_gui(song; audio=true) -> (fig, eng, tick!)
+
+Baut Figure und Engine auf (ohne Fenster). `tick!()` aktualisiert Playhead & Anzeige.
+"""
+function build_gui(song::Song; audio::Bool = true)
+    kits = available_kits()
+    kitnames = [k.name for k in kits]
+    kitidx = something(findfirst(==(song.kit), kitnames), 1)
+    eng = Engine(song, kits[kitidx])
+    eng.song.kit = kitnames[kitidx]
+    audio && start_audio!(eng)
+
+    fig = Figure(size = (1320, 980), backgroundcolor = C_BG, fontsize = 14)
+    HELP = "Bereit.  Linksklick: Schlag an/aus · Rechtsklick: Ghost → normal → Akzent · Leertaste: Play/Stop"
+    status = Observable(HELP)
+
+    # ---------------------------------------------------------------- Transport
+    top = fig[1, 1] = GridLayout(tellwidth = false, halign = :left)
+    playbtn = Button(top[1, 1], label = "▶  Play", width = 100, buttoncolor = C_BTN)
+    modebtn = Button(top[1, 2], label = "Modus: Pattern", width = 140, buttoncolor = C_BTN)
+    Label(top[1, 3], "Einzähler", halign = :right)
+    ci_toggle = Toggle(top[1, 4], active = false)
+    Label(top[1, 5], "BPM", halign = :right)
+    bpm_sl = Slider(top[1, 6], range = 30:1:260, startvalue = song.bpm, width = 180)
+    bpm_lab = Label(top[1, 7], "", width = 40)
+    Label(top[1, 8], "Swing", halign = :right)
+    sw_sl = Slider(top[1, 9], range = 50:1:75, startvalue = round(Int, 100song.swing), width = 110)
+    sw_lab = Label(top[1, 10], "", width = 40)
+
+    top2 = fig[2, 1] = GridLayout(tellwidth = false, halign = :left)
+    Label(top2[1, 1], "Raster", halign = :right)
+    raster_menu = Menu(top2[1, 2], options = first.(RASTER_OPTS), width = 190)
+    Label(top2[1, 3], "Kit", halign = :right)
+    kit_menu = Menu(top2[1, 4], options = kitnames, default = kitnames[kitidx], width = 130)
+    Label(top2[1, 5], "FX", halign = :right)
+    fx_menu = Menu(top2[1, 6], options = FX_NAMES, default = song.fx, width = 90)
+    Label(top2[1, 7], "Anteil", halign = :right)
+    fx_sl = Slider(top2[1, 8], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
+    Label(top2[1, 9], "Master", halign = :right)
+    mst_sl = Slider(top2[1, 10], range = 0:0.01:1.5, startvalue = song.master, width = 120)
+
+    # ---------------------------------------------------------------- Patterns
+    pbar = fig[3, 1] = GridLayout(tellwidth = false, halign = :left)
+    Label(pbar[1, 1], "Pattern", font = :bold)
+    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 40, buttoncolor = C_BTN) for i in 1:MAXPATTERNS]
+    addcopy = Button(pbar[1, MAXPATTERNS+2], label = "+ Kopie", buttoncolor = C_BTN)
+    addempty = Button(pbar[1, MAXPATTERNS+3], label = "+ Leer", buttoncolor = C_BTN)
+    delbtn = Button(pbar[1, MAXPATTERNS+4], label = "Löschen", buttoncolor = C_BTN)
+    clrbtn = Button(pbar[1, MAXPATTERNS+5], label = "Leeren", buttoncolor = C_BTN)
+    pbar2 = fig[4, 1] = GridLayout(tellwidth = false, halign = :left)
+    Label(pbar2[1, 1], "Steps", halign = :right)
+    steps_menu = Menu(pbar2[1, 2], options = string.(STEP_OPTS), width = 60)
+    Label(pbar2[1, 3], "Kette (Song-Modus & Export)", halign = :right)
+    chain_tb = Textbox(pbar2[1, 4], stored_string = chain_string(song.chain), width = 260,
+                       placeholder = "z. B. 1x3 2", reset_on_defocus = true)
+
+    # ---------------------------------------------------------------- Raster
+    grid = fig[5, 1] = GridLayout()
+    headax = Axis(grid[1, 5], height = 22, backgroundcolor = :transparent)
+    hidedecorations!(headax); hidespines!(headax)
+    headtxt = Observable(String[])
+    headpos = Observable(Point2f[])
+    text!(headax, headpos; text = headtxt, align = (:center, :center), fontsize = 13, color = :gray30)
+
+    cellrects = [Rect2f(s - 1 + 0.06, 0.1, 0.88, 0.8) for s in 1:MAXSTEPS]
+    rowcolors = [Observable(fill(C_OFF_A, MAXSTEPS)) for _ in 1:NTRACKS]
+    axes = Axis[]
+    mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]
+    for t in 1:NTRACKS
+        r = t + 1
+        nb = Button(grid[r, 1], label = TRACKS[t][2], width = 100, buttoncolor = C_BTN)
+        on(nb.clicks) do _
+            put!(eng.pads, (t, 2))
+        end
+        mb = Button(grid[r, 2], label = "M", width = 30, buttoncolor = C_BTN)
+        sb = Button(grid[r, 3], label = "S", width = 30, buttoncolor = C_BTN)
+        vs = Slider(grid[r, 4], range = 0:0.01:1.5, startvalue = song.tracks[t].vol, width = 90)
+        push!(mutebtns, mb); push!(solobtns, sb); push!(volsls, vs)
+        ax = Axis(grid[r, 5], height = 34, backgroundcolor = :transparent,
+                  xrectzoom = false, yrectzoom = false, xzoomlock = true, yzoomlock = true,
+                  xpanlock = true, ypanlock = true)
+        hidedecorations!(ax); hidespines!(ax)
+        for k in (:rectanglezoom, :scrollzoom, :dragpan, :limitreset)
+            try deregister_interaction!(ax, k) catch end
+        end
+        poly!(ax, cellrects; color = rowcolors[t], strokewidth = 0)
+        push!(axes, ax)
+        register_interaction!(ax, :cellclick) do ev::MouseEvent, _
+            ev.type in (MouseEventTypes.leftclick, MouseEventTypes.rightclick) || return
+            p = cur_pattern()
+            s = floor(Int, ev.data[1]) + 1
+            1 <= s <= p.steps || return
+            v = p.grid[t, s]
+            if ev.type == MouseEventTypes.leftclick
+                nv = v == 0 ? 0x02 : 0x00
+            else
+                nv = v == 0 ? 0x01 : v == 3 ? 0x01 : v + 0x01
+            end
+            p.grid[t, s] = nv
+            nv > 0 && !eng.playing && put!(eng.pads, (t, Int(nv)))
+            refresh_row!(t)
+            return Consume(true)
+        end
+    end
+    colgap!(grid, 8); rowgap!(grid, 4)
+    leg = Label(grid[NTRACKS+2, 5], "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören",
+                halign = :left, color = :gray40, fontsize = 12)
+
+    # ---------------------------------------------------------------- Datei / Export
+    bot = fig[6, 1] = GridLayout(tellwidth = false, halign = :left)
+    Label(bot[1, 1], "Datei:", font = :bold)
+    preset_menu = Menu(bot[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 180)
+    Label(bot[1, 3], "Name", halign = :right)
+    name_tb = Textbox(bot[1, 4], stored_string = song.name, width = 200, reset_on_defocus = true)
+    savebtn = Button(bot[1, 5], label = "Speichern", buttoncolor = C_BTN)
+    load_menu = Menu(bot[1, 6], options = vcat(["—"], list_songs()), default = nothing, prompt = "Song laden …",
+                     width = 200)
+
+    bot2 = fig[7, 1] = GridLayout(tellwidth = false, halign = :left)
+    Label(bot2[1, 1], "Export:", font = :bold)
+    Label(bot2[1, 2], "Wiederholungen", halign = :right)
+    rep_tb = Textbox(bot2[1, 3], stored_string = string(song.repeats), validator = Int, width = 50,
+                     reset_on_defocus = true)
+    Label(bot2[1, 4], "Einzähler (Takte)", halign = :right)
+    ci_menu = Menu(bot2[1, 5], options = string.(0:4), default = string(song.countin), width = 50)
+    Label(bot2[1, 6], "Klick", halign = :right)
+    click_toggle = Toggle(bot2[1, 7], active = song.click)
+    Label(bot2[1, 8], "Mono", halign = :right)
+    mono_toggle = Toggle(bot2[1, 9], active = false)
+    expbtn = Button(bot2[1, 10], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = :white)
+    explab = Label(bot2[1, 11], "", color = :gray30)
+
+    Label(fig[8, 1], status, halign = :left, tellwidth = false, color = :gray25)
+    rowgap!(fig.layout, 10)
+
+    # ================================================================ Logik
+    cur_pattern() = eng.song.patterns[clamp(eng.edit_pat, 1, length(eng.song.patterns))]
+    playhead = Ref(-1)
+
+    function refresh_row!(t)
+        p = cur_pattern(); spb = eng.song.steps_per_beat
+        cols = rowcolors[t][]
+        for s in 1:MAXSTEPS
+            v = p.grid[t, s]
+            head = (s - 1) == playhead[]
+            cols[s] = v > 0 ? (head ? C_LEVEL_H[v] : C_LEVEL[v]) :
+                      head ? C_HEAD : (iseven((s - 1) ÷ spb) ? C_OFF_A : C_OFF_B)
+        end
+        notify(rowcolors[t])
+    end
+
+    function refresh_grid!()
+        p = cur_pattern()
+        for (t, ax) in enumerate(axes)
+            limits!(ax, 0, p.steps, 0, 1)
+            refresh_row!(t)
+        end
+        limits!(headax, 0, p.steps, 0, 1)
+        headtxt[] = count_labels(p.steps, eng.song.steps_per_beat)
+        headpos[] = [Point2f(s - 0.5, 0.5) for s in 1:p.steps]
+        steps_menu.i_selected[] = something(findfirst(==(p.steps), STEP_OPTS), 6)
+    end
+
+    function refresh_tracks!()
+        for t in 1:NTRACKS
+            tp = eng.song.tracks[t]
+            mutebtns[t].buttoncolor[] = tp.mute ? C_MUTE : C_BTN
+            solobtns[t].buttoncolor[] = tp.solo ? C_SOLO : C_BTN
+        end
+    end
+
+    function refresh_patbtns!()
+        n = length(eng.song.patterns)
+        playing = eng.playing ? eng.shown_pat[] : 0
+        for (i, b) in enumerate(patbtns)
+            b.buttoncolor[] = i == eng.edit_pat ? C_ACTIVE : i <= n ? C_BTN : C_BG
+            b.labelcolor[] = i == eng.edit_pat ? :white : i <= n ? :black : :gray70
+            b.label[] = i == playing ? "▸$i" : string(i)
+        end
+    end
+
+    function refresh_export_info!()
+        s = eng.song
+        explab.text[] = "≈ $(fmt_time(song_seconds(s))) min"
+    end
+
+    "Alle Widgets aus `eng.song` neu setzen (nach Laden/Preset)."
+    function refresh_all!()
+        s = eng.song
+        set_close_to!(bpm_sl, s.bpm)
+        set_close_to!(sw_sl, round(Int, 100s.swing))
+        raster_menu.i_selected[] = something(findfirst(o -> o[2] == s.steps_per_beat, RASTER_OPTS), 1)
+        fx_menu.i_selected[] = something(findfirst(==(s.fx), FX_NAMES), 1)
+        set_close_to!(fx_sl, s.fxmix); set_close_to!(mst_sl, s.master)
+        for t in 1:NTRACKS; set_close_to!(volsls[t], s.tracks[t].vol); end
+        chain_tb.stored_string[] = chain_string(s.chain); chain_tb.displayed_string[] = chain_string(s.chain)
+        name_tb.stored_string[] = s.name; name_tb.displayed_string[] = s.name
+        rep_tb.stored_string[] = string(s.repeats); rep_tb.displayed_string[] = string(s.repeats)
+        ci_menu.i_selected[] = clamp(s.countin, 0, 4) + 1
+        click_toggle.active[] = s.click
+        k = findfirst(==(s.kit), kitnames)
+        k !== nothing && (kit_menu.i_selected[] = k)
+        refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
+    end
+
+    function set_song!(s::Song)
+        was = eng.playing
+        was && stop!(eng)
+        lock(eng.lock) do
+            eng.song = s
+            eng.edit_pat = 1
+            k = findfirst(==(s.kit), kitnames)
+            if k === nothing
+                s.kit = eng.kit.name
+            else
+                eng.kit = kits[k]
+            end
+            apply_fx!(eng)
+        end
+        refresh_all!()
+        was && play!(eng)
+    end
+
+    function toggle_play()
+        if eng.playing
+            stop!(eng)
+            playbtn.label[] = "▶  Play"
+        else
+            eng.live_countin = ci_toggle.active[]
+            play!(eng)
+            playbtn.label[] = "■  Stop"
+        end
+    end
+
+    # Transport
+    on(_ -> toggle_play(), playbtn.clicks)
+    on(modebtn.clicks) do _
+        eng.songmode = !eng.songmode
+        modebtn.label[] = eng.songmode ? "Modus: Song" : "Modus: Pattern"
+        eng.playing && play!(eng)
+    end
+    on(bpm_sl.value) do v
+        eng.song.bpm = v; bpm_lab.text[] = string(v); refresh_export_info!()
+    end
+    on(sw_sl.value) do v
+        eng.song.swing = v / 100; sw_lab.text[] = "$v%"; refresh_export_info!()
+    end
+    on(raster_menu.selection) do sel
+        sel === nothing && return
+        eng.song.steps_per_beat = RASTER_OPTS[findfirst(o -> o[1] == sel, RASTER_OPTS)][2]
+        refresh_grid!(); refresh_export_info!()
+    end
+    on(kit_menu.selection) do sel
+        sel === nothing && return
+        k = findfirst(==(sel), kitnames)
+        lock(eng.lock) do
+            eng.kit = kits[k]
+        end
+        eng.song.kit = sel
+    end
+    on(fx_menu.selection) do sel
+        sel === nothing && return
+        eng.song.fx = sel; apply_fx!(eng)
+    end
+    on(v -> (eng.song.fxmix = v; apply_fx!(eng)), fx_sl.value)
+    on(v -> (eng.song.master = v), mst_sl.value)
+
+    # Spuren
+    for t in 1:NTRACKS
+        on(mutebtns[t].clicks) do _
+            eng.song.tracks[t].mute = !eng.song.tracks[t].mute; refresh_tracks!()
+        end
+        on(solobtns[t].clicks) do _
+            eng.song.tracks[t].solo = !eng.song.tracks[t].solo; refresh_tracks!()
+        end
+        on(v -> (eng.song.tracks[t].vol = v), volsls[t].value)
+    end
+
+    # Patterns
+    for (i, b) in enumerate(patbtns)
+        on(b.clicks) do _
+            i <= length(eng.song.patterns) || return
+            eng.edit_pat = i
+            refresh_grid!(); refresh_patbtns!()
+        end
+    end
+    function add_pattern!(p::Pattern)
+        if length(eng.song.patterns) >= MAXPATTERNS
+            status[] = "Maximal $MAXPATTERNS Patterns."
+            return
+        end
+        lock(eng.lock) do
+            push!(eng.song.patterns, p)
+        end
+        eng.edit_pat = length(eng.song.patterns)
+        refresh_grid!(); refresh_patbtns!()
+        status[] = "Pattern $(eng.edit_pat) angelegt. Für Song/Export in die Kette eintragen (z. B. \"1x3 $(eng.edit_pat)\")."
+    end
+    on(_ -> add_pattern!(copy(cur_pattern())), addcopy.clicks)
+    on(_ -> add_pattern!(Pattern(cur_pattern().steps)), addempty.clicks)
+    on(delbtn.clicks) do _
+        s = eng.song
+        length(s.patterns) <= 1 && return
+        k = eng.edit_pat
+        lock(eng.lock) do
+            deleteat!(s.patterns, k)
+            s.chain = [i > k ? i - 1 : i for i in s.chain if i != k]
+            isempty(s.chain) && push!(s.chain, 1)
+            eng.edit_pat = clamp(k, 1, length(s.patterns))
+            eng.pat > length(s.patterns) && (eng.pat = eng.edit_pat)
+            eng.seq = [p > length(s.patterns) ? -1 : p for p in eng.seq]
+        end
+        chain_tb.stored_string[] = chain_string(s.chain); chain_tb.displayed_string[] = chain_string(s.chain)
+        refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
+    end
+    on(clrbtn.clicks) do _
+        fill!(cur_pattern().grid, 0x00); refresh_grid!()
+    end
+    on(steps_menu.selection) do sel
+        sel === nothing && return
+        n = parse(Int, sel)
+        p = cur_pattern()
+        p.steps == n && return
+        p.steps = n
+        refresh_grid!(); refresh_export_info!()
+    end
+    on(chain_tb.stored_string) do str
+        str === nothing && return
+        c = parse_chain(str, length(eng.song.patterns))
+        if isempty(c)
+            status[] = "Kette ungültig – Beispiel: \"1 1 1 2\" oder \"1x3 2\"."
+            return
+        end
+        eng.song.chain = c
+        status[] = "Kette: $(chain_string(c))"
+        refresh_export_info!()
+        eng.playing && eng.songmode && play!(eng)
+    end
+
+    # Datei
+    on(preset_menu.selection) do sel
+        sel === nothing && return
+        set_song!(preset(sel))
+        status[] = "Preset \"$sel\" geladen."
+    end
+    on(str -> str === nothing || (eng.song.name = str), name_tb.stored_string)
+    safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")
+    on(savebtn.clicks) do _
+        path = joinpath(SONG_DIR, safe(eng.song.name) * ".toml")
+        save_song(path, eng.song)
+        load_menu.options[] = vcat(["—"], list_songs())
+        status[] = "Gespeichert: $path"
+    end
+    on(load_menu.selection) do sel
+        (sel === nothing || sel == "—") && return
+        path = joinpath(SONG_DIR, sel * ".toml")
+        try
+            set_song!(load_song(path))
+            status[] = "Geladen: $path"
+        catch e
+            status[] = "Fehler beim Laden: $(sprint(showerror, e))"
+        end
+    end
+
+    # Export
+    on(rep_tb.stored_string) do str
+        str === nothing && return
+        eng.song.repeats = clamp(parse(Int, str), 1, 999); refresh_export_info!()
+    end
+    on(ci_menu.selection) do sel
+        sel === nothing && return
+        eng.song.countin = parse(Int, sel); refresh_export_info!()
+    end
+    on(v -> (eng.song.click = v), click_toggle.active)
+    on(expbtn.clicks) do _
+        s = eng.song
+        path = joinpath(SONG_DIR, safe(s.name) * ".wav")
+        status[] = "Exportiere …"
+        try
+            t = @elapsed export_wav(path, s, eng.kit; mono = mono_toggle.active[])
+            status[] = "WAV geschrieben: $path  ($(fmt_time(song_seconds(s))) min, $(s.bpm) BPM, " *
+                       "$(s.repeats)× Kette, Einzähler $(s.countin) Takt(e), $(round(t, digits = 1)) s)"
+        catch e
+            status[] = "Export fehlgeschlagen: $(sprint(showerror, e))"
+        end
+    end
+
+    # Tastatur: Leertaste = Play/Stop (nicht während Texteingabe)
+    on(events(fig).keyboardbutton) do ev
+        ev.action == Keyboard.press || return
+        any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb)) && return
+        if ev.key == Keyboard.space
+            toggle_play()
+        end
+    end
+
+    bpm_lab.text[] = string(round(Int, song.bpm)); sw_lab.text[] = "$(round(Int, 100song.swing))%"
+    refresh_all!()
+    status[] = HELP
+
+    last = Ref((-2, -2, false))
+    function tick!()
+        st = eng.playing ? eng.shown_step[] : -1
+        pt = eng.shown_pat[]
+        cur = (st, pt, eng.playing)
+        cur == last[] && return
+        playhead[] = pt == eng.edit_pat ? st : -1
+        for t in 1:NTRACKS; refresh_row!(t); end
+        refresh_patbtns!()
+        if !eng.playing && last[][3]
+            playbtn.label[] = "▶  Play"
+        elseif eng.playing && pt == 0
+            status[] = "Einzähler …"
+        end
+        last[] = cur
+        return
+    end
+    return fig, eng, tick!
+end
