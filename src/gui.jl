@@ -33,6 +33,14 @@ function list_songs()
     sort([splitext(f)[1] for f in readdir(SONG_DIR) if endswith(f, ".toml")])
 end
 
+"Kurzbeschreibung für die Statuszeile, z. B. `100 BPM · Swing 63 % (Auto) · Kette 1 1 2`."
+function song_summary(s::Song)
+    pct = round(Int, 100s.swing)
+    sw = s.steps_per_beat in (3, 6) ? (s.swing == 2 / 3 ? "exakte Triolen" : "Triolen-Swing $pct %") :
+         s.swing == 0.5 ? "kein Swing" : "Swing $pct % ($(s.swing_on == 0 ? "Auto" : "auf $(s.swing_on)tel"))"
+    return "$(round(Int, s.bpm)) BPM · $sw · Kette $(chain_string(s.chain))"
+end
+
 fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 60, 2, '0'))
 
 """
@@ -335,7 +343,9 @@ function build_gui(song::Song; audio::Bool = true)
         eng.song.bpm = v; bpm_lab.text[] = string(v); refresh_export_info!()
     end
     on(sw_sl.value) do v
-        eng.song.swing = v / 100; sw_lab.text[] = "$v%"; refresh_export_info!()
+        eng.song.swing = v == 67 ? 2 / 3 : v / 100       # 67 % = exakte Triole
+        sw_lab.text[] = "$v%"
+        refresh_export_info!()
     end
     on(sw_menu.selection) do sel
         sel === nothing && return
@@ -344,7 +354,14 @@ function build_gui(song::Song; audio::Bool = true)
     end
     on(raster_menu.selection) do sel
         sel === nothing && return
-        eng.song.steps_per_beat = RASTER_OPTS[findfirst(o -> o[1] == sel, RASTER_OPTS)][2]
+        old = eng.song.steps_per_beat
+        new = RASTER_OPTS[findfirst(o -> o[1] == sel, RASTER_OPTS)][2]
+        eng.song.steps_per_beat = new
+        # Beim Wechsel zwischen geraden und Triolen-Rastern neutralen Swing setzen
+        if (old in (3, 6)) != (new in (3, 6)) && eng.song.swing == default_swing(old)
+            eng.song.swing = default_swing(new)
+            set_close_to!(sw_sl, round(Int, 100eng.song.swing))
+        end
         refresh_grid!(); refresh_export_info!()
     end
     on(kit_menu.selection) do sel
@@ -438,7 +455,8 @@ function build_gui(song::Song; audio::Bool = true)
     on(preset_menu.selection) do sel
         sel === nothing && return
         set_song!(preset(sel))
-        status[] = "Preset \"$sel\" geladen."
+        status[] = "Preset \"$sel\" geladen ($(song_summary(eng.song)))."
+        preset_menu.i_selected[] = 0          # gleiches Preset später erneut wählbar
     end
     on(name_tb.stored_string) do str
         str === nothing && return
@@ -460,16 +478,17 @@ function build_gui(song::Song; audio::Bool = true)
         cancel_overwrite!()
         save_song(path, eng.song)
         load_menu.options[] = vcat(["—"], list_songs())
-        status[] = "Gespeichert: $path"
+        status[] = "Gespeichert: $path  ($(song_summary(eng.song)))"
     end
     on(newbtn.clicks) do _
         old = eng.song
         spb = old.steps_per_beat
         s = Song(name = unique_name("Neuer Groove"), bpm = old.bpm, steps_per_beat = spb,
+                 swing = old.swing, swing_on = old.swing_on,
                  patterns = [Pattern(spb in (2, 4) ? 16 : 4spb)], kit = old.kit,
                  repeats = old.repeats, countin = old.countin, click = old.click)
         set_song!(s)
-        status[] = "Neuer Groove \"$(s.name)\" angelegt (BPM, Raster und Kit übernommen)."
+        status[] = "Neuer Groove \"$(s.name)\" angelegt (BPM, Swing, Raster und Kit übernommen)."
     end
     on(dupbtn.clicks) do _
         s = copy(eng.song)
@@ -482,10 +501,11 @@ function build_gui(song::Song; audio::Bool = true)
         path = joinpath(SONG_DIR, sel * ".toml")
         try
             set_song!(load_song(path))
-            status[] = "Geladen: $path"
+            status[] = "Geladen: $path  ($(song_summary(eng.song)))"
         catch e
             status[] = "Fehler beim Laden: $(sprint(showerror, e))"
         end
+        load_menu.i_selected[] = 0            # derselbe Song lässt sich erneut (von Platte) laden
     end
 
     # Export

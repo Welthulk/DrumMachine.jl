@@ -17,7 +17,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test s.patterns[1].steps % s.steps_per_beat == 0 || n == "Taktart: 7/8 (2+2+3)"
         end
         @test length(PRESET_NAMES) == length(unique(PRESET_NAMES))
-        ht = preset("Funk: Half-Time Shuffle (Purdie-Stil)")
+        ht = preset("Shuffle: Purdie Half-Time (16tel-Triolen)")
         @test ht.steps_per_beat == 6 && ht.patterns[1].steps == 24
         @test sum(step_samples(ht, k) for k in 0:23) ≈ 4 * 60 / 80 * SR   # Swing wirkt nicht auf Triolen
         @test preset("Blues: Shuffle (12 Takte)").patterns[1].steps == 12
@@ -43,6 +43,13 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         s.swing_on = 8
         @test step_samples(s, 0, p16) == step_samples(s, 1, p16)
         @test sum(step_samples(s, k, p16) for k in 0:15) ≈ 2SR
+        # Triolen-Raster: Standard = exakte Triolen, Swing verschiebt die dritte Triole
+        t = Song(bpm = 120, steps_per_beat = 3)
+        @test t.swing == 2 / 3
+        @test step_samples(t, 0) ≈ step_samples(t, 1) ≈ step_samples(t, 2)
+        t.swing = 0.75
+        @test step_samples(t, 0) + step_samples(t, 1) ≈ 0.75 * 0.5SR
+        @test sum(step_samples(t, k) for k in 0:11) ≈ 2SR
     end
 
     @testset "Export" begin
@@ -78,6 +85,12 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             s2 = load_song(f)
             @test s2.patterns[1].grid == s.patterns[1].grid
             @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8
+            # Alte Datei (ohne swing_version) mit Triolen und 0.5 → exakte Triolen
+            d = DrumMachine.song_to_dict(preset("Blues: Jump / Swing"))
+            d["swing"] = 0.5; delete!(d, "swing_version")
+            @test DrumMachine.song_from_dict(d).swing == 2 / 3
+            d["swing_version"] = 2
+            @test DrumMachine.song_from_dict(d).swing == 0.5
         end
     end
 end

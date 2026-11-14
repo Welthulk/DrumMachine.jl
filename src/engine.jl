@@ -181,14 +181,23 @@ function swing_unit(song::Song, p::Union{Pattern,Nothing})
 end
 
 """
-Dauer von Step `s` (0-basiert) in Samples, inkl. Swing. Swing verlängert die erste Hälfte
-jedes Paares (8tel- bzw. 16tel-Paar) und verkürzt die zweite; die Taktlänge bleibt gleich.
-Bei Triolen-Rastern (3/6 pro Schlag) wirkt kein Swing.
+Dauer von Step `s` (0-basiert) in Samples, inkl. Swing. Die Taktlänge bleibt immer gleich.
+
+Einheitliche Bedeutung von `song.swing`: Lage der Off-Beat-Note innerhalb ihrer Gruppe
+(50 % = Mitte/gerade, 67 % = Triole, 75 % = punktiert).
+
+- 8tel-/16tel-Raster: Paare (8tel- bzw. 16tel-Paar); die erste Hälfte wird um `swing` gedehnt.
+- Triolen-Raster (3 bzw. 6 pro Schlag): Dreiergruppen; die dritte Triole liegt bei `swing`
+  der Gruppe, die mittlere genau dazwischen. Bei 2/3 ergeben sich exakte Triolen.
 """
 function step_samples(song::Song, s::Int, p::Union{Pattern,Nothing} = nothing)
     spb = song.steps_per_beat
     base = 60.0 / song.bpm / spb * SR
     sw = clamp(song.swing, 0.5, 0.8)
+    if spb in (3, 6)
+        g = 3base                                          # Dauer einer Dreiergruppe
+        return s % 3 == 2 ? (1 - sw) * g : sw * g / 2
+    end
     (sw == 0.5 || !(spb in (2, 4))) && return base
     if spb == 2 || swing_unit(song, p) == 16
         return 2base * (iseven(s) ? sw : 1 - sw)          # Paare aus einzelnen Steps

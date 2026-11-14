@@ -145,15 +145,6 @@ const PRESETS = Pair{String,Function}[
         Song(name = "Funk: 16tel Zwei-Hand-Hihat", bpm = 100, patterns = [g])
     end,
 
-    "Funk: Half-Time Shuffle (Purdie-Stil)" => function ()
-        # 16tel-Triolen (6 pro Schlag): Hihat-Shuffle, Ghost Notes auf den Mitteltriolen,
-        # Backbeat nur auf der 3.
-        g = P(HiHat = "x.xx.xx.xx.xx.xx.xx.xx.x",
-              Snare = ".o..o..o..o.X...o..o..o.",
-              Kick  = "X..........x.........x..")
-        Song(name = "Funk: Half-Time Shuffle (Purdie-Stil)", bpm = 80, steps_per_beat = 6, patterns = [g])
-    end,
-
     # ------------------------------------------------------------------ Blues
     "Blues: Shuffle (12 Takte)" => function ()
         g = P(HiHat = "x.xx.xx.xx.x",
@@ -201,6 +192,101 @@ const PRESETS = Pair{String,Function}[
               HHPedal = "...x.....x..")
         Song(name = "Blues: Jump / Swing", bpm = 160, steps_per_beat = 3,
              patterns = [with_crash(g), g], chain = vcat(1, fill(2, 11)), repeats = 3)
+    end,
+
+    # ------------------------------------------------------------------ Shuffles
+    # Triolen-Raster: Swing-Regler verschiebt die dritte Triole (67 % = exakt, 75 % = punktiert).
+    # Gerade Raster: Swing-Regler verschiebt das „+“ (auf 8tel) bzw. „e“/„a“ (auf 16tel).
+
+    "Shuffle: Rock-Shuffle" => function ()
+        g = P(HiHat = "X.xX.xX.xX.x",
+              Snare = "...X.....X..",
+              Kick  = "X.x...X.x...")
+        f = P(HiHat = "X.xX.x......",
+              Snare = "...X..xxx...",
+              Tom   = ".........xx.",
+              FloorTom = "...........X",
+              Kick  = "X.....X.....")
+        Song(name = "Shuffle: Rock-Shuffle", bpm = 125, steps_per_beat = 3,
+             patterns = [with_crash(g), g, f], chain = form(8), repeats = 2)
+    end,
+
+    "Shuffle: Ride-Shuffle" => function ()
+        g = P(Ride    = "x.xx.xx.xx.x",
+              HHPedal = "...x.....x..",
+              Snare   = "...X.....X..",
+              Kick    = "X.....X.....")
+        Song(name = "Shuffle: Ride-Shuffle", bpm = 140, steps_per_beat = 3, patterns = [g])
+    end,
+
+    "Shuffle: Snare-Shuffle (Chicago)" => function ()
+        # Die Snare spielt den Shuffle durch (Ghosts + Backbeat), Ride auf den Vierteln.
+        g = P(Ride    = "x..x..x..x..",
+              Snare   = "o.oX.oo.oX.o",
+              HHPedal = "...x.....x..",
+              Kick    = "X.....X.....")
+        Song(name = "Shuffle: Snare-Shuffle (Chicago)", bpm = 120, steps_per_beat = 3, patterns = [g])
+    end,
+
+    "Shuffle: Half-Time (8tel-Triolen)" => function ()
+        g = P(HiHat = "x.xx.xx.xx.x",
+              Snare = ".o..o.X...o.",
+              Kick  = "X.......x...")
+        Song(name = "Shuffle: Half-Time (8tel-Triolen)", bpm = 140, steps_per_beat = 3, patterns = [g])
+    end,
+
+    "Shuffle: Purdie Half-Time (16tel-Triolen)" => function ()
+        # 16tel-Triolen (6 pro Schlag): Hihat-Shuffle, Ghost Notes auf den Mitteltriolen,
+        # Backbeat nur auf der 3.
+        g = P(HiHat = "x.xx.xx.xx.xx.xx.xx.xx.x",
+              Snare = ".o..o..o..o.X...o..o..o.",
+              Kick  = "X..........x.........x..")
+        Song(name = "Shuffle: Purdie Half-Time (16tel-Triolen)", bpm = 80, steps_per_beat = 6, patterns = [g])
+    end,
+
+    "Shuffle: Rosanna-Stil (Porcaro/Purdie)" => function ()
+        # Porcaros Variante des Purdie-Shuffles: 16tel-Triolen, Hihat-Shuffle mit Akzent auf der 3,
+        # Ghost Notes auf den mittleren Triolen, Backbeat nur auf der 3,
+        # Bassdrum-Auftakte vor der 3 und vor der 1.
+        #            1 la li + la li 2 . . . . . 3 . . . . . 4 . . . . .
+        g = P(HiHat = "x.xx.xx.xx.xX.xx.xx.xx.x",
+              Snare = ".o..o..o..o.X...o..o..o.",
+              Kick  = "X..........x...x.......x")
+        v = P(HiHat  = "x.xx.xx.xx.xX.xx.xx.xx..",
+              HHOpen = ".......................X",
+              Snare  = ".o..o..o..o.X...o..o.oo.",
+              Kick   = "X..........x...x........")
+        Song(name = "Shuffle: Rosanna-Stil (Porcaro/Purdie)", bpm = 86, steps_per_beat = 6,
+             patterns = [g, v], chain = [1, 1, 1, 2])
+    end,
+
+    "Shuffle: Laid-back (58 %)" => function ()
+        g = P(HiHat = "x.xx.xx.xx.x",
+              Snare = "...X.....X..",
+              Kick  = "X.....X.....")
+        Song(name = "Shuffle: Laid-back (58 %)", bpm = 100, steps_per_beat = 3, swing = 0.58, patterns = [g])
+    end,
+
+    "Shuffle: Hart punktiert (75 %)" => function ()
+        g = P(HiHat = "x.xx.xx.xx.x",
+              Snare = "...X.....X..",
+              Kick  = "X.....X.....")
+        Song(name = "Shuffle: Hart punktiert (75 %)", bpm = 100, steps_per_beat = 3, swing = 0.75, patterns = [g])
+    end,
+
+    "Shuffle: 8tel-Swing im geraden Raster" => function ()
+        # 16tel-Raster, Swing 66 % auf 8tel: das „+“ rutscht auf die dritte Triole.
+        g = P(HiHat = "x.x.x.x.x.x.x.x.",
+              Snare = "....X.......X...",
+              Kick  = "X.....x.X.......")
+        Song(name = "Shuffle: 8tel-Swing im geraden Raster", bpm = 110, swing = 0.66, swing_on = 8, patterns = [g])
+    end,
+
+    "Shuffle: 16tel-Swing (Funk/Hip-Hop)" => function ()
+        g = P(HiHat = "xoxoxoxoxoxoxoxo",
+              Snare = "....X..o.o..X...",
+              Kick  = "X..x......X..x..")
+        Song(name = "Shuffle: 16tel-Swing (Funk/Hip-Hop)", bpm = 90, swing = 0.6, swing_on = 16, patterns = [g])
     end,
 
     # ------------------------------------------------------------------ Jazz

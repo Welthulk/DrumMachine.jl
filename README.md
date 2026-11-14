@@ -35,7 +35,7 @@ fig, eng = DrumMachine.run(block = false)
 | Song-Modus | spielt die **Kette** in Schleife |
 | Kette | z. B. `1 1 1 2` oder `1x3 2` (3× Groove, 1× Fill) |
 | Raster | 16tel, Triolen (Shuffle/Jazz/12/8), 16tel-Triolen (Half-Time Shuffle) oder 8tel; die Kopfzeile zählt mit (`1 e + a`, `1 + a`, `1 la li + la li`) |
-| Swing | 50 % = gerade, 66 % ≈ triolisch. Basis wählbar: **Auto** (16tel-Swing, wenn Schläge auf „e“/„a“ liegen, sonst 8tel-Swing), **auf 8tel** oder **auf 16tel**. Wirkt nicht bei Triolen-Rastern |
+| Swing | Lage der Off-Beat-Note im Schlag: 50 % = gerade, 67 % = Triole, 75 % = punktiert. Im Triolen-Raster verschiebt der Regler die dritte Triole (Standard 67 %). Im geraden Raster ist die Basis wählbar: **Auto** (16tel-Swing, wenn Schläge auf „e“/„a“ liegen, sonst 8tel), **auf 8tel** oder **auf 16tel**. Swing wird mit dem Song gespeichert |
 | M / S | Spur stumm / solo; **Mute gilt auch beim Export** |
 | Neu | leerer Groove mit freiem Namen (BPM, Raster und Kit bleiben) |
 | Duplizieren | Kopie des aktuellen Songs („… Kopie“), das Original bleibt unangetastet |
@@ -52,7 +52,8 @@ mit Crash am Anfang und Fill im letzten Takt angelegt.
 |---|---|
 | Rock / Pop | 8tel (mit Crash & Fill), 16tel, Half-Time, Punk, Rock'n'Roll, Ballade (mit Fill), Motown, Disco |
 | Country | Train Beat |
-| Funk | Ghost Notes, Oakland (Tower-of-Power-Stil, mit Variation), Linear, 16tel Zwei-Hand-Hihat, Half-Time Shuffle (Purdie-Stil) |
+| Funk | Ghost Notes, Oakland (Tower-of-Power-Stil, mit Variation), Linear, 16tel Zwei-Hand-Hihat |
+| Shuffle | Rock-Shuffle (mit Crash & Fill), Ride-Shuffle, Snare-Shuffle (Chicago), Half-Time (8tel-Triolen), Purdie Half-Time (16tel-Triolen), Rosanna-Stil (Porcaro/Purdie), Laid-back 58 %, Hart punktiert 75 %, 8tel-Swing im geraden Raster, 16tel-Swing |
 | Blues | Shuffle (12 Takte), Double Shuffle (Texas), Slow Blues 12/8, Jump / Swing |
 | Jazz | Swing Ride, Jazz-Walzer 3/4 |
 | Latin / Reggae | Bossa Nova, Samba, Afro 6/8, One Drop, Rockers |

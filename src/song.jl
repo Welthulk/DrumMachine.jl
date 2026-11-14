@@ -26,7 +26,7 @@ Base.copy(t::TrackParams) = TrackParams(t.vol, t.pan, t.pitch, t.mute, t.solo)
 mutable struct Song
     name::String
     bpm::Float64
-    swing::Float64               # 0.5 = gerade … 0.75 = stark geswingt (nur bei 2 oder 4 Steps pro Schlag)
+    swing::Float64               # Lage der Off-Beat-Note: 0.5 = gerade, 2/3 = Triole, 0.75 = punktiert
     swing_on::Int                # Swing-Basis: 0 = Auto, 8 = auf 8tel, 16 = auf 16tel
     steps_per_beat::Int          # 4 = 16tel, 3 = 8tel-Triolen (Shuffle/Jazz), 6 = 16tel-Triolen, 2 = 8tel
     patterns::Vector{Pattern}
@@ -42,10 +42,14 @@ mutable struct Song
     click::Bool                  # Metronom-Klick in den Export mischen
 end
 
-function Song(; name = "Neu", bpm = 100.0, swing = 0.5, swing_on = 0, steps_per_beat = 4,
+"Neutraler Swing-Wert je Raster: gerade bei 8tel/16tel, exakte Triole bei Triolen-Rastern."
+default_swing(steps_per_beat) = steps_per_beat in (3, 6) ? 2 / 3 : 0.5
+
+function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,
               patterns = [Pattern(16)], chain = [1], kit = "BlackPearl", fx = "Clean",
               fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false)
     swing_on in (0, 8, 16) || error("swing_on muss 0 (Auto), 8 oder 16 sein")
+    swing = something(swing, default_swing(steps_per_beat))
     Song(name, bpm, swing, swing_on, steps_per_beat, patterns, chain,
          [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click)
 end
@@ -104,7 +108,7 @@ end
 
 function song_to_dict(s::Song)
     Dict{String,Any}(
-        "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "swing_on" => s.swing_on, "steps_per_beat" => s.steps_per_beat,
+        "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "swing_on" => s.swing_on, "swing_version" => 2, "steps_per_beat" => s.steps_per_beat,
         "chain" => s.chain, "kit" => s.kit, "fx" => s.fx, "fxmix" => s.fxmix, "master" => s.master,
         "repeats" => s.repeats, "countin" => s.countin, "click" => s.click,
         "pattern" => [Dict{String,Any}("steps" => p.steps,
@@ -126,6 +130,10 @@ function song_from_dict(d::AbstractDict)
              chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "BlackPearl"), fx = get(d, "fx", "Clean"),
              fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = get(d, "repeats", 8),
              countin = get(d, "countin", 1), click = get(d, "click", false))
+    # Bis v0.1: Swing wirkte nicht auf Triolen-Raster, gespeichert wurde dann 0.5 = exakte Triolen
+    if s.steps_per_beat in (3, 6) && s.swing == 0.5 && get(d, "swing_version", 1) < 2
+        s.swing = 2 / 3
+    end
     filter!(i -> 1 <= i <= length(pats), s.chain)
     isempty(s.chain) && push!(s.chain, 1)
     for (id, tp) in get(d, "track", Dict())
