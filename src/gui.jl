@@ -15,13 +15,15 @@ const C_ACTIVE  = Makie.to_color("#e8771e")
 const C_MUTE    = Makie.to_color("#d9534f")
 const C_SOLO    = Makie.to_color("#f0c419")
 
-const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3), ("8tel (2 pro Schlag)", 2)]
-const STEP_OPTS = [4, 6, 8, 9, 12, 16, 18, 24, 32]
+const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),
+                     ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2)]
+const STEP_OPTS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 28, 30, 32]
 const MAXPATTERNS = 8
 
-"Zählsilben für die Kopfzeile: 1 e + a / 1 + a / 1 +."
+"Zählsilben für die Kopfzeile: 1 e + a / 1 + a / 1 la li + la li / 1 +."
 function count_labels(steps::Int, spb::Int)
-    syl = spb == 4 ? ("", "e", "+", "a") : spb == 3 ? ("", "+", "a") : spb == 2 ? ("", "+") : ntuple(_ -> "", spb)
+    syl = spb == 4 ? ("", "e", "+", "a") : spb == 3 ? ("", "+", "a") : spb == 6 ? ("", "la", "li", "+", "la", "li") :
+          spb == 2 ? ("", "+") : ntuple(_ -> "", spb)
     [((s - 1) % spb == 0 ? string((s - 1) ÷ spb + 1) : syl[(s-1)%spb+1]) for s in 1:steps]
 end
 
@@ -33,12 +35,12 @@ end
 fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 60, 2, '0'))
 
 """
-    run(; song = preset("Rock 8tel"), block = true)
+    run(; song = preset("Rock: 8tel"), block = true)
 
 Startet die Drum-Machine. `block=false` kehrt sofort zurück (für die REPL) und gibt
 `(fig, eng)` zurück.
 """
-function run(; song::Song = preset("Rock 8tel"), block::Bool = true, audio::Bool = true)
+function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Bool = true)
     GLMakie.activate!(title = "DrumMachine.jl")
     fig, eng, tick! = build_gui(song; audio)
     screen = display(fig)
@@ -89,7 +91,7 @@ function build_gui(song::Song; audio::Bool = true)
 
     top2 = fig[2, 1] = GridLayout(tellwidth = false, halign = :left)
     Label(top2[1, 1], "Raster", halign = :right)
-    raster_menu = Menu(top2[1, 2], options = first.(RASTER_OPTS), width = 190)
+    raster_menu = Menu(top2[1, 2], options = first.(RASTER_OPTS), width = 240)
     Label(top2[1, 3], "Kit", halign = :right)
     kit_menu = Menu(top2[1, 4], options = kitnames, default = kitnames[kitidx], width = 130)
     Label(top2[1, 5], "FX", halign = :right)
@@ -169,7 +171,7 @@ function build_gui(song::Song; audio::Bool = true)
     # ---------------------------------------------------------------- Datei / Export
     bot = fig[6, 1] = GridLayout(tellwidth = false, halign = :left)
     Label(bot[1, 1], "Datei:", font = :bold)
-    preset_menu = Menu(bot[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 180)
+    preset_menu = Menu(bot[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 300)
     Label(bot[1, 3], "Name", halign = :right)
     name_tb = Textbox(bot[1, 4], stored_string = song.name, width = 200, reset_on_defocus = true)
     savebtn = Button(bot[1, 5], label = "Speichern", buttoncolor = C_BTN)
@@ -218,7 +220,8 @@ function build_gui(song::Song; audio::Bool = true)
         limits!(headax, 0, p.steps, 0, 1)
         headtxt[] = count_labels(p.steps, eng.song.steps_per_beat)
         headpos[] = [Point2f(s - 0.5, 0.5) for s in 1:p.steps]
-        steps_menu.i_selected[] = something(findfirst(==(p.steps), STEP_OPTS), 6)
+        k = findfirst(==(p.steps), STEP_OPTS)
+        k === nothing || (steps_menu.i_selected[] = k)
     end
 
     function refresh_tracks!()

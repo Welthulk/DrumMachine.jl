@@ -5,7 +5,7 @@ Step-Sequencer zum Schlagzeug-Üben: Groove eintragen, vorhören, als WAV export
 
     using DrumMachine
     DrumMachine.run()                 # GUI starten
-    song = preset("Rock 8tel")
+    song = preset("Rock: 8tel")
     export_wav("rock.wav", song, first(available_kits()))
 """
 module DrumMachine
@@ -13,6 +13,7 @@ module DrumMachine
 include("dsp.jl")
 include("kit.jl")
 include("song.jl")
+include("presets.jl")
 include("engine.jl")
 include("gui.jl")
 

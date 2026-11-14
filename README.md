@@ -32,9 +32,27 @@ fig, eng = DrumMachine.run(block = false)
 | Pattern-Modus | spielt das gerade angezeigte Pattern in Schleife |
 | Song-Modus | spielt die **Kette** in Schleife |
 | Kette | z. B. `1 1 1 2` oder `1x3 2` (3× Groove, 1× Fill) |
-| Raster | 16tel, Triolen (Shuffle/Jazz/12/8) oder 8tel; die Kopfzeile zählt `1 e + a` bzw. `1 + a` |
+| Raster | 16tel, Triolen (Shuffle/Jazz/12/8), 16tel-Triolen (Half-Time Shuffle) oder 8tel; die Kopfzeile zählt mit (`1 e + a`, `1 + a`, `1 la li + la li`) |
 | Swing | 50 % = gerade, 66 % ≈ triolisch (wirkt bei 16tel/8tel) |
 | M / S | Spur stumm / solo; **Mute gilt auch beim Export** |
+
+## Groove-Bibliothek
+
+Über **Preset laden …** stehen diese Grooves bereit. Die Blues-Presets sind als 12-Takt-Form
+mit Crash am Anfang und Fill im letzten Takt angelegt.
+
+| Stil | Presets |
+|---|---|
+| Rock / Pop | 8tel (mit Crash & Fill), 16tel, Half-Time, Punk, Rock'n'Roll, Ballade (mit Fill), Motown, Disco |
+| Country | Train Beat |
+| Funk | Ghost Notes, Oakland (Tower-of-Power-Stil, mit Variation), Linear, 16tel Zwei-Hand-Hihat, Half-Time Shuffle (Purdie-Stil) |
+| Blues | Shuffle (12 Takte), Double Shuffle (Texas), Slow Blues 12/8, Jump / Swing |
+| Jazz | Swing Ride, Jazz-Walzer 3/4 |
+| Latin / Reggae | Bossa Nova, Samba, Afro 6/8, One Drop, Rockers |
+| Hip-Hop / R&B | Boom Bap, Neo Soul |
+| Taktarten | Walzer 3/4, 6/8 Ballade, 5/4, 7/8 (2+2+3) |
+
+Eigene Grooves kommen in [src/presets.jl](src/presets.jl) dazu, oder du speicherst sie einfach als Song.
 
 ## WAV-Export zum Üben
 

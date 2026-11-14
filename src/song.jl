@@ -26,8 +26,8 @@ Base.copy(t::TrackParams) = TrackParams(t.vol, t.pan, t.pitch, t.mute, t.solo)
 mutable struct Song
     name::String
     bpm::Float64
-    swing::Float64               # 0.5 = gerade … 0.75 = stark geswingt (nur bei 2/4 Steps pro Schlag)
-    steps_per_beat::Int          # 4 = Sechzehntel, 3 = Triolen (Shuffle/Jazz), 2 = Achtel
+    swing::Float64               # 0.5 = gerade … 0.75 = stark geswingt (nur bei 2 oder 4 Steps pro Schlag)
+    steps_per_beat::Int          # 4 = 16tel, 3 = 8tel-Triolen (Shuffle/Jazz), 6 = 16tel-Triolen, 2 = 8tel
     patterns::Vector{Pattern}
     chain::Vector{Int}           # Reihenfolge der Patterns im Song-Modus/Export
     tracks::Vector{TrackParams}
@@ -94,56 +94,6 @@ function Base.show(io::IO, ::MIME"text/plain", p::Pattern)
         any(!iszero, @view p.grid[t, 1:p.steps]) || continue
         println(io, "  ", rpad(TRACKS[t][2], w), "  ", row_string(p, t))
     end
-end
-
-# ---------------------------------------------------------------------------
-# Presets – Standard-Grooves zum Üben
-# ---------------------------------------------------------------------------
-
-P(; steps = nothing, kw...) = pattern_from_rows(Dict(String(k) => v for (k, v) in kw); steps)
-
-const PRESET_NAMES = ["Leer", "Rock 8tel", "Rock 16tel", "Shuffle", "Disco",
-                      "Funk Ghost Notes", "Jazz Ride", "Walzer 3/4", "Reggae One Drop", "Bossa Nova"]
-
-function preset(name::AbstractString)
-    if name == "Leer"
-        return Song(name = "Leer")
-    elseif name == "Rock 8tel"
-        groove = P(HiHat = "x.x.x.x.x.x.x.x.", Snare = "....X.......X...", Kick = "X.......X.X.....")
-        crash  = P(Crash = "X...............", HiHat = "..x.x.x.x.x.x.x.", Snare = "....X.......X...",
-                   Kick = "X.......X.X.....")
-        fill   = P(HiHat = "x.x.x.x.x.x.....", Snare = "....X.......Xx..", Tom = "..............x.",
-                   FloorTom = "...............x", Kick = "X.......X.X.....")
-        return Song(name = name, bpm = 100, patterns = [crash, groove, fill], chain = [1, 2, 2, 3])
-    elseif name == "Rock 16tel"
-        g = P(HiHat = "xoxoxoxoxoxoxoxo", Snare = "....X.......X...", Kick = "X.....X.X.X.....")
-        return Song(name = name, bpm = 85, patterns = [g])
-    elseif name == "Shuffle"
-        g = P(HiHat = "x.xx.xx.xx.x", Snare = "...X.....X..", Kick = "X.....X.....")
-        f = P(HiHat = "x.xx.xx.....", Snare = "...X.....XoX", Tom = "......xx....", FloorTom = "...........X",
-              Kick = "X.....X.....")
-        return Song(name = name, bpm = 90, steps_per_beat = 3, patterns = [g, f], chain = [1, 1, 1, 2])
-    elseif name == "Disco"
-        g = P(Kick = "X...X...X...X...", Snare = "....X.......X...", HiHat = "x...x...x...x...",
-              HHOpen = "..x...x...x...x.")
-        return Song(name = name, bpm = 118, patterns = [g])
-    elseif name == "Funk Ghost Notes"
-        g = P(HiHat = "x.x.x.x.x.x.x.x.", Snare = "....X..o.o..X..o", Kick = "X.x.......X..x..")
-        return Song(name = name, bpm = 92, patterns = [g])
-    elseif name == "Jazz Ride"
-        g = P(Ride = "x..x.xx..x.x", HHPedal = "...x.....x..", Kick = "o..o..o..o..", Snare = "........o...")
-        return Song(name = name, bpm = 130, steps_per_beat = 3, patterns = [g])
-    elseif name == "Walzer 3/4"
-        g = P(Kick = "X...........", Snare = "....x...x...", HiHat = "x.x.x.x.x.x.")
-        return Song(name = name, bpm = 120, patterns = [g])
-    elseif name == "Reggae One Drop"
-        g = P(Kick = "........X.......", Rim = "........X.......", HiHat = "x.o.x.o.x.o.x.o.")
-        return Song(name = name, bpm = 75, swing = 0.6, patterns = [g])
-    elseif name == "Bossa Nova"
-        g = P(Rim = "X..X..X...X..X..", Kick = "X..xX..xX..xX..x", HiHat = "x.x.x.x.x.x.x.x.")
-        return Song(name = name, bpm = 130, patterns = [g])
-    end
-    error("Unbekanntes Preset $name")
 end
 
 # ---------------------------------------------------------------------------

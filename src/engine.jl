@@ -173,7 +173,7 @@ end
 "Dauer von Step `s` (0-basiert) in Samples, inkl. Swing auf Paaren."
 function step_samples(song::Song, s::Int)
     base = 60.0 / song.bpm / song.steps_per_beat * SR
-    if iseven(song.steps_per_beat) && song.swing != 0.5
+    if song.steps_per_beat in (2, 4) && song.swing != 0.5
         sw = clamp(song.swing, 0.5, 0.8)
         return 2base * (iseven(s) ? sw : 1 - sw)
     end
