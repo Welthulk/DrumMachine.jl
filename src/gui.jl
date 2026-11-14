@@ -456,7 +456,9 @@ function build_gui(song::Song; audio::Bool = true)
     # Datei
     on(preset_menu.selection) do sel
         sel === nothing && return
-        set_song!(preset(sel))
+        s = preset(sel)
+        s.kit = eng.song.kit                  # Presets behalten das gewählte Kit
+        set_song!(s)
         status[] = "Preset \"$sel\" geladen ($(song_summary(eng.song)))."
         preset_menu.i_selected[] = 0          # gleiches Preset später erneut wählbar
     end

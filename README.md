@@ -127,7 +127,11 @@ export_wav("songs/MeinGroove_80.wav", song, kit; repeats = 16, countin = 2, clic
   CC BY-SA 3.0, siehe [kits/BlackPearl/LICENSE.txt](kits/BlackPearl/LICENSE.txt).
   Jeder Sound hat 5 Velocity-Layer. Ghost, normal und Akzent nutzen dabei unterschiedliche
   Aufnahmen und wechseln per Round-Robin.
-- **Synth**: vollständig synthetisch und dient als Ersatz, wenn Samples fehlen.
+- **808 (Synth)** und **909 (Synth)**: analog modellierte Drumcomputer-Kits im Stil der klassischen
+  TR-808 bzw. TR-909, vollständig synthetisiert. Im 808-Kit ist die Ride Bell die typische Cowbell.
+- Ein einfaches Synth-Kit füllt intern Spuren auf, für die ein WAV-Kit keine Samples hat.
+
+Presets behalten beim Laden das gerade gewählte Kit, gespeicherte Songs bringen ihr eigenes mit.
 
 Ein eigenes Kit legst du als Ordner `kits/<Name>/` mit einer `kit.toml` an. Pro Spur gibt es zwei Formate:
 

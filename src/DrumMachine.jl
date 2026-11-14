@@ -12,6 +12,7 @@ module DrumMachine
 
 include("dsp.jl")
 include("kit.jl")
+include("analog.jl")
 include("song.jl")
 include("presets.jl")
 include("engine.jl")

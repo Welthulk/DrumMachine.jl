@@ -4,7 +4,11 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
 @testset "DrumMachine" begin
     kits = available_kits()
     @test any(k -> k.name == "BlackPearl", kits)
-    @test kits[end].name == "Synth"
+    @test [k.name for k in kits[end-1:end]] == ["808 (Synth)", "909 (Synth)"]
+    for k in kits[end-1:end]
+        y = render_song(preset("Pop: Disco"), k; repeats = 1)
+        @test 0.2 < maximum(abs, y) < 0.98
+    end
     bp = kits[1]
     @test all(length(l) == 5 for l in bp.layers)
 

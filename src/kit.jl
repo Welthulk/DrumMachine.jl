@@ -236,7 +236,10 @@ end
 
 const KIT_DIR = normpath(joinpath(@__DIR__, "..", "kits"))
 
-"Alle Kits: WAV-Kits aus `kits/` (alphabetisch) und zuletzt das Synth-Kit."
+"""
+Alle Kits: WAV-Kits aus `kits/` (alphabetisch), danach die Synth-Kits im 808- und 909-Stil.
+Das einfache Synth-Kit dient nur als Ersatz für fehlende Samples.
+"""
 function available_kits(dir = KIT_DIR)
     syn = synth_kit()
     kits = Kit[]
@@ -250,6 +253,6 @@ function available_kits(dir = KIT_DIR)
             end
         end
     end
-    push!(kits, syn)
+    push!(kits, kit_808(), kit_909())
     return kits
 end
