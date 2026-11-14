@@ -452,13 +452,33 @@ function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin:
     return y[1:n, :]
 end
 
+const TRANSLIT = Dict('ä' => "ae", 'ö' => "oe", 'ü' => "ue", 'Ä' => "Ae", 'Ö' => "Oe", 'Ü' => "Ue", 'ß' => "ss")
+
+"""
+    ascii_filename(name) -> String
+
+Dateiname nur aus ASCII-Zeichen, wie ihn z. B. Drum-Module (Roland TD-27) verlangen:
+Umlaute werden ausgeschrieben (ä → ae, ß → ss), Akzente entfernt (é → e), alle übrigen
+Zeichen außer Buchstaben, Ziffern, Leerzeichen und `. _ - ( )` werden zu `_`.
+"""
+function ascii_filename(name::AbstractString)
+    s = join(get(TRANSLIT, c, string(c)) for c in name)
+    s = Base.Unicode.normalize(s; stripmark = true)
+    s = replace(s, r"[^A-Za-z0-9 ._()\-]" => "_")
+    s = replace(s, r"_{2,}" => "_")
+    return strip(s)
+end
+
 """
     export_wav(path, song, kit; mono = song.mono, bits = 16, kw...) -> path
 
-Schreibt den gerenderten Song als WAV (44,1 kHz): Stereo oder, bei `mono = true`, einkanalig.
+Schreibt den gerenderten Song als Standard-WAV (RIFF, PCM, 44,1 kHz, 16 Bit wie Audio-CD):
+Stereo oder, bei `mono = true`, einkanalig. Der Dateiname wird mit [`ascii_filename`](@ref)
+in reines ASCII umgewandelt; zurückgegeben wird der tatsächlich geschriebene Pfad.
 Weitere Schlüsselwörter wie bei [`render_song`](@ref).
 """
 function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = song.mono, bits::Int = 16, kw...)
+    path = joinpath(dirname(path), ascii_filename(basename(path)))
     s = copy(song)
     s.mono = mono
     y = render_song(s, kit; kw...)

@@ -637,7 +637,7 @@ function _build_gui(song::Song; audio::Bool = true)
         path = joinpath(SONG_DIR, safe(s.name) * ".wav")
         status[] = "Exportiere …"
         try
-            t = @elapsed export_wav(path, s, eng.kit)
+            t = @elapsed (path = export_wav(path, s, eng.kit))
             status[] = "WAV geschrieben: $path  ($(fmt_time(song_seconds(s))) min, $(s.mono ? "mono" : "stereo"), $(s.bpm) BPM, " *
                        "$(s.repeats)× Kette, Einzähler $(s.countin) Takt(e), $(round(t, digits = 1)) s)"
         catch e

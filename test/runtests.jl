@@ -69,6 +69,19 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         s2 = preset("Rock: 8tel"); foreach(t -> t.mute = true, s2.tracks)
         @test maximum(abs, render_song(s2, bp; repeats = 1, countin = 0)) < 1e-3
         mktempdir() do d
+            # Dateinamen nur ASCII (Roland TD-27 u. a.)
+            @test ascii_filename("Übung: Größe ä ö ü ß – Café.wav") == "Uebung_ Groesse ae oe ue ss _ Cafe.wav"
+            @test all(isascii, ascii_filename("Funk: What-Is-Hip-Stil (Tower of Power).wav"))
+            f = export_wav(joinpath(d, "Grüße Ölfaß.wav"), s, bp; repeats = 1)
+            @test basename(f) == "Gruesse Oelfass.wav" && isfile(f)
+            # Standard-WAV: RIFF/WAVE, fmt (16 Byte, PCM), data – sonst nichts
+            b = read(f)
+            @test b[1:4] == b"RIFF" && b[9:12] == b"WAVE" && b[13:16] == b"fmt "
+            @test reinterpret(UInt32, b[17:20])[1] == 16
+            @test reinterpret(UInt16, b[21:24]) == [1, 2]                  # PCM, Stereo
+            @test reinterpret(UInt32, b[25:28])[1] == 44100
+            @test reinterpret(UInt16, b[35:36])[1] == 16                   # Bit
+            @test b[37:40] == b"data" && 44 + reinterpret(UInt32, b[41:44])[1] == length(b)
             f = export_wav(joinpath(d, "a.wav"), s, bp; repeats = 1, mono = true)
             @test size(DrumMachine.WAV.wavread(f)[1], 2) == 1
             f = export_wav(joinpath(d, "b.wav"), s, bp; repeats = 1)
