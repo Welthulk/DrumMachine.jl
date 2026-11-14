@@ -69,7 +69,8 @@ Unten in der Zeile **Export**:
 - **Wiederholungen**: so oft wird die Kette hintereinander geschrieben.
 - **Einzähler**: 0–4 Takte Klick vor dem Groove.
 - **Klick**: legt ein Metronom auf jeden Schlag.
-- **Mono**: falls der Drumcomputer nur Mono-Samples nimmt.
+- **Stereo | Mono**: Schalter zwischen Stereo und Mono. Wirkt sofort auf die Wiedergabe (damit du hörst,
+  was exportiert wird) und schreibt bei Mono eine einkanalige WAV. Wird mit dem Song gespeichert.
 
 Die Datei landet in `songs/<Name>.wav` (44,1 kHz, 16 Bit PCM). Rechts neben dem Button
 steht die zu erwartende Länge.

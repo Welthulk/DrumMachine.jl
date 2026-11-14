@@ -20,16 +20,25 @@ const TRACKS = [
 ]
 const NTRACKS = length(TRACKS)
 const TRACK_IDS = first.(TRACKS)
-const NLAYERS = 5
 
 track_index(id::AbstractString) = findfirst(==(id), TRACK_IDS)
 
+"Eine Aufnahme: linker und rechter Kanal (bei Mono ist `r === l`)."
+struct Sample
+    l::Vector{Float32}
+    r::Vector{Float32}
+end
+Sample(x::Vector{Float32}) = Sample(x, x)
+isstereo(s::Sample) = s.l !== s.r
+Base.length(s::Sample) = length(s.l)
+
 """
-Ein Kit: pro Spur `NLAYERS` Samples (leise → laut), dazu Panorama, Pegel und Choke-Gruppe.
+Ein Kit: pro Spur beliebig viele Velocity-Layer (leise → laut), pro Layer eine oder mehrere
+Aufnahmen (Round-Robin). Dazu Panorama, Pegel und Choke-Gruppe je Spur.
 """
 struct Kit
     name::String
-    layers::Vector{Vector{Vector{Float32}}}   # [spur][layer] -> Samples (mono)
+    layers::Vector{Vector{Vector{Sample}}}   # [spur][layer][round-robin]
     pan::Vector{Float32}
     gain::Vector{Float32}
     choke::Vector{Int}
@@ -107,9 +116,9 @@ function synth_sound(id::AbstractString)
     error("Unbekanntes Instrument $id")
 end
 
-"Synthetisches Kit: alle Layer teilen sich dasselbe Sample (Dynamik nur über Pegel)."
+"Synthetisches Kit: ein Layer pro Spur (Dynamik nur über den Pegel)."
 function synth_kit()
-    layers = [fill(synth_sound(id), NLAYERS) for id in TRACK_IDS]
+    layers = [[[Sample(synth_sound(id))]] for id in TRACK_IDS]
     pan = Float32[0, -0.2, -0.2, -0.35, -0.35, -0.35, -0.1, 0.4, 0.35, 0.35, -0.4]
     gain = Float32[1.0, 0.8, 0.7, 0.45, 0.45, 0.4, 0.8, 0.8, 0.35, 0.4, 0.4]
     choke = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
@@ -120,50 +129,65 @@ end
 function click_sound(hi::Bool)
     n = _n(0.05); t = _t(n)
     f = hi ? 1800.0 : 1200.0
-    return finish(sin.(2π * f .* t) .* exp.(-t ./ 0.008); peak = 0.8)
+    return Sample(finish(sin.(2π * f .* t) .* exp.(-t ./ 0.008); peak = 0.8))
 end
 
 # ---------------------------------------------------------------------------
 # WAV-Kits
 # ---------------------------------------------------------------------------
 
-function load_wav_mono(path)
-    y, fs = WAV.wavread(path; format = "double")
-    x = size(y, 2) > 1 ? vec(sum(y; dims = 2)) ./ size(y, 2) : vec(y)
-    if round(Int, fs) != SR                 # lineares Resampling
-        r = fs / SR
-        m = floor(Int, (length(x) - 1) / r)
-        x = [let p = 1 + (k - 1) * r, i = floor(Int, p), fr = p - i
-                 x[i] * (1 - fr) + x[min(i + 1, end)] * fr
-             end for k in 1:m]
-    end
-    return trim_onset(Float32.(x))
+"Lineares Resampling auf `SR`."
+function resample(x::AbstractVector, fs::Real)
+    round(Int, fs) == SR && return Float32.(x)
+    r = fs / SR
+    m = floor(Int, (length(x) - 1) / r)
+    return Float32[let p = 1 + (k - 1) * r, i = floor(Int, p), fr = p - i
+                       x[i] * (1 - fr) + x[min(i + 1, end)] * fr
+                   end for k in 1:m]
 end
+
+"Lädt eine WAV-Datei als `Sample` (Mono oder Stereo, mehr Kanäle werden auf Stereo gemischt)."
+function load_sample(path; stereo::Bool = true)
+    y, fs = WAV.wavread(path; format = "double")
+    nch = size(y, 2)
+    if nch == 1 || !stereo
+        return trim_onset(Sample(resample(vec(sum(y; dims = 2)) ./ nch, fs)))
+    end
+    l = resample(view(y, :, 1), fs)
+    r = resample(view(y, :, 2), fs)
+    return trim_onset(Sample(l, r))
+end
+
+load_wav_mono(path) = load_sample(path; stereo = false)
 
 """
 Legt den Anschlag eines Samples auf den Rasterpunkt: schneidet alles bis `pre` Sekunden vor
 dem ersten Überschreiten von `thresh` × Spitzenpegel ab und blendet diesen Rest weich ein.
 Wichtig z. B. beim Hi-Hat-Pedal, das ~15 ms leises Vorgeräusch hat, bevor das „Chick“ kommt.
 """
-function trim_onset(x::Vector{Float32}; thresh = 0.1, pre = 0.001)
-    pk = maximum(abs, x; init = 0f0)
-    pk == 0 && return x
-    i = findfirst(v -> abs(v) > thresh * pk, x)
+function trim_onset(s::Sample; thresh = 0.1, pre = 0.001)
+    env = isstereo(s) ? max.(abs.(s.l), abs.(s.r)) : abs.(s.l)
+    pk = maximum(env; init = 0f0)
+    pk == 0 && return s
+    i = findfirst(>(thresh * pk), env)
     np = round(Int, pre * SR)
     k = i - np
-    k <= 1 && return x
-    y = x[k:end]
-    for j in 1:np
-        y[j] *= Float32((j - 1) / np)
-    end
-    return y
+    k <= 1 && return s
+    cut(x) = (y = x[k:end]; for j in 1:np; y[j] *= Float32((j - 1) / np); end; y)
+    return isstereo(s) ? Sample(cut(s.l), cut(s.r)) : Sample(cut(s.l))
 end
 
 """
     load_kit(dir) -> Kit
 
-Lädt ein Kit aus `dir/kit.toml` (siehe `kits/BlackPearl/kit.toml`). Fehlende Spuren
-oder Layer werden mit synthetischen Klängen bzw. dem nächstgelegenen Layer aufgefüllt.
+Lädt ein Kit aus `dir/kit.toml`. Pro Spur gibt es zwei Formate:
+
+- `file = "36-Pearl-22-Kick"`: Dateien `<file>-1.wav` … `<file>-N.wav` (leise → laut),
+  oder eine einzelne `<file>.wav` (siehe `kits/BlackPearl/kit.toml`).
+- `folder = "Kick"`: Ordner mit `<layer>-<rr>.wav`, z. B. `01-1.wav`, `01-2.wav`, `02-1.wav` …
+  (Layer leise → laut, mehrere Round-Robins pro Layer).
+
+Fehlende Spuren werden mit synthetischen Klängen aufgefüllt.
 """
 function load_kit(dir::AbstractString; fallback::Kit = synth_kit())
     cfg = TOML.parsefile(joinpath(dir, "kit.toml"))
@@ -174,23 +198,42 @@ function load_kit(dir::AbstractString; fallback::Kit = synth_kit())
     for (k, id) in enumerate(TRACK_IDS)
         haskey(tr, id) || continue
         t = tr[id]
-        prefix = t["file"]
-        found = [isfile(joinpath(dir, "$prefix-$l.wav")) ? load_wav_mono(joinpath(dir, "$prefix-$l.wav")) : nothing
-                 for l in 1:NLAYERS]
-        if all(isnothing, found) && isfile(joinpath(dir, "$prefix.wav"))
-            found = fill(load_wav_mono(joinpath(dir, "$prefix.wav")), NLAYERS)
-        end
-        if any(!isnothing, found)
-            avail = findall(!isnothing, found)
-            layers[k] = [found[avail[argmin(abs.(avail .- l))]] for l in 1:NLAYERS]
+        ls = haskey(t, "folder") ? load_folder_layers(joinpath(dir, t["folder"])) :
+                                    load_prefix_layers(dir, t["file"])
+        if isempty(ls)
+            @warn "Kit $name: keine Samples für $id gefunden, nutze Synth-Klang" t
         else
-            @warn "Kit $name: keine Samples für $id gefunden, nutze Synth-Klang" prefix
+            layers[k] = ls
         end
         pan[k] = get(t, "pan", pan[k])
         gain[k] = get(t, "gain", 1.0)
         choke[k] = get(t, "choke", 0)
     end
     return Kit(name, layers, pan, gain, choke)
+end
+
+function load_prefix_layers(dir, prefix)
+    ls = Vector{Sample}[]
+    l = 1
+    while isfile(joinpath(dir, "$prefix-$l.wav"))
+        push!(ls, [load_sample(joinpath(dir, "$prefix-$l.wav"))])
+        l += 1
+    end
+    if isempty(ls) && isfile(joinpath(dir, "$prefix.wav"))
+        push!(ls, [load_sample(joinpath(dir, "$prefix.wav"))])
+    end
+    return ls
+end
+
+function load_folder_layers(folder)
+    isdir(folder) || return Vector{Sample}[]
+    byl = Dict{Int,Vector{Sample}}()
+    for f in sort(readdir(folder))
+        m = match(r"^(\d+)-(\d+)\.wav$"i, f)
+        m === nothing && continue
+        push!(get!(byl, parse(Int, m[1]), Sample[]), load_sample(joinpath(folder, f)))
+    end
+    return [byl[l] for l in sort(collect(keys(byl)))]
 end
 
 const KIT_DIR = normpath(joinpath(@__DIR__, "..", "kits"))

@@ -202,10 +202,11 @@ function build_gui(song::Song; audio::Bool = true)
     ci_menu = Menu(bot2[1, 5], options = string.(0:4), default = string(song.countin), width = 50)
     Label(bot2[1, 6], "Klick", halign = :right)
     click_toggle = Toggle(bot2[1, 7], active = song.click)
-    Label(bot2[1, 8], "Mono", halign = :right)
-    mono_toggle = Toggle(bot2[1, 9], active = false)
-    expbtn = Button(bot2[1, 10], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = :white)
-    explab = Label(bot2[1, 11], "", color = :gray30)
+    Label(bot2[1, 8], "   Stereo", halign = :right)
+    mono_toggle = Toggle(bot2[1, 9], active = song.mono)
+    Label(bot2[1, 10], "Mono", halign = :left)
+    expbtn = Button(bot2[1, 11], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = :white)
+    explab = Label(bot2[1, 12], "", color = :gray30)
 
     Label(fig[8, 1], status, halign = :left, tellwidth = false, color = :gray25)
     rowgap!(fig.layout, 10)
@@ -278,6 +279,7 @@ function build_gui(song::Song; audio::Bool = true)
         rep_tb.stored_string[] = string(s.repeats); rep_tb.displayed_string[] = string(s.repeats)
         ci_menu.i_selected[] = clamp(s.countin, 0, 4) + 1
         click_toggle.active[] = s.click
+        mono_toggle.active[] = s.mono
         k = findfirst(==(s.kit), kitnames)
         k !== nothing && (kit_menu.i_selected[] = k)
         refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
@@ -486,7 +488,7 @@ function build_gui(song::Song; audio::Bool = true)
         s = Song(name = unique_name("Neuer Groove"), bpm = old.bpm, steps_per_beat = spb,
                  swing = old.swing, swing_on = old.swing_on,
                  patterns = [Pattern(spb in (2, 4) ? 16 : 4spb)], kit = old.kit,
-                 repeats = old.repeats, countin = old.countin, click = old.click)
+                 repeats = old.repeats, countin = old.countin, click = old.click, mono = old.mono)
         set_song!(s)
         status[] = "Neuer Groove \"$(s.name)\" angelegt (BPM, Swing, Raster und Kit übernommen)."
     end
@@ -518,13 +520,17 @@ function build_gui(song::Song; audio::Bool = true)
         eng.song.countin = parse(Int, sel); refresh_export_info!()
     end
     on(v -> (eng.song.click = v), click_toggle.active)
+    on(mono_toggle.active) do v
+        eng.song.mono = v
+        status[] = v ? "Mono: Wiedergabe und Export einkanalig." : "Stereo: Wiedergabe und Export zweikanalig."
+    end
     on(expbtn.clicks) do _
         s = eng.song
         path = joinpath(SONG_DIR, safe(s.name) * ".wav")
         status[] = "Exportiere …"
         try
-            t = @elapsed export_wav(path, s, eng.kit; mono = mono_toggle.active[])
-            status[] = "WAV geschrieben: $path  ($(fmt_time(song_seconds(s))) min, $(s.bpm) BPM, " *
+            t = @elapsed export_wav(path, s, eng.kit)
+            status[] = "WAV geschrieben: $path  ($(fmt_time(song_seconds(s))) min, $(s.mono ? "mono" : "stereo"), $(s.bpm) BPM, " *
                        "$(s.repeats)× Kette, Einzähler $(s.countin) Takt(e), $(round(t, digits = 1)) s)"
         catch e
             status[] = "Export fehlgeschlagen: $(sprint(showerror, e))"

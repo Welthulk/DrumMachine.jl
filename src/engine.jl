@@ -2,17 +2,27 @@
 # für die Live-Wiedergabe (PortAudio) und den WAV-Export verwendet.
 
 import PortAudio
+using Random: MersenneTwister, AbstractRNG
 
 const BLOCK = 512
 const NVOICES = 64
 const FADE_SAMPLES = round(Int, 0.008 * SR)     # Ausblendzeit beim Abwürgen (Hi-Hat-Choke)
 
-# Velocity-Stufe -> (Layer-Kandidaten für Round-Robin, Pegel)
-const LEVEL_LAYERS = ((1, 2), (3, 4), (5,))
+# Velocity-Stufe (Ghost, normal, Akzent) -> Anteil der Kit-Layer (leise → laut) und Pegel
+const LEVEL_RANGE = ((0.0, 0.4), (0.4, 0.8), (0.8, 1.0))
 const LEVEL_GAIN = (0.5f0, 0.8f0, 1.0f0)
+
+"Layer-Indizes (1…nl) für Velocity-Stufe `level`; bei 5 Layern: 1–2, 3–4, 5."
+function level_layers(level::Int, nl::Int)
+    f0, f1 = LEVEL_RANGE[level]
+    lo = min(nl, floor(Int, f0 * nl) + 1)
+    hi = clamp(round(Int, f1 * nl), lo, nl)
+    return lo:hi
+end
 
 mutable struct Voice
     buf::Vector{Float32}
+    bufr::Vector{Float32}  # rechter Kanal (=== buf bei Mono-Samples)
     pos::Float64
     rate::Float64
     gl::Float32
@@ -22,16 +32,17 @@ mutable struct Voice
     fade::Int            # > 0: wird ausgeblendet (verbleibende Samples)
     active::Bool
 end
-Voice() = Voice(Float32[], 0.0, 1.0, 0f0, 0f0, 0, 0, 0, false)
+Voice() = (b = Float32[]; Voice(b, b, 0.0, 1.0, 0f0, 0f0, 0, 0, 0, false))
 
 mutable struct Engine
     song::Song
     kit::Kit
     voices::Vector{Voice}
-    rr::Vector{Int}                  # Round-Robin-Zähler je Spur
+    last::Vector{Sample}             # zuletzt gespieltes Sample je Spur (keine direkte Wiederholung)
+    rng::MersenneTwister             # geseedet → Exporte sind reproduzierbar
     fx::FXState
-    click_hi::Vector{Float32}
-    click_lo::Vector{Float32}
+    click_hi::Sample
+    click_lo::Sample
     # Transport
     playing::Bool
     samplepos::Int
@@ -58,7 +69,8 @@ end
 
 function Engine(song::Song, kit::Kit)
     fx = FXState()
-    eng = Engine(song, kit, [Voice() for _ in 1:NVOICES], zeros(Int, NTRACKS), fx,
+    nos = Sample(Float32[])
+    eng = Engine(song, kit, [Voice() for _ in 1:NVOICES], fill(nos, NTRACKS), MersenneTwister(4711), fx,
                  click_sound(true), click_sound(false),
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
@@ -79,7 +91,7 @@ end
 # Voices
 # ---------------------------------------------------------------------------
 
-function start_voice!(eng::Engine, buf::Vector{Float32}, gain::Float32, pan::Float32, rate::Float64,
+function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rate::Float64,
                       track::Int, choke::Int)
     if choke > 0                      # gleiche Choke-Gruppe ausblenden
         for v in eng.voices
@@ -98,10 +110,15 @@ function start_voice!(eng::Engine, buf::Vector{Float32}, gain::Float32, pan::Flo
         v = eng.voices[argmax(w.pos for w in eng.voices)]
     end
     p = clamp(pan, -1f0, 1f0)
-    θ = (p + 1f0) * Float32(π) / 4
-    v.buf = buf; v.pos = 0.0; v.rate = rate
-    v.gl = gain * cos(θ)
-    v.gr = gain * sin(θ)
+    v.buf = smp.l; v.bufr = smp.r; v.pos = 0.0; v.rate = rate
+    if isstereo(smp)          # Stereo-Sample: Balance, Mitte = unverändert
+        v.gl = gain * min(1f0, 1f0 - p)
+        v.gr = gain * min(1f0, 1f0 + p)
+    else                      # Mono-Sample: Equal-Power-Panorama
+        θ = (p + 1f0) * Float32(π) / 4
+        v.gl = gain * cos(θ)
+        v.gr = gain * sin(θ)
+    end
     v.track = track; v.choke = choke; v.fade = 0; v.active = true
     return v
 end
@@ -115,13 +132,35 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
         anysolo && !tp.solo && return
     end
     kit = eng.kit
-    cands = LEVEL_LAYERS[level]
-    eng.rr[t] += 1
-    layer = cands[mod1(eng.rr[t], length(cands))]
+    smp = pick_sample(eng.rng, kit.layers[t], level, eng.last[t])
+    eng.last[t] = smp
     gain = LEVEL_GAIN[level] * kit.gain[t] * tp.vol
     rate = 2.0^(tp.pitch / 12)
-    start_voice!(eng, kit.layers[t][layer], gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t])
+    start_voice!(eng, smp, gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t])
     return
+end
+
+"""
+Wählt zufällig eine Aufnahme aus den Layern der Velocity-Stufe (alle Round-Robins),
+aber nicht dieselbe wie zuletzt – so klingen schnelle Wiederholungen natürlich.
+"""
+function pick_sample(rng::AbstractRNG, layers::Vector{Vector{Sample}}, level::Int, prev::Sample)
+    r = level_layers(level, length(layers))
+    n = sum(length(layers[l]) for l in r)
+    k = rand(rng, 1:n)
+    s = nth_sample(layers, r, k)
+    if s === prev && n > 1                 # keine direkte Wiederholung: nächste Aufnahme
+        s = nth_sample(layers, r, mod1(k + 1, n))
+    end
+    return s
+end
+
+function nth_sample(layers, r, k)
+    for l in r
+        k <= length(layers[l]) && return layers[l][k]
+        k -= length(layers[l])
+    end
+    error("Index außerhalb der Layer")
 end
 
 function click!(eng::Engine, accent::Bool)
@@ -131,7 +170,7 @@ end
 @inline function mix_voices!(eng::Engine, out::Matrix{Float32}, i0::Int, n::Int)
     @inbounds for v in eng.voices
         v.active || continue
-        buf = v.buf; L = length(buf)
+        buf = v.buf; bufr = v.bufr; L = length(buf)
         pos = v.pos; rate = v.rate; gl = v.gl; gr = v.gr; fade = v.fade
         for i in i0:i0+n-1
             ip = unsafe_trunc(Int, pos)
@@ -139,16 +178,18 @@ end
                 v.active = false; break
             end
             fr = Float32(pos - ip)
-            s = buf[ip+1] * (1f0 - fr) + buf[ip+2] * fr
+            sl = buf[ip+1] * (1f0 - fr) + buf[ip+2] * fr
+            sr = bufr[ip+1] * (1f0 - fr) + bufr[ip+2] * fr
             if fade > 0
-                s *= fade / Float32(FADE_SAMPLES)
+                f = fade / Float32(FADE_SAMPLES)
+                sl *= f; sr *= f
                 fade -= 1
                 if fade == 0
                     v.active = false; break
                 end
             end
-            out[i, 1] += s * gl
-            out[i, 2] += s * gr
+            out[i, 1] += sl * gl
+            out[i, 2] += sr * gr
             pos += rate
         end
         v.pos = pos; v.fade = fade
@@ -315,6 +356,9 @@ function render!(eng::Engine, out::Matrix{Float32})
     fx = eng.fx
     @inbounds for k in 1:N
         l, r = process(fx, out[k, 1], out[k, 2])
+        if eng.song.mono                    # Summe L+R auf beide Kanäle (Pegel ~ wie Stereo-Mitte)
+            l = r = (l + r) * 0.7071f0
+        end
         out[k, 1] = tanh(l * m)
         out[k, 2] = tanh(r * m)
     end
@@ -410,15 +454,16 @@ function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin:
 end
 
 """
-    export_wav(path, song, kit; mono=false, bits=16, kw...) -> path
+    export_wav(path, song, kit; mono = song.mono, bits = 16, kw...) -> path
 
-Schreibt den gerenderten Song als WAV (44,1 kHz). Weitere Schlüsselwörter wie bei [`render_song`](@ref).
+Schreibt den gerenderten Song als WAV (44,1 kHz): Stereo oder, bei `mono = true`, einkanalig.
+Weitere Schlüsselwörter wie bei [`render_song`](@ref).
 """
-function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = false, bits::Int = 16, kw...)
-    y = render_song(song, kit; kw...)
-    if mono
-        y = sum(y; dims = 2) ./ 2
-    end
+function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = song.mono, bits::Int = 16, kw...)
+    s = copy(song)
+    s.mono = mono
+    y = render_song(s, kit; kw...)
+    mono && (y = y[:, 1:1])                # beide Kanäle sind identisch
     mkpath(dirname(abspath(path)))
     bits in (16, 24) || error("bits muss 16 oder 24 sein")
     q = 2^(bits - 1) - 1

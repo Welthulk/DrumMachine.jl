@@ -66,25 +66,57 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test maximum(abs, render_song(s2, bp; repeats = 1, countin = 0)) < 1e-3
         mktempdir() do d
             f = export_wav(joinpath(d, "a.wav"), s, bp; repeats = 1, mono = true)
-            @test filesize(f) > 44
+            @test size(DrumMachine.WAV.wavread(f)[1], 2) == 1
+            f = export_wav(joinpath(d, "b.wav"), s, bp; repeats = 1)
+            @test size(DrumMachine.WAV.wavread(f)[1], 2) == 2
+            # Mono wirkt schon beim Rendern (= Live-Wiedergabe): beide Kanäle identisch
+            sm = copy(s); sm.mono = true
+            ym = render_song(sm, bp; repeats = 1)
+            @test ym[:, 1] == ym[:, 2]
+            ys = render_song(s, bp; repeats = 1)
+            @test ys[:, 1] != ys[:, 2]
         end
     end
 
     @testset "Sample-Onsets" begin
         # Kein Sample darf später als 2 ms nach Beginn anschlagen (sonst wackelt das Timing)
-        for (t, layers) in enumerate(bp.layers), x in layers
+        for layers in bp.layers, layer in layers, s in layer
+            x = s.l
             pk = maximum(abs, x)
             @test findfirst(v -> abs(v) > 0.1pk, x) / SR < 0.002
         end
     end
 
+    @testset "Velocity-Layer & Round-Robin" begin
+        L = DrumMachine.level_layers
+        @test (L(1, 5), L(2, 5), L(3, 5)) == (1:2, 3:4, 5:5)
+        @test (L(1, 1), L(2, 1), L(3, 1)) == (1:1, 1:1, 1:1)
+        @test (L(1, 10), L(2, 10), L(3, 10)) == (1:4, 5:8, 9:10)
+        for nl in 1:20, lv in 1:3
+            @test !isempty(L(lv, nl)) && first(L(lv, nl)) >= 1 && last(L(lv, nl)) <= nl
+        end
+        # nie zweimal hintereinander dieselbe Aufnahme, solange es mehr als eine gibt
+        mk() = DrumMachine.Sample(rand(Float32, 10))
+        layers = [[mk(), mk()], [mk(), mk(), mk()], [mk()]]
+        rng = DrumMachine.MersenneTwister(1)
+        prev = DrumMachine.Sample(Float32[])
+        for _ in 1:200
+            s = DrumMachine.pick_sample(rng, layers, 2, prev)
+            @test s !== prev
+            prev = s
+        end
+        # Export ist reproduzierbar (geseedeter Zufall)
+        s = preset("Funk: Ghost Notes")
+        @test render_song(s, bp; repeats = 2) == render_song(s, bp; repeats = 2)
+    end
+
     @testset "Speichern/Laden" begin
-        s = preset("Funk: Ghost Notes"); s.tracks[2].mute = true; s.bpm = 97; s.swing_on = 8
+        s = preset("Funk: Ghost Notes"); s.tracks[2].mute = true; s.bpm = 97; s.swing_on = 8; s.mono = true
         mktempdir() do d
             f = save_song(joinpath(d, "x.toml"), s)
             s2 = load_song(f)
             @test s2.patterns[1].grid == s.patterns[1].grid
-            @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8
+            @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8 && s2.mono
             # Alte Datei (ohne swing_version) mit Triolen und 0.5 → exakte Triolen
             d = DrumMachine.song_to_dict(preset("Blues: Jump / Swing"))
             d["swing"] = 0.5; delete!(d, "swing_version")
