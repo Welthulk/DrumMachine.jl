@@ -301,7 +301,6 @@ const PRESETS = Pair{String,Function}[
         # 8tel-Triolen, 4 punktierte Viertel pro Takt, punktierte Viertel = 112.
         # Hihat auf jeder zweiten Triole (6 gegen 4), Kick und Snare zusammen auf 2 und 4.
         # Pattern 1 = Grundgroove, Pattern 2 = Überleitung mit Snare-Doppel und offener Hihat.
-        # (Vorlage vom Nutzer, siehe songs/Rule the World Grundgroove.toml)
         #             1 + a 2 + a 3 + a 4 + a
         g = P(HiHat  = ".x.x.x.x.x.x",
               Snare  = "...X.....X..",

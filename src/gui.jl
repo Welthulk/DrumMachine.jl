@@ -4,16 +4,96 @@ using GLMakie
 
 const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))
 
-const C_BG      = Makie.to_color("#f6f7f9")
-const C_OFF_A   = Makie.to_color("#dfe3e8")     # Step aus, Schlag 1/3/…
-const C_OFF_B   = Makie.to_color("#ccd2da")     # Step aus, Schlag 2/4/…
-const C_HEAD    = Makie.to_color("#9cc3f5")     # Playhead auf leerem Step
-const C_LEVEL   = (Makie.to_color("#f2b47e"), Makie.to_color("#e8771e"), Makie.to_color("#a83806"))
-const C_LEVEL_H = (Makie.to_color("#ffd2a8"), Makie.to_color("#ff9a45"), Makie.to_color("#d85010"))
-const C_BTN     = Makie.to_color("#e4e7ec")
+# Farbpalette (dunkel)
+const C_BG      = Makie.to_color("#121418")     # Fensterhintergrund
+const C_PANEL   = Makie.to_color("#1b1e24")     # Panels
+const C_LINE    = Makie.to_color("#2c313a")     # Panel-Rahmen, Trennlinien
+const C_TEXT    = Makie.to_color("#e3e6eb")
+const C_TEXT2   = Makie.to_color("#8c94a0")     # Nebentext
+const C_DIM     = Makie.to_color("#4a505b")     # inaktive Beschriftung
+const C_OFF_A   = Makie.to_color("#2b3038")     # Step aus, Schlag 1/3/…
+const C_OFF_B   = Makie.to_color("#23272e")     # Step aus, Schlag 2/4/…
+const C_HEAD    = Makie.to_color("#33547c")     # Playhead auf leerem Step
+const C_LEVEL   = (Makie.to_color("#8a5126"), Makie.to_color("#e8771e"), Makie.to_color("#ffb763"))
+const C_LEVEL_H = (Makie.to_color("#b06a33"), Makie.to_color("#ff9640"), Makie.to_color("#ffd59e"))
+const C_BTN     = Makie.to_color("#272b33")
+const C_BTN_H   = Makie.to_color("#323843")
+const C_BTN_A   = Makie.to_color("#3d4450")
+const C_INPUT   = Makie.to_color("#16191e")
 const C_ACTIVE  = Makie.to_color("#e8771e")
-const C_MUTE    = Makie.to_color("#d9534f")
-const C_SOLO    = Makie.to_color("#f0c419")
+const C_ACT_DIM = Makie.to_color("#9c5418")
+const C_MUTE    = Makie.to_color("#c9483f")
+const C_SOLO    = Makie.to_color("#d4ad2a")
+
+const DM_THEME = Theme(
+    fontsize = 14, textcolor = C_TEXT, backgroundcolor = C_BG,
+    Label = (color = C_TEXT,),
+    Button = (buttoncolor = C_BTN, buttoncolor_hover = C_BTN_H, buttoncolor_active = C_BTN_A,
+              labelcolor = C_TEXT, labelcolor_hover = C_TEXT, labelcolor_active = C_TEXT,
+              strokewidth = 0, cornerradius = 6),
+    Slider = (color_active = C_ACTIVE, color_active_dimmed = C_ACT_DIM, color_inactive = C_OFF_A),
+    Toggle = (framecolor_inactive = C_OFF_A, framecolor_active = C_ACTIVE, buttoncolor = C_TEXT),
+    Menu = (cell_color_inactive_even = C_BTN, cell_color_inactive_odd = C_BTN, cell_color_hover = C_BTN_H,
+            cell_color_active = C_ACT_DIM, selection_cell_color_inactive = C_BTN, textcolor = C_TEXT,
+            dropdown_arrow_color = C_TEXT2),
+    Textbox = (boxcolor = C_INPUT, boxcolor_hover = C_INPUT, boxcolor_focused = C_INPUT,
+               bordercolor = C_LINE, bordercolor_hover = C_DIM, bordercolor_focused = C_ACTIVE,
+               textcolor = C_TEXT, textcolor_placeholder = C_DIM, cursorcolor = C_ACTIVE),
+)
+
+"Setzt einen Toggle nur, wenn sich der Wert ändert (sonst kippt die Anzeige)."
+set_toggle!(t, v::Bool) = (t.active[] == v || (t.active[] = v); t)
+
+"Hintergrund-Panel für eine Zeile des Hauptlayouts."
+panel!(pos) = Box(pos, color = C_PANEL, strokecolor = C_LINE, strokewidth = 1, cornerradius = 10,
+                  tellwidth = false, tellheight = false)
+
+const HELP_TEXT = """
+EINGABE
+  Linksklick            Schlag an / aus
+  Rechtsklick           Ghost  →  normal  →  Akzent
+  Spurname              Vorhören      M / S   Stumm / Solo (gilt auch für den Export)
+
+TRANSPORT
+  Leertaste             Play / Stop
+  Modus Pattern         spielt das angezeigte Pattern in Schleife
+  Modus Song            spielt die Kette in Schleife
+  Einzähler             Klick-Takt(e) vor dem Start
+
+RASTER & SWING
+  Raster                16tel, 8tel-Triolen, 16tel-Triolen oder 8tel
+  Swing                 Lage der Off-Beat-Note: 50 % gerade, 67 % Triole, 75 % punktiert
+  Auto / 8tel / 16tel   worauf im geraden Raster geswingt wird
+
+PATTERNS & KETTE
+  1 … 8                 Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
+  Steps                 Länge des Patterns (z. B. 12 für 3/4, 20 für 5/4)
+  Kette                 Reihenfolge für Song-Modus und Export, z. B. „1x3 2“ = 1 1 1 2
+
+DATEI
+  Neu / Duplizieren     neuer Groove bzw. Kopie, das Original bleibt erhalten
+  Speichern             songs/<Name>.toml – vorhandene Dateien erst nach zweitem Klick
+  Preset / Song laden   Groove-Bibliothek bzw. eigene Songs
+
+EXPORT
+  Wiederholungen        wie oft die Kette hintereinander geschrieben wird
+  Einzähler, Klick      Takte vorweg bzw. Metronom auf jedem Schlag
+  Stereo | Mono         wirkt auf Wiedergabe und WAV
+  WAV exportieren       songs/<Name>.wav, 44,1 kHz, 16 Bit
+"""
+
+"Figure mit der Kurzhilfe."
+help_figure() = with_theme(DM_THEME) do
+    f = Figure(size = (760, 545), figure_padding = 16)
+    panel!(f[1, 1])
+    Label(f[1, 1], HELP_TEXT; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
+          halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
+          tellwidth = false, tellheight = false)
+    f
+end
+
+"Öffnet ein Fenster mit der Kurzhilfe."
+show_help() = display(GLMakie.Screen(; title = "DrumMachine – Hilfe"), help_figure())
 
 const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),
                      ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2)]
@@ -73,7 +153,9 @@ end
 
 Baut Figure und Engine auf (ohne Fenster). `tick!()` aktualisiert Playhead & Anzeige.
 """
-function build_gui(song::Song; audio::Bool = true)
+build_gui(song::Song; audio::Bool = true) = with_theme(() -> _build_gui(song; audio), DM_THEME)
+
+function _build_gui(song::Song; audio::Bool = true)
     kits = available_kits()
     kitnames = [k.name for k in kits]
     kitidx = something(findfirst(==(song.kit), kitnames), 1)
@@ -81,58 +163,76 @@ function build_gui(song::Song; audio::Bool = true)
     eng.song.kit = kitnames[kitidx]
     audio && start_audio!(eng)
 
-    fig = Figure(size = (1320, 1020), backgroundcolor = C_BG, fontsize = 14)
-    HELP = "Bereit.  Linksklick: Schlag an/aus · Rechtsklick: Ghost → normal → Akzent · Leertaste: Play/Stop"
+    fig = Figure(size = (1320, 975), backgroundcolor = C_BG, fontsize = 14, figure_padding = 18)
+    HELP = "Bereit.  Linksklick: Schlag an/aus · Rechtsklick: Ghost → normal → Akzent · Leertaste: Play/Stop · ? = Hilfe"
     status = Observable(HELP)
 
+    # ---------------------------------------------------------------- Kopfzeile
+    hdr = fig[1, 1] = GridLayout(tellwidth = false, halign = :left)
+    Label(hdr[1, 1], "DRUM MACHINE", font = :bold, fontsize = 22, color = C_TEXT)
+    Label(hdr[1, 2], "Groove  ·  Vorhören  ·  WAV-Export", fontsize = 14, color = C_TEXT2, padding = (14, 0, 0, 0))
+    hdr_r = fig[1, 1] = GridLayout(tellwidth = false, halign = :right)
+    helpbtn = Button(hdr_r[1, 1], label = "?", width = 34, height = 34, cornerradius = 17,
+                     fontsize = 17, font = :bold)
+
     # ---------------------------------------------------------------- Transport
-    top = fig[1, 1] = GridLayout(tellwidth = false, halign = :left)
-    playbtn = Button(top[1, 1], label = "▶  Play", width = 100, buttoncolor = C_BTN)
-    modebtn = Button(top[1, 2], label = "Modus: Pattern", width = 140, buttoncolor = C_BTN)
-    Label(top[1, 3], "Einzähler", halign = :right)
+    panel!(fig[2, 1])
+    tbox = fig[2, 1] = GridLayout(tellwidth = false, halign = :left, alignmode = Outside(14))
+    top = tbox[1, 1] = GridLayout(halign = :left)
+    playbtn = Button(top[1, 1], label = "▶  Play", width = 100, buttoncolor = C_ACTIVE, labelcolor = C_BG,
+                     buttoncolor_hover = C_LEVEL_H[2], labelcolor_hover = C_BG, labelcolor_active = C_BG,
+                     font = :bold)
+    modebtn = Button(top[1, 2], label = "Modus: Pattern", width = 140)
+    Label(top[1, 3], "Einzähler", halign = :right, color = C_TEXT2)
     ci_toggle = Toggle(top[1, 4], active = false)
-    Label(top[1, 5], "BPM", halign = :right)
+    Label(top[1, 5], "BPM", halign = :right, color = C_TEXT2)
     bpm_sl = Slider(top[1, 6], range = 30:1:260, startvalue = song.bpm, width = 160)
-    bpm_lab = Label(top[1, 7], "", width = 40)
-    Label(top[1, 8], "Swing", halign = :right)
+    bpm_lab = Label(top[1, 7], "", width = 40, font = :bold)
+    Label(top[1, 8], "Swing", halign = :right, color = C_TEXT2)
     sw_sl = Slider(top[1, 9], range = 50:1:75, startvalue = round(Int, 100song.swing), width = 110)
-    sw_lab = Label(top[1, 10], "", width = 40)
+    sw_lab = Label(top[1, 10], "", width = 40, font = :bold)
     sw_menu = Menu(top[1, 11], options = first.(SWING_OPTS), width = 95)
 
-    top2 = fig[2, 1] = GridLayout(tellwidth = false, halign = :left)
-    Label(top2[1, 1], "Raster", halign = :right)
+    top2 = tbox[2, 1] = GridLayout(halign = :left)
+    Label(top2[1, 1], "Raster", halign = :right, color = C_TEXT2)
     raster_menu = Menu(top2[1, 2], options = first.(RASTER_OPTS), width = 225)
-    Label(top2[1, 3], "Kit", halign = :right)
-    kit_menu = Menu(top2[1, 4], options = kitnames, default = kitnames[kitidx], width = 130)
-    Label(top2[1, 5], "FX", halign = :right)
+    Label(top2[1, 3], "Kit", halign = :right, color = C_TEXT2)
+    kit_menu = Menu(top2[1, 4], options = kitnames, default = kitnames[kitidx], width = 150)
+    Label(top2[1, 5], "FX", halign = :right, color = C_TEXT2)
     fx_menu = Menu(top2[1, 6], options = FX_NAMES, default = song.fx, width = 90)
-    Label(top2[1, 7], "Anteil", halign = :right)
+    Label(top2[1, 7], "Anteil", halign = :right, color = C_TEXT2)
     fx_sl = Slider(top2[1, 8], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
-    Label(top2[1, 9], "Master", halign = :right)
+    Label(top2[1, 9], "Master", halign = :right, color = C_TEXT2)
     mst_sl = Slider(top2[1, 10], range = 0:0.01:1.5, startvalue = song.master, width = 100)
+    rowgap!(tbox, 10)
 
     # ---------------------------------------------------------------- Patterns
-    pbar = fig[3, 1] = GridLayout(tellwidth = false, halign = :left)
-    Label(pbar[1, 1], "Pattern", font = :bold)
-    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 40, buttoncolor = C_BTN) for i in 1:MAXPATTERNS]
-    addcopy = Button(pbar[1, MAXPATTERNS+2], label = "+ Kopie", buttoncolor = C_BTN)
-    addempty = Button(pbar[1, MAXPATTERNS+3], label = "+ Leer", buttoncolor = C_BTN)
-    delbtn = Button(pbar[1, MAXPATTERNS+4], label = "Löschen", buttoncolor = C_BTN)
-    clrbtn = Button(pbar[1, MAXPATTERNS+5], label = "Leeren", buttoncolor = C_BTN)
-    pbar2 = fig[4, 1] = GridLayout(tellwidth = false, halign = :left)
-    Label(pbar2[1, 1], "Steps", halign = :right)
+    panel!(fig[3, 1])
+    pbox = fig[3, 1] = GridLayout(tellwidth = false, halign = :left, alignmode = Outside(14))
+    pbar = pbox[1, 1] = GridLayout(halign = :left)
+    Label(pbar[1, 1], "PATTERN", font = :bold, color = C_TEXT2, width = 70, halign = :left)
+    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 40) for i in 1:MAXPATTERNS]
+    addcopy = Button(pbar[1, MAXPATTERNS+2], label = "+ Kopie")
+    addempty = Button(pbar[1, MAXPATTERNS+3], label = "+ Leer")
+    delbtn = Button(pbar[1, MAXPATTERNS+4], label = "Löschen")
+    clrbtn = Button(pbar[1, MAXPATTERNS+5], label = "Leeren")
+    pbar2 = pbox[2, 1] = GridLayout(halign = :left)
+    Label(pbar2[1, 1], "Steps", halign = :left, color = C_TEXT2, width = 70)
     steps_menu = Menu(pbar2[1, 2], options = string.(STEP_OPTS), width = 60)
-    Label(pbar2[1, 3], "Kette (Song-Modus & Export)", halign = :right)
+    Label(pbar2[1, 3], "Kette", halign = :right, color = C_TEXT2)
     chain_tb = Textbox(pbar2[1, 4], stored_string = chain_string(song.chain), width = 260,
                        placeholder = "z. B. 1x3 2", reset_on_defocus = true)
+    Label(pbar2[1, 5], "für Song-Modus und Export", color = C_DIM, fontsize = 12)
+    rowgap!(pbox, 10)
 
     # ---------------------------------------------------------------- Raster
-    grid = fig[5, 1] = GridLayout(halign = :left, tellwidth = false, width = Relative(0.97))
+    panel!(fig[4, 1])
+    grid = fig[4, 1] = GridLayout(halign = :left, tellwidth = false, alignmode = Outside(14))
     headax = Axis(grid[1, 5], height = 22, backgroundcolor = :transparent)
     hidedecorations!(headax); hidespines!(headax)
     headtxt = Observable(String[])
     headpos = Observable(Point2f[])
-    text!(headax, headpos; text = headtxt, align = (:center, :center), fontsize = 13, color = :gray30)
+    text!(headax, headpos; text = headtxt, align = (:center, :center), fontsize = 13, color = C_TEXT2)
 
     cellrects = [Rect2f(s - 1 + 0.06, 0.1, 0.88, 0.8) for s in 1:MAXSTEPS]
     rowcolors = [Observable(fill(C_OFF_A, MAXSTEPS)) for _ in 1:NTRACKS]
@@ -140,12 +240,12 @@ function build_gui(song::Song; audio::Bool = true)
     mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]
     for t in 1:NTRACKS
         r = t + 1
-        nb = Button(grid[r, 1], label = TRACKS[t][2], width = 100, buttoncolor = C_BTN)
+        nb = Button(grid[r, 1], label = TRACKS[t][2], width = 100)
         on(nb.clicks) do _
             put!(eng.pads, (t, 2))
         end
-        mb = Button(grid[r, 2], label = "M", width = 30, buttoncolor = C_BTN)
-        sb = Button(grid[r, 3], label = "S", width = 30, buttoncolor = C_BTN)
+        mb = Button(grid[r, 2], label = "M", width = 30)
+        sb = Button(grid[r, 3], label = "S", width = 30)
         vs = Slider(grid[r, 4], range = 0:0.01:1.5, startvalue = song.tracks[t].vol, width = 90)
         push!(mutebtns, mb); push!(solobtns, sb); push!(volsls, vs)
         ax = Axis(grid[r, 5], height = 34, backgroundcolor = :transparent,
@@ -176,41 +276,45 @@ function build_gui(song::Song; audio::Bool = true)
     end
     colgap!(grid, 8); rowgap!(grid, 4)
     leg = Label(grid[NTRACKS+2, 5], "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören",
-                halign = :left, color = :gray40, fontsize = 12, tellwidth = false)
+                halign = :left, color = C_TEXT2, fontsize = 12, tellwidth = false)
 
     # ---------------------------------------------------------------- Datei / Export
-    fbox = fig[6, 1] = GridLayout(tellwidth = false, halign = :left)
+    panel!(fig[5, 1])
+    fbox = fig[5, 1] = GridLayout(tellwidth = false, halign = :left, alignmode = Outside(14))
     bot = fbox[1, 1] = GridLayout(halign = :left)
-    Label(bot[1, 1], "Datei:", font = :bold, width = 60, halign = :left)
-    newbtn = Button(bot[1, 2], label = "Neu", buttoncolor = C_BTN)
-    dupbtn = Button(bot[1, 3], label = "Duplizieren", buttoncolor = C_BTN)
-    Label(bot[1, 4], "Name", halign = :right)
+    Label(bot[1, 1], "DATEI", font = :bold, color = C_TEXT2, width = 70, halign = :left)
+    newbtn = Button(bot[1, 2], label = "Neu")
+    dupbtn = Button(bot[1, 3], label = "Duplizieren")
+    Label(bot[1, 4], "Name", halign = :right, color = C_TEXT2)
     name_tb = Textbox(bot[1, 5], stored_string = song.name, width = 300, reset_on_defocus = true)
-    savebtn = Button(bot[1, 6], label = "Speichern", buttoncolor = C_BTN, width = 130)
+    savebtn = Button(bot[1, 6], label = "Speichern", width = 130)
     lbox = fbox[2, 1] = GridLayout(halign = :left)
-    Label(lbox[1, 1], "Laden:", font = :bold, width = 60, halign = :left)
-    preset_menu = Menu(lbox[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 320)
+    Label(lbox[1, 1], "LADEN", font = :bold, color = C_TEXT2, width = 70, halign = :left)
+    preset_menu = Menu(lbox[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 340)
     load_menu = Menu(lbox[1, 3], options = vcat(["—"], list_songs()), default = nothing, prompt = "Eigenen Song laden …",
                      width = 260)
-
-    bot2 = fig[7, 1] = GridLayout(tellwidth = false, halign = :left)
-    Label(bot2[1, 1], "Export:", font = :bold)
-    Label(bot2[1, 2], "Wiederholungen", halign = :right)
+    bot2 = fbox[3, 1] = GridLayout(halign = :left)
+    Label(bot2[1, 1], "EXPORT", font = :bold, color = C_TEXT2, width = 70, halign = :left)
+    Label(bot2[1, 2], "Wiederholungen", halign = :right, color = C_TEXT2)
     rep_tb = Textbox(bot2[1, 3], stored_string = string(song.repeats), validator = Int, width = 50,
                      reset_on_defocus = true)
-    Label(bot2[1, 4], "Einzähler (Takte)", halign = :right)
+    Label(bot2[1, 4], "Einzähler (Takte)", halign = :right, color = C_TEXT2)
     ci_menu = Menu(bot2[1, 5], options = string.(0:4), default = string(song.countin), width = 50)
-    Label(bot2[1, 6], "Klick", halign = :right)
+    Label(bot2[1, 6], "Klick", halign = :right, color = C_TEXT2)
     click_toggle = Toggle(bot2[1, 7], active = song.click)
-    Label(bot2[1, 8], "   Stereo", halign = :right)
+    Label(bot2[1, 8], "   Stereo", halign = :right, color = C_TEXT2)
     mono_toggle = Toggle(bot2[1, 9], active = song.mono)
-    Label(bot2[1, 10], "Mono", halign = :left)
-    expbtn = Button(bot2[1, 11], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = :white)
-    explab = Label(bot2[1, 12], "", color = :gray30)
+    Label(bot2[1, 10], "Mono", halign = :left, color = C_TEXT2)
+    expbtn = Button(bot2[1, 11], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = C_BG,
+                    buttoncolor_hover = C_LEVEL_H[2], labelcolor_hover = C_BG, labelcolor_active = C_BG,
+                    font = :bold)
+    explab = Label(bot2[1, 12], "", color = C_TEXT2)
+    rowgap!(fbox, 10)
 
-    Label(fig[8, 1], status, halign = :left, tellwidth = false, color = :gray25)
-    rowgap!(fig.layout, 10)
+    Label(fig[6, 1], status, halign = :left, tellwidth = false, color = C_TEXT2, fontsize = 13)
+    rowgap!(fig.layout, 12)
     colsize!(fig.layout, 1, Relative(1))      # volle Breite, alles linksbündig
+    on(_ -> show_help(), helpbtn.clicks)
 
     # ================================================================ Logik
     cur_pattern() = eng.song.patterns[clamp(eng.edit_pat, 1, length(eng.song.patterns))]
@@ -253,8 +357,8 @@ function build_gui(song::Song; audio::Bool = true)
         n = length(eng.song.patterns)
         playing = eng.playing ? eng.shown_pat[] : 0
         for (i, b) in enumerate(patbtns)
-            b.buttoncolor[] = i == eng.edit_pat ? C_ACTIVE : i <= n ? C_BTN : C_BG
-            b.labelcolor[] = i == eng.edit_pat ? :white : i <= n ? :black : :gray70
+            b.buttoncolor[] = i == eng.edit_pat ? C_ACTIVE : i <= n ? C_BTN : C_PANEL
+            b.labelcolor[] = i == eng.edit_pat ? C_BG : i <= n ? C_TEXT : C_DIM
             b.label[] = i == playing ? "▸$i" : string(i)
         end
     end
@@ -278,8 +382,10 @@ function build_gui(song::Song; audio::Bool = true)
         name_tb.stored_string[] = s.name; name_tb.displayed_string[] = s.name
         rep_tb.stored_string[] = string(s.repeats); rep_tb.displayed_string[] = string(s.repeats)
         ci_menu.i_selected[] = clamp(s.countin, 0, 4) + 1
-        click_toggle.active[] = s.click
-        mono_toggle.active[] = s.mono
+        # Toggle nur bei echter Änderung setzen: Makies Toggle animiert sonst einen Wechsel
+        # und zeigt danach den falschen Zustand an.
+        set_toggle!(click_toggle, s.click)
+        set_toggle!(mono_toggle, s.mono)
         k = findfirst(==(s.kit), kitnames)
         k !== nothing && (kit_menu.i_selected[] = k)
         refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
@@ -301,7 +407,7 @@ function build_gui(song::Song; audio::Bool = true)
         pending_overwrite[] = ""
         savebtn.label[] = "Speichern"
         savebtn.buttoncolor[] = C_BTN
-        savebtn.labelcolor[] = :black
+        savebtn.labelcolor[] = C_TEXT
     end
 
     function set_song!(s::Song)
@@ -474,7 +580,7 @@ function build_gui(song::Song; audio::Bool = true)
             pending_overwrite[] = path
             savebtn.label[] = "Überschreiben?"
             savebtn.buttoncolor[] = C_MUTE
-            savebtn.labelcolor[] = :white
+            savebtn.labelcolor[] = C_TEXT
             status[] = "\"$(basename(path))\" gibt es schon. Nochmal klicken zum Überschreiben, " *
                        "oder einen anderen Namen eingeben bzw. „Duplizieren“."
             return
