@@ -27,6 +27,7 @@ mutable struct Song
     name::String
     bpm::Float64
     swing::Float64               # 0.5 = gerade … 0.75 = stark geswingt (nur bei 2 oder 4 Steps pro Schlag)
+    swing_on::Int                # Swing-Basis: 0 = Auto, 8 = auf 8tel, 16 = auf 16tel
     steps_per_beat::Int          # 4 = 16tel, 3 = 8tel-Triolen (Shuffle/Jazz), 6 = 16tel-Triolen, 2 = 8tel
     patterns::Vector{Pattern}
     chain::Vector{Int}           # Reihenfolge der Patterns im Song-Modus/Export
@@ -41,15 +42,16 @@ mutable struct Song
     click::Bool                  # Metronom-Klick in den Export mischen
 end
 
-function Song(; name = "Neu", bpm = 100.0, swing = 0.5, steps_per_beat = 4,
+function Song(; name = "Neu", bpm = 100.0, swing = 0.5, swing_on = 0, steps_per_beat = 4,
               patterns = [Pattern(16)], chain = [1], kit = "BlackPearl", fx = "Clean",
               fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false)
-    Song(name, bpm, swing, steps_per_beat, patterns, chain,
+    swing_on in (0, 8, 16) || error("swing_on muss 0 (Auto), 8 oder 16 sein")
+    Song(name, bpm, swing, swing_on, steps_per_beat, patterns, chain,
          [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click)
 end
 
 function Base.copy(s::Song)
-    Song(s.name, s.bpm, s.swing, s.steps_per_beat, copy.(s.patterns), copy(s.chain),
+    Song(s.name, s.bpm, s.swing, s.swing_on, s.steps_per_beat, copy.(s.patterns), copy(s.chain),
          copy.(s.tracks), s.kit, s.fx, s.fxmix, s.master, s.repeats, s.countin, s.click)
 end
 
@@ -102,7 +104,7 @@ end
 
 function song_to_dict(s::Song)
     Dict{String,Any}(
-        "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "steps_per_beat" => s.steps_per_beat,
+        "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "swing_on" => s.swing_on, "steps_per_beat" => s.steps_per_beat,
         "chain" => s.chain, "kit" => s.kit, "fx" => s.fx, "fxmix" => s.fxmix, "master" => s.master,
         "repeats" => s.repeats, "countin" => s.countin, "click" => s.click,
         "pattern" => [Dict{String,Any}("steps" => p.steps,
@@ -119,6 +121,7 @@ function song_from_dict(d::AbstractDict)
     pats = [pattern_from_rows(get(p, "rows", Dict()); steps = get(p, "steps", 16)) for p in get(d, "pattern", [])]
     isempty(pats) && push!(pats, Pattern(16))
     s = Song(name = get(d, "name", "Neu"), bpm = get(d, "bpm", 100.0), swing = get(d, "swing", 0.5),
+             swing_on = get(d, "swing_on", 0),
              steps_per_beat = get(d, "steps_per_beat", 4), patterns = pats,
              chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "BlackPearl"), fx = get(d, "fx", "Clean"),
              fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = get(d, "repeats", 8),

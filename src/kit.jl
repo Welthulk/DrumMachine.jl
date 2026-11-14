@@ -137,7 +137,26 @@ function load_wav_mono(path)
                  x[i] * (1 - fr) + x[min(i + 1, end)] * fr
              end for k in 1:m]
     end
-    return Float32.(x)
+    return trim_onset(Float32.(x))
+end
+
+"""
+Legt den Anschlag eines Samples auf den Rasterpunkt: schneidet alles bis `pre` Sekunden vor
+dem ersten Überschreiten von `thresh` × Spitzenpegel ab und blendet diesen Rest weich ein.
+Wichtig z. B. beim Hi-Hat-Pedal, das ~15 ms leises Vorgeräusch hat, bevor das „Chick“ kommt.
+"""
+function trim_onset(x::Vector{Float32}; thresh = 0.1, pre = 0.001)
+    pk = maximum(abs, x; init = 0f0)
+    pk == 0 && return x
+    i = findfirst(v -> abs(v) > thresh * pk, x)
+    np = round(Int, pre * SR)
+    k = i - np
+    k <= 1 && return x
+    y = x[k:end]
+    for j in 1:np
+        y[j] *= Float32((j - 1) / np)
+    end
+    return y
 end
 
 """

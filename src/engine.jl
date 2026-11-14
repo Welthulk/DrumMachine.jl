@@ -170,14 +170,30 @@ function countin_pattern(eng::Engine)
     return eng.song.patterns[1]
 end
 
-"Dauer von Step `s` (0-basiert) in Samples, inkl. Swing auf Paaren."
-function step_samples(song::Song, s::Int)
-    base = 60.0 / song.bpm / song.steps_per_beat * SR
-    if song.steps_per_beat in (2, 4) && song.swing != 0.5
-        sw = clamp(song.swing, 0.5, 0.8)
-        return 2base * (iseven(s) ? sw : 1 - sw)
+"""
+Swing-Basis für Pattern `p`: 8 oder 16. Bei Auto (0) wird auf 16tel geswingt, sobald im
+Pattern Schläge auf „e“ oder „a“ liegen, sonst auf 8tel.
+"""
+function swing_unit(song::Song, p::Union{Pattern,Nothing})
+    song.swing_on != 0 && return song.swing_on
+    p === nothing && return 16
+    return any(!iszero, @view p.grid[:, 2:2:p.steps]) ? 16 : 8
+end
+
+"""
+Dauer von Step `s` (0-basiert) in Samples, inkl. Swing. Swing verlängert die erste Hälfte
+jedes Paares (8tel- bzw. 16tel-Paar) und verkürzt die zweite; die Taktlänge bleibt gleich.
+Bei Triolen-Rastern (3/6 pro Schlag) wirkt kein Swing.
+"""
+function step_samples(song::Song, s::Int, p::Union{Pattern,Nothing} = nothing)
+    spb = song.steps_per_beat
+    base = 60.0 / song.bpm / spb * SR
+    sw = clamp(song.swing, 0.5, 0.8)
+    (sw == 0.5 || !(spb in (2, 4))) && return base
+    if spb == 2 || swing_unit(song, p) == 16
+        return 2base * (iseven(s) ? sw : 1 - sw)          # Paare aus einzelnen Steps
     end
-    return base
+    return 2base * (s % 4 < 2 ? sw : 1 - sw)               # 16tel-Raster, Swing auf 8tel
 end
 
 function resolve_pat(eng::Engine, p::Int)
@@ -193,7 +209,8 @@ function do_step!(eng::Engine)
         if s % song.steps_per_beat == 0
             click!(eng, s == 0)
         end
-        steps = countin_pattern(eng).steps
+        p = countin_pattern(eng)
+        steps = p.steps
     else
         p = song.patterns[eng.pat]
         steps = p.steps
@@ -210,7 +227,7 @@ function do_step!(eng::Engine)
     eng.shown_step[] = s
     eng.shown_pat[] = eng.pat
     eng.shown_seqpos[] = eng.seqpos
-    eng.next_step_at += step_samples(song, s)
+    eng.next_step_at += step_samples(song, s, p)
     eng.step += 1
     if eng.step >= steps
         eng.step = 0
@@ -299,14 +316,29 @@ end
 # Live-Audio
 # ---------------------------------------------------------------------------
 
-"Öffnet das Standard-Audiogerät und startet den Audio-Thread."
-function start_audio!(eng::Engine; device = nothing)
+"""
+    start_audio!(eng; device = nothing, latency = 0.15)
+
+Öffnet das Audiogerät und startet den Audio-Thread. `latency` (Sekunden) ist der Puffer zur
+Soundkarte: Großzügig gewählt, damit Pausen der Garbage Collection (Julia hält dabei alle
+Threads kurz an, GLMakie erzeugt beim Zeichnen viel Müll) nicht zu Aussetzern führen.
+Für ein Übungstool ist die Verzögerung beim Start unkritisch.
+"""
+function start_audio!(eng::Engine; device = nothing, latency::Real = 0.15)
     eng.running && return eng
     if Threads.nthreads() < 2
         @warn "Julia läuft mit nur einem Thread – Audio kann stottern. Starte mit `julia -t auto`."
     end
-    stream = device === nothing ? PortAudio.PortAudioStream(0, 2; samplerate = SR, latency = 0.03) :
-                                  PortAudio.PortAudioStream(device, 0, 2; samplerate = SR, latency = 0.03)
+    # Aufwärmen: render!-Pfade vorab kompilieren, damit der JIT nicht in die Wiedergabe fällt
+    warm = Engine(copy(eng.song), eng.kit)
+    start_seq!(warm, [1], 1)
+    wbuf = zeros(Float32, BLOCK, 2)
+    for _ in 1:200
+        render!(warm, wbuf)
+    end
+    kw = (samplerate = SR, latency = latency, frames_per_buffer = BLOCK)
+    stream = device === nothing ? PortAudio.PortAudioStream(0, 2; kw...) :
+                                  PortAudio.PortAudioStream(device, 0, 2; kw...)
     eng.running = true
     eng.task = Threads.@spawn begin
         buf = zeros(Float32, BLOCK, 2)
@@ -389,7 +421,7 @@ end
 
 "Länge des Exports in Sekunden (ohne Ausklingen)."
 function song_seconds(song::Song; repeats::Int = song.repeats, countin::Int = song.countin)
-    bar(p) = sum(step_samples(song, s) for s in 0:p.steps-1) / SR
+    bar(p) = sum(step_samples(song, s, p) for s in 0:p.steps-1) / SR
     first = song.patterns[song.chain[1]]
     return countin * bar(first) + max(repeats, 1) * sum(bar(song.patterns[i]) for i in song.chain)
 end

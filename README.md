@@ -11,6 +11,8 @@ julia -t auto --project=. run.jl
 ```
 
 `-t auto` ist wichtig, denn das Audio läuft in einem eigenen Thread.
+Die Live-Wiedergabe puffert 150 ms, damit Pausen der Garbage Collection nicht hörbar werden.
+Der WAV-Export ist davon unabhängig und sample-genau.
 GLMakie braucht ein echtes Grafik-Display. Starte das Programm daher aus einem normalen Terminal,
 nicht aus dem Terminal der Flatpak-Version von VS Code.
 
@@ -33,7 +35,7 @@ fig, eng = DrumMachine.run(block = false)
 | Song-Modus | spielt die **Kette** in Schleife |
 | Kette | z. B. `1 1 1 2` oder `1x3 2` (3× Groove, 1× Fill) |
 | Raster | 16tel, Triolen (Shuffle/Jazz/12/8), 16tel-Triolen (Half-Time Shuffle) oder 8tel; die Kopfzeile zählt mit (`1 e + a`, `1 + a`, `1 la li + la li`) |
-| Swing | 50 % = gerade, 66 % ≈ triolisch (wirkt bei 16tel/8tel) |
+| Swing | 50 % = gerade, 66 % ≈ triolisch. Basis wählbar: **Auto** (16tel-Swing, wenn Schläge auf „e“/„a“ liegen, sonst 8tel-Swing), **auf 8tel** oder **auf 16tel**. Wirkt nicht bei Triolen-Rastern |
 | M / S | Spur stumm / solo; **Mute gilt auch beim Export** |
 | Neu | leerer Groove mit freiem Namen (BPM, Raster und Kit bleiben) |
 | Duplizieren | Kopie des aktuellen Songs („… Kopie“), das Original bleibt unangetastet |

@@ -17,6 +17,7 @@ const C_SOLO    = Makie.to_color("#f0c419")
 
 const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),
                      ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2)]
+const SWING_OPTS = [("Auto", 0), ("auf 8tel", 8), ("auf 16tel", 16)]
 const STEP_OPTS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 28, 30, 32]
 const MAXPATTERNS = 8
 
@@ -83,11 +84,12 @@ function build_gui(song::Song; audio::Bool = true)
     Label(top[1, 3], "Einzähler", halign = :right)
     ci_toggle = Toggle(top[1, 4], active = false)
     Label(top[1, 5], "BPM", halign = :right)
-    bpm_sl = Slider(top[1, 6], range = 30:1:260, startvalue = song.bpm, width = 180)
+    bpm_sl = Slider(top[1, 6], range = 30:1:260, startvalue = song.bpm, width = 160)
     bpm_lab = Label(top[1, 7], "", width = 40)
     Label(top[1, 8], "Swing", halign = :right)
     sw_sl = Slider(top[1, 9], range = 50:1:75, startvalue = round(Int, 100song.swing), width = 110)
     sw_lab = Label(top[1, 10], "", width = 40)
+    sw_menu = Menu(top[1, 11], options = first.(SWING_OPTS), width = 95)
 
     top2 = fig[2, 1] = GridLayout(tellwidth = false, halign = :left)
     Label(top2[1, 1], "Raster", halign = :right)
@@ -117,7 +119,7 @@ function build_gui(song::Song; audio::Bool = true)
                        placeholder = "z. B. 1x3 2", reset_on_defocus = true)
 
     # ---------------------------------------------------------------- Raster
-    grid = fig[5, 1] = GridLayout()
+    grid = fig[5, 1] = GridLayout(halign = :left, tellwidth = false, width = Relative(0.97))
     headax = Axis(grid[1, 5], height = 22, backgroundcolor = :transparent)
     hidedecorations!(headax); hidespines!(headax)
     headtxt = Observable(String[])
@@ -166,7 +168,7 @@ function build_gui(song::Song; audio::Bool = true)
     end
     colgap!(grid, 8); rowgap!(grid, 4)
     leg = Label(grid[NTRACKS+2, 5], "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören",
-                halign = :left, color = :gray40, fontsize = 12)
+                halign = :left, color = :gray40, fontsize = 12, tellwidth = false)
 
     # ---------------------------------------------------------------- Datei / Export
     fbox = fig[6, 1] = GridLayout(tellwidth = false, halign = :left)
@@ -199,6 +201,7 @@ function build_gui(song::Song; audio::Bool = true)
 
     Label(fig[8, 1], status, halign = :left, tellwidth = false, color = :gray25)
     rowgap!(fig.layout, 10)
+    colsize!(fig.layout, 1, Relative(1))      # volle Breite, alles linksbündig
 
     # ================================================================ Logik
     cur_pattern() = eng.song.patterns[clamp(eng.edit_pat, 1, length(eng.song.patterns))]
@@ -257,6 +260,7 @@ function build_gui(song::Song; audio::Bool = true)
         s = eng.song
         set_close_to!(bpm_sl, s.bpm)
         set_close_to!(sw_sl, round(Int, 100s.swing))
+        sw_menu.i_selected[] = something(findfirst(o -> o[2] == s.swing_on, SWING_OPTS), 1)
         raster_menu.i_selected[] = something(findfirst(o -> o[2] == s.steps_per_beat, RASTER_OPTS), 1)
         fx_menu.i_selected[] = something(findfirst(==(s.fx), FX_NAMES), 1)
         set_close_to!(fx_sl, s.fxmix); set_close_to!(mst_sl, s.master)
@@ -332,6 +336,11 @@ function build_gui(song::Song; audio::Bool = true)
     end
     on(sw_sl.value) do v
         eng.song.swing = v / 100; sw_lab.text[] = "$v%"; refresh_export_info!()
+    end
+    on(sw_menu.selection) do sel
+        sel === nothing && return
+        eng.song.swing_on = SWING_OPTS[findfirst(o -> o[1] == sel, SWING_OPTS)][2]
+        refresh_export_info!()
     end
     on(raster_menu.selection) do sel
         sel === nothing && return

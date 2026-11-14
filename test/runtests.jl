@@ -34,6 +34,15 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         s.swing = 0.66
         @test step_samples(s, 0) > step_samples(s, 1)
         @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # Swing ändert die Taktlänge nicht
+        # Auto: 8tel-Groove swingt auf 8tel, 16tel-Groove auf 16tel
+        p8 = pattern_from_rows(Dict("HiHat" => "x.x.x.x.x.x.x.x."))
+        p16 = pattern_from_rows(Dict("HiHat" => "xxxxxxxxxxxxxxxx"))
+        on8 = cumsum([step_samples(s, k, p8) for k in 0:15])
+        @test on8[2] / (on8[4] - on8[2]) ≈ 0.66 / 0.34          # "+" rutscht nach hinten
+        @test step_samples(s, 0, p16) > step_samples(s, 1, p16)
+        s.swing_on = 8
+        @test step_samples(s, 0, p16) == step_samples(s, 1, p16)
+        @test sum(step_samples(s, k, p16) for k in 0:15) ≈ 2SR
     end
 
     @testset "Export" begin
@@ -54,13 +63,21 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
+    @testset "Sample-Onsets" begin
+        # Kein Sample darf später als 2 ms nach Beginn anschlagen (sonst wackelt das Timing)
+        for (t, layers) in enumerate(bp.layers), x in layers
+            pk = maximum(abs, x)
+            @test findfirst(v -> abs(v) > 0.1pk, x) / SR < 0.002
+        end
+    end
+
     @testset "Speichern/Laden" begin
-        s = preset("Funk: Ghost Notes"); s.tracks[2].mute = true; s.bpm = 97
+        s = preset("Funk: Ghost Notes"); s.tracks[2].mute = true; s.bpm = 97; s.swing_on = 8
         mktempdir() do d
             f = save_song(joinpath(d, "x.toml"), s)
             s2 = load_song(f)
             @test s2.patterns[1].grid == s.patterns[1].grid
-            @test s2.tracks[2].mute && s2.bpm == 97
+            @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8
         end
     end
 end
