@@ -1,0 +1,36 @@
+# Grundgroove im Stil von "Everybody Wants to Rule the World" (Tears for Fears), 12/8
+# Raster: 8tel-Triolen, 4 punktierte Viertel pro Takt, punktierte Viertel = 112
+# Pattern 1 = Grundgroove, Pattern 2 = Überleitung mit Snare-Doppel und offener Hihat
+bpm = 112.0
+chain = [1, 1, 1, 1, 1, 1, 1, 2]
+click = false
+countin = 1
+fx = "Clean"
+fxmix = 0.25
+kit = "CrocellKit"
+master = 0.8
+mono = false
+name = "Rule the World Grundgroove"
+repeats = 8
+steps_per_beat = 3
+swing = 0.6666666666666666
+swing_on = 0
+swing_version = 2
+
+#            1 + a 2 + a 3 + a 4 + a
+[[pattern]]
+steps = 12
+
+    [pattern.rows]
+    HiHat = ".x.x.x.x.x.x"
+    Snare = "...X.....X.."
+    Kick  = "X.xX..X.xX.."
+
+[[pattern]]
+steps = 12
+
+    [pattern.rows]
+    HiHat  = ".x.x.x.x...."
+    HHOpen = "...........x"
+    Snare  = "...X.....Xx."
+    Kick   = "X.xX..X.xX.."

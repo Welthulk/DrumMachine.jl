@@ -297,14 +297,21 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Shuffle: Rule-the-World-Stil (Tears for Fears, 12/8)" => function ()
-        # Annäherung an den eher untypischen Pop-Shuffle: 12/8 in vier punktierten Schlägen,
-        # Snare nur auf der 3 (Half-Time-Gefühl), Hihat-Shuffle, Bassdrum schiebt in die 3.
+        # Grundgroove im Stil von „Everybody Wants to Rule the World“, 12/8:
+        # 8tel-Triolen, 4 punktierte Viertel pro Takt, punktierte Viertel = 112.
+        # Hihat auf jeder zweiten Triole (6 gegen 4), Kick und Snare zusammen auf 2 und 4.
+        # Pattern 1 = Grundgroove, Pattern 2 = Überleitung mit Snare-Doppel und offener Hihat.
+        # (Vorlage vom Nutzer, siehe songs/Rule the World Grundgroove.toml)
         #             1 + a 2 + a 3 + a 4 + a
-        g = P(HiHat = "x.xx.xx.xx.x",
-              Snare = "......X.....",
-              Kick  = "X....x...x..")
+        g = P(HiHat  = ".x.x.x.x.x.x",
+              Snare  = "...X.....X..",
+              Kick   = "X.xX..X.xX..")
+        u = P(HiHat  = ".x.x.x.x....",
+              HHOpen = "...........x",
+              Snare  = "...X.....Xx.",
+              Kick   = "X.xX..X.xX..")
         Song(name = "Shuffle: Rule-the-World-Stil (Tears for Fears, 12/8)", bpm = 112, steps_per_beat = 3,
-             patterns = [g])
+             patterns = [g, u], chain = [1, 1, 1, 1, 1, 1, 1, 2])
     end,
 
     "Shuffle: Laid-back (58 %)" => function ()
