@@ -1,0 +1,157 @@
+# Rock in the style of Rush "Tom Sawyer" (drums: Neil Peart), 106 bars, kit CrocellKit
+# Not a transcription: grooves and form built after the song, for playing along and practice.
+# Grid: 16ths, straight, quarter = 88
+# Form: intro (8) | verse 1 (16) | chorus (8) | verse 2 (16) | chorus (8) | solo (16) | 7/8 (16 + fill) | verse 3 (8) | outro (8) | ending (1)
+# Shows: accented 8th hi-hats with open hi-hat before the 1, syncopated kick, ride with bell
+#        in the chorus, 16th kick figures in the solo, a 7/8 section (2+2+3), tom fills.
+bpm = 88.0
+chain = [1, 1, 1, 1, 1, 1, 1, 5, 2, 3, 3, 4, 3, 3, 3, 5, 3, 3, 3, 4, 3, 3, 3, 6, 7, 8, 8, 8, 8, 8, 8, 6, 2, 3, 3, 4, 3, 3, 3, 5, 3, 3, 3, 4, 3, 3, 3, 6, 7, 8, 8, 8, 8, 8, 8, 6, 9, 10, 10, 10, 10, 10, 10, 5, 9, 10, 10, 10, 10, 10, 10, 6, 11, 11, 11, 12, 11, 11, 11, 12, 11, 11, 11, 12, 11, 11, 11, 12, 6, 2, 3, 3, 4, 3, 3, 3, 6, 13, 14, 14, 14, 13, 14, 14, 6, 15]
+click = false
+countin = 1
+fx = "Room"
+fxmix = 0.2
+kit = "CrocellKit"
+master = 0.8
+mono = false
+name = "Tom-Sawyer-Stil (Rush)"
+repeats = 1
+steps_per_beat = 4
+swing = 0.5
+swing_on = 0
+swing_version = 2
+#            1e+a2e+a3e+a4e+a
+# 1: intro: hi-hat and kick only, the band builds up
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "X.x.X.x.X.x.X.x."
+    Kick  = "X.....X...X....."
+#            1e+a2e+a3e+a4e+a
+# 2: verse with crash on the one
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash  = "X..............."
+    HiHat  = "..x.X.x.X.x.X..."
+    HHOpen = "..............X."
+    Snare  = "....X.......X..."
+    Kick   = "X.....X...X..X.."
+#            1e+a2e+a3e+a4e+a
+# 3: verse: accented 8th hi-hats, syncopated kick, open hi-hat before the 1
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat  = "X.x.X.x.X.x.X..."
+    HHOpen = "..............X."
+    Snare  = "....X.......X..."
+    Kick   = "X.....X...X..X.."
+#            1e+a2e+a3e+a4e+a
+# 4: verse variation: extra kick on the 2+, snare ghost on the 4a
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat  = "X.x.X.x.X.x.X..."
+    HHOpen = "..............X."
+    Snare  = "....X.......X..o"
+    Kick   = "X.....XX..X..X.."
+#            1e+a2e+a3e+a4e+a
+# 5: short fill: 16ths on beat 4, snare - tom - floor tom
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat    = "X.x.X.x.X.x....."
+    Snare    = "....X.......Xx.."
+    Tom      = "..............x."
+    FloorTom = "...............X"
+    Kick     = "X.....X...X....."
+#            1e+a2e+a3e+a4e+a
+# 6: big fill: beats 3 and 4 in 16ths down the toms
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat    = "X.x.X.x........."
+    Snare    = "....X...XxXx...."
+    Tom      = "............xx.."
+    FloorTom = "..............xX"
+    Kick     = "X.....X........."
+#            1e+a2e+a3e+a4e+a
+# 7: chorus with crash: ride instead of hi-hat
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash = "X..............."
+    Ride  = "..x.X.x.X.x.X.x."
+    Snare = "....X.......X..."
+    Kick  = "X.....X.X.X....."
+#            1e+a2e+a3e+a4e+a
+# 8: chorus: ride 8ths, bell on the 1 and 3, kick pushes on the 2+
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Ride     = "..x.X.x...x.X.x."
+    RideBell = "X.......X......."
+    Snare    = "....X.......X..."
+    Kick     = "X.....X.X.X....."
+#            1e+a2e+a3e+a4e+a
+# 9: solo section with crash
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash    = "X..............."
+    Ride     = "..x...x.x.x...x."
+    RideBell = "....X.......X..."
+    Snare    = "....X.......X..."
+    Kick     = "X..X..X.X..X..X."
+#            1e+a2e+a3e+a4e+a
+# 10: solo section: driving, bell on 2 and 4, 16th kick figures
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Ride     = "x.x...x.x.x...x."
+    RideBell = "....X.......X..."
+    Snare    = "....X.......X..."
+    Kick     = "X..X..X.X..X..X."
+#            1e+a2e+a3e+a4e
+# 11: 7/8 (2+2+3): hi-hat accents the groups, kick on 1 and 3, snare on 2 and the last 8th
+[[pattern]]
+steps = 14
+    [pattern.rows]
+    HiHat = "X.x.X.x.X.x.x."
+    Snare = "....X.......X."
+    Kick  = "X.......X.X..."
+#            1e+a2e+a3e+a4e
+# 12: 7/8 with crash and a short tom answer in the 3-group
+[[pattern]]
+steps = 14
+    [pattern.rows]
+    Crash    = "X............."
+    HiHat    = "..x.X.x......."
+    Snare    = "....X...XxXx.."
+    Tom      = "............x."
+    FloorTom = ".............X"
+    Kick     = "X.......X....."
+#            1e+a2e+a3e+a4e+a
+# 13: outro with crash: open hi-hat 8ths
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash  = "X..............."
+    HHOpen = "..x.x.x.x.x.x.x."
+    Snare  = "....X.......X..."
+    Kick   = "X.....X...X..X.."
+#            1e+a2e+a3e+a4e+a
+# 14: outro: open hi-hat 8ths, big backbeat
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HHOpen = "x.x.x.x.x.x.x.x."
+    Snare  = "....X.......X..."
+    Kick   = "X.....X...X..X.."
+#            1e+a2e+a3e+a4e+a
+# 15: ending: last hit
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash = "X..............."
+    Snare = "X..............."
+    Kick  = "X..............."

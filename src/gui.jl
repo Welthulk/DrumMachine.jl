@@ -96,6 +96,7 @@ TRANSPORT
   Modus Pattern         spielt das angezeigte Pattern in Schleife
   Modus Song            spielt die Kette in Schleife, das Raster zeigt das laufende Pattern
   Einzähler             Klick-Takt(e) vor dem Start
+  BPM                   Regler oder Zahl eintippen (30–400)
 
 RASTER & SWING
   Raster                16tel, 8tel-Triolen, 16tel-Triolen oder 8tel
@@ -143,6 +144,7 @@ TRANSPORT
   Mode: Pattern         loops the pattern shown in the grid
   Mode: Song            loops the chain, the grid follows the playing pattern
   Count-in              count-in bar(s) before playback starts
+  BPM                   slider, or type a number (30–400)
 
 GRID & SWING
   Grid                  16ths, 8th triplets, 16th triplets or 8ths
@@ -344,6 +346,11 @@ function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Boo
     return fig, eng
 end
 
+"Tempo typed into the BPM field: a number in the slider's range 30–400 (decimals are rounded)."
+parse_bpm(str) = round(Int, parse(Float64, replace(strip(str), ',' => '.')))
+valid_bpm(str) = (v = tryparse(Float64, replace(strip(str), ',' => '.'));
+                  v !== nothing && isfinite(v) && 30 <= round(Int, v) <= 400)
+
 "Axis options without ticks, labels, grid and spines (faster than `hidedecorations!` afterwards)."
 const BARE_AXIS = (xticksvisible = false, yticksvisible = false, xticklabelsvisible = false,
                    yticklabelsvisible = false, xgridvisible = false, ygridvisible = false,
@@ -417,7 +424,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     ci_toggle = Toggle(top[1, 4], active = false)
     Label(top[1, 5], "BPM", halign = :right, color = C_TEXT2)
     bpm_sl = Slider(top[1, 6], range = 30:1:400, startvalue = song.bpm, width = 160)
-    bpm_lab = Label(top[1, 7], "", width = 40, font = :bold)
+    bpm_tb = Textbox(top[1, 7], stored_string = string(round(Int, song.bpm)), width = 50,
+                     validator = valid_bpm, reset_on_defocus = false)
     Label(top[1, 8], "Swing", halign = :right, color = C_TEXT2)
     sw_sl = Slider(top[1, 9], range = 50:1:75, startvalue = round(Int, 100song.swing), width = 110)
     sw_lab = Label(top[1, 10], "", width = 40, font = :bold)
@@ -770,7 +778,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         eng.playing && play!(eng)
     end
     on(bpm_sl.value) do v
-        eng.song.bpm = v; bpm_lab.text[] = string(v); refresh_export_info!()
+        eng.song.bpm = v; refresh_export_info!()
+        str = string(v)
+        bpm_tb.stored_string[] == str || (bpm_tb.stored_string[] = str)
+        bpm_tb.focused[] || bpm_tb.displayed_string[] == str || (bpm_tb.displayed_string[] = str)
+    end
+    on(bpm_tb.stored_string) do str             # typed tempo -> slider (which sets the song)
+        valid_bpm(str) || return
+        v = parse_bpm(str)
+        bpm_sl.value[] == v || set_close_to!(bpm_sl, v)
     end
     on(sw_sl.value) do v
         eng.song.swing = v == 67 ? 2 / 3 : v / 100       # 67 % = exact triplet
@@ -983,7 +999,9 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     end
     commit_chain!() = commit_field!(chain_tb)
     commit_repeats!() = commit_field!(rep_tb, str -> tryparse(Int, str) !== nothing)
-    commit_fields!() = (commit_name!(); commit_chain!(); commit_repeats!())
+    commit_bpm!() = commit_field!(bpm_tb, valid_bpm)
+    commit_fields!() = (commit_name!(); commit_chain!(); commit_repeats!(); commit_bpm!())
+    on(f -> f || commit_bpm!(), bpm_tb.focused)
     on(f -> f || commit_chain!(), chain_tb.focused)
     on(f -> f || commit_repeats!(), rep_tb.focused)
     # Edit mode ("Bearbeiten"): "Speichern" overwrites the file being edited without asking.
@@ -1120,13 +1138,13 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     # keyboard: space = play/stop (not while typing)
     on(events(fig).keyboardbutton) do ev
         ev.action == Keyboard.press || return
-        any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb)) && return
+        any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb, bpm_tb)) && return
         if ev.key == Keyboard.space
             toggle_play()
         end
     end
 
-    bpm_lab.text[] = string(round(Int, song.bpm)); sw_lab.text[] = "$(round(Int, 100song.swing))%"
+    sw_lab.text[] = "$(round(Int, 100song.swing))%"
     refresh_all!()
     status[] = HELP
 

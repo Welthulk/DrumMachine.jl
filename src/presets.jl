@@ -51,6 +51,21 @@ const PRESETS = Pair{String,Function}[
         Song(name = "Rock: 16tel", bpm = 85, patterns = [g])
     end,
 
+    "Rock: Tom-Sawyer-Stil (Rush)" => function ()
+        # Heavy mid-tempo rock groove in the style of Neil Peart: accented 8th hi-hats, snare on
+        # 2 and 4, syncopated kick, open hi-hat before the 1, fill down the toms in 16ths.
+        g = P(HiHat  = "X.x.X.x.X.x.X...",
+              HHOpen = "..............X.",
+              Snare  = "....X.......X...",
+              Kick   = "X.....X...X..X..")
+        f = P(HiHat  = "X.x.X.x.........",
+              Snare  = "....X...XxXx....",
+              Tom    = "............xx..",
+              FloorTom = "..............xX",
+              Kick   = "X.....X.........")
+        Song(name = "Rock: Tom-Sawyer-Stil (Rush)", bpm = 88, patterns = [with_crash(g), g, f], chain = form(4))
+    end,
+
     "Rock: Half-Time" => function ()
         g = P(HiHat = "x.x.x.x.x.x.x.x.",
               Snare = "........X.......",
@@ -423,6 +438,22 @@ const PRESETS = Pair{String,Function}[
               Snare = "....X.......X...",
               Kick  = "X......X.XX.....")
         Song(name = "Hip-Hop: Boom Bap", bpm = 90, swing = 0.58, patterns = [g])
+    end,
+
+    "Hip-Hop: Wild-Thing-Stil (Tone Loc, 808)" => function ()
+        # Late-80s drum-machine groove on the 808 kit: straight 8th hi-hats with an open one
+        # before the backbeat, snare (plus side stick as clap layer) on 2 and 4, bouncy kick.
+        g = P(HiHat  = "x.x.x.x.x.x.x...",
+              HHOpen = "..............X.",
+              Rim    = "....x.......x...",
+              Snare  = "....X.......X...",
+              Kick   = "X......XX.X.....")
+        v = P(HiHat  = "x.x.x.x.x.x.x.x.",
+              Rim    = "....x.......x...",
+              Snare  = "....X.......X..o",
+              Kick   = "X......XX.X..X..")
+        Song(name = "Hip-Hop: Wild-Thing-Stil (Tone Loc, 808)", bpm = 104, swing = 0.54, swing_on = 16,
+             patterns = [g, g, g, v], chain = [1, 2, 3, 4], kit = "808 (Synth)")
     end,
 
     "R&B: Neo Soul" => function ()
