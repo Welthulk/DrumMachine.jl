@@ -67,6 +67,7 @@ RASTER & SWING
 
 PATTERNS & KETTE
   1 … 8                 Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
+  + Fill                neues Pattern: Groove mit Fill am Ende, nochmal klicken = anderer Fill
   Steps                 Länge des Patterns (z. B. 12 für 3/4, 20 für 5/4)
   Kette                 Reihenfolge für Song-Modus und Export, z. B. „1x3 2“ = 1 1 1 2
 
@@ -74,6 +75,7 @@ DATEI
   Neu / Duplizieren     neuer Groove bzw. Kopie, das Original bleibt erhalten
   Speichern             songs/<Name>.toml – vorhandene Dateien erst nach zweitem Klick
   Preset / Song laden   Groove-Bibliothek bzw. eigene Songs
+  Datei öffnen …        Song (.toml) aus einem beliebigen Verzeichnis laden
 
 EXPORT
   Wiederholungen        wie oft die Kette hintereinander geschrieben wird
@@ -84,7 +86,7 @@ EXPORT
 
 "Figure mit der Kurzhilfe."
 help_figure() = with_theme(DM_THEME) do
-    f = Figure(size = (760, 545), figure_padding = 16)
+    f = Figure(size = (760, 585), figure_padding = 16)
     panel!(f[1, 1])
     Label(f[1, 1], HELP_TEXT; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
           halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
@@ -106,6 +108,26 @@ function count_labels(steps::Int, spb::Int)
     syl = spb == 4 ? ("", "e", "+", "a") : spb == 3 ? ("", "+", "a") : spb == 6 ? ("", "la", "li", "+", "la", "li") :
           spb == 2 ? ("", "+") : ntuple(_ -> "", spb)
     [((s - 1) % spb == 0 ? string((s - 1) ÷ spb + 1) : syl[(s-1)%spb+1]) for s in 1:steps]
+end
+
+"""
+Öffnet den Datei-Dialog des Systems (zenity oder kdialog) und liefert den gewählten Pfad,
+`""` bei Abbruch oder `nothing`, wenn kein Dialog-Programm installiert ist. Blockiert nur
+die aufrufende Task, die GUI läuft weiter.
+"""
+function pick_song_file(startdir::AbstractString = SONG_DIR)
+    dir = isdir(startdir) ? startdir : homedir()
+    cmd = if Sys.which("zenity") !== nothing
+        `zenity --file-selection "--title=Song laden" "--filename=$(joinpath(dir, ""))" "--file-filter=Songs (*.toml) | *.toml" "--file-filter=Alle Dateien | *"`
+    elseif Sys.which("kdialog") !== nothing
+        `kdialog --title "Song laden" --getopenfilename $dir "*.toml|Songs (*.toml)"`
+    else
+        return nothing
+    end
+    out = IOBuffer()
+    p = run(pipeline(ignorestatus(cmd); stdout = out, stderr = devnull))
+    success(p) || return ""                       # Abbrechen
+    return strip(String(take!(out)))
 end
 
 function list_songs()
@@ -214,8 +236,9 @@ function _build_gui(song::Song; audio::Bool = true)
     patbtns = [Button(pbar[1, 1+i], label = string(i), width = 40) for i in 1:MAXPATTERNS]
     addcopy = Button(pbar[1, MAXPATTERNS+2], label = "+ Kopie")
     addempty = Button(pbar[1, MAXPATTERNS+3], label = "+ Leer")
-    delbtn = Button(pbar[1, MAXPATTERNS+4], label = "Löschen")
-    clrbtn = Button(pbar[1, MAXPATTERNS+5], label = "Leeren")
+    fillbtn = Button(pbar[1, MAXPATTERNS+4], label = "+ Fill")
+    delbtn = Button(pbar[1, MAXPATTERNS+5], label = "Löschen")
+    clrbtn = Button(pbar[1, MAXPATTERNS+6], label = "Leeren")
     pbar2 = pbox[2, 1] = GridLayout(halign = :left)
     Label(pbar2[1, 1], "Steps", halign = :left, color = C_TEXT2, width = 70)
     steps_menu = Menu(pbar2[1, 2], options = string.(STEP_OPTS), width = 60)
@@ -293,6 +316,7 @@ function _build_gui(song::Song; audio::Bool = true)
     preset_menu = Menu(lbox[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 340)
     load_menu = Menu(lbox[1, 3], options = vcat(["—"], list_songs()), default = nothing, prompt = "Eigenen Song laden …",
                      width = 260)
+    filebtn = Button(lbox[1, 4], label = "Datei öffnen …")
     bot2 = fbox[3, 1] = GridLayout(halign = :left)
     Label(bot2[1, 1], "EXPORT", font = :bold, color = C_TEXT2, width = 70, halign = :left)
     Label(bot2[1, 2], "Wiederholungen", halign = :right, color = C_TEXT2)
@@ -520,6 +544,35 @@ function _build_gui(song::Song; audio::Bool = true)
     end
     on(_ -> add_pattern!(copy(cur_pattern())), addcopy.clicks)
     on(_ -> add_pattern!(Pattern(cur_pattern().steps)), addempty.clicks)
+    # Fill: neues Pattern aus dem aktuellen, letzte Schläge als Fill. Erneuter Klick auf das
+    # (unveränderte) Fill-Pattern probiert den nächsten Stil aus.
+    fill_src = Ref{Union{Nothing,Pattern}}(nothing)   # Groove, aus dem der Fill entstand
+    fill_pat = Ref{Union{Nothing,Pattern}}(nothing)   # zuletzt erzeugter Fill (zum Wiedererkennen)
+    fill_style = Ref(1)
+    fill_from = Ref(1)                                # Nummer des Ausgangs-Patterns (für den Ketten-Tipp)
+    on(fillbtn.clicks) do _
+        s = eng.song
+        cur = cur_pattern()
+        if fill_pat[] === cur && fill_src[] !== nothing && cur.grid == make_fill(fill_src[], s.steps_per_beat, fill_style[]).grid
+            fill_style[] += 1
+            q = make_fill(fill_src[], s.steps_per_beat, fill_style[])
+            lock(eng.lock) do
+                cur.steps = q.steps
+                copyto!(cur.grid, q.grid)
+            end
+            refresh_grid!()
+        else
+            length(s.patterns) >= MAXPATTERNS && (status[] = "Maximal $MAXPATTERNS Patterns."; return)
+            fill_src[] = copy(cur)
+            fill_style[] = 1
+            add_pattern!(make_fill(cur, s.steps_per_beat, 1))
+            fill_pat[] = cur_pattern()
+            fill_from[] = something(findfirst(p -> p === cur, s.patterns), 1)
+        end
+        n = eng.edit_pat
+        status[] = "Fill „$(fill_name(fill_style[]))“ in Pattern $n – nochmal „+ Fill“ für den nächsten Stil. " *
+                   "Kette z. B. \"$(fill_from[])x3 $n\"."
+    end
     on(delbtn.clicks) do _
         s = eng.song
         length(s.patterns) <= 1 && return
@@ -616,6 +669,29 @@ function _build_gui(song::Song; audio::Bool = true)
             status[] = "Fehler beim Laden: $(sprint(showerror, e))"
         end
         load_menu.i_selected[] = 0            # derselbe Song lässt sich erneut (von Platte) laden
+    end
+    last_dir = Ref(SONG_DIR)
+    dialog_open = Ref(false)
+    on(filebtn.clicks) do _
+        dialog_open[] && return
+        dialog_open[] = true
+        status[] = "Datei-Dialog geöffnet …"
+        @async try
+            path = pick_song_file(last_dir[])
+            if path === nothing
+                status[] = "Kein Datei-Dialog gefunden – bitte zenity oder kdialog installieren."
+            elseif path != ""
+                last_dir[] = dirname(path)
+                set_song!(load_song(path))
+                status[] = "Geladen: $path  ($(song_summary(eng.song)))"
+            else
+                status[] = "Laden abgebrochen."
+            end
+        catch e
+            status[] = "Fehler beim Laden: $(sprint(showerror, e))"
+        finally
+            dialog_open[] = false
+        end
     end
 
     # Export

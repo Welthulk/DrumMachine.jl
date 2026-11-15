@@ -32,6 +32,22 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test parse_chain("1 5 2", 2) == [1, 2]
     end
 
+    @testset "Fill" begin
+        g = preset("Rock: 8tel").patterns[2]
+        for st in eachindex(FILL_STYLES), spb in (4, 3)
+            f = make_fill(g, spb, st)
+            n = min(FILL_STYLES[st][2] * spb, g.steps)
+            @test f.steps == g.steps
+            @test f.grid[:, 1:g.steps-n] == g.grid[:, 1:g.steps-n]     # Groove davor bleibt
+            @test any(!iszero, f.grid[:, g.steps-n+1:g.steps])
+            @test f.grid[4, g.steps-n+1:g.steps] == zeros(UInt8, n)     # HiHat pausiert im Fill
+        end
+        @test make_fill(g, 4, 1).grid == make_fill(g, 4, length(FILL_STYLES) + 1).grid
+        @test row_string(make_fill(g, 4, 2), 7) == ".............x.."             # Tom-Abgang: Tom in der Mitte
+        short = pattern_from_rows(Dict("Snare" => "X.X."))
+        @test make_fill(short, 4, length(FILL_STYLES)).steps == 4                 # Fill länger als Pattern
+    end
+
     @testset "Timing" begin
         s = preset("Rock: 16tel"); s.bpm = 120
         @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # 4 Viertel à 0,5 s

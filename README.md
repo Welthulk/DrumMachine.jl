@@ -7,7 +7,8 @@ Step-Sequencer in Julia zum Schlagzeug-Üben: Groove eintragen, vorhören, als W
 ## Start
 
 ```bash
-julia -t auto --project=. run.jl
+./start_drum.sh
+# oder: julia -t auto --project=. run.jl
 ```
 
 Die Bedienung erklärt der **?**-Button im Programm. Über 40 Grooves (Rock, Funk, Shuffle, Blues, Jazz, Latin, ungerade Taktarten) liegen unter *Preset laden*.
