@@ -539,4 +539,26 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test DrumMachine.song_from_dict(d).swing == 0.5
         end
     end
+
+    @testset "GC-Pause" begin
+        D = DrumMachine
+        g = D.GCPause(0, false, 0.0, false, 0)
+        up(a; free = 8 * 1024^3) = D.gcpause_update!(a; g, free)
+        @test up(true) == :none && !g.off                        # off: nothing happens
+        D.gcpause_set!(5; g)
+        @test up(false) == :none && !g.off                       # not playing
+        @test up(true) == :paused && g.off && g.until > time() + 290
+        @test up(true) == :none && g.off
+        @test up(false) == :stopped && !g.off
+        @test up(true) == :paused
+        g.until = time() - 1
+        @test up(true) == :time && !g.off && g.spent
+        @test up(true) == :none && !g.off                        # used up until the next stop
+        @test up(false) == :none && !g.spent
+        @test up(true; free = 0) == :none && !g.off              # too little memory: no pause
+        @test up(true) == :paused
+        @test up(true; free = 0) == :memory && !g.off
+        up(false); up(true); D.gcpause_set!(0; g)                # choosing "off" releases right away
+        @test !g.off && GC.enable(true)                          # collector is on again
+    end
 end

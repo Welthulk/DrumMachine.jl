@@ -97,6 +97,10 @@ TRANSPORT
   Modus Song            spielt die Kette in Schleife, das Raster zeigt das laufende Pattern
   Einzähler             Klick-Takt(e) vor dem Start
   BPM                   Regler oder Zahl eintippen (30–400)
+  GC-Pause              Speicherbereinigung beim Abspielen bis zu x min anhalten
+                        (gegen Knackser bei schnellen Tempi), läuft bei Stop, nach Ablauf
+                        der Zeit oder unter 1 GB freiem Speicher wieder; beim Ablauf mitten
+                        im Spielen ist ein einzelner Knackser möglich
 
 RASTER & SWING
   Raster                16tel, 8tel-Triolen, 16tel-Triolen oder 8tel
@@ -148,6 +152,10 @@ TRANSPORT
   Mode: Song            loops the chain, the grid follows the playing pattern
   Count-in              count-in bar(s) before playback starts
   BPM                   slider, or type a number (30–400)
+  GC pause              halt garbage collection during playback for up to x min
+                        (against crackles at fast tempos), resumes on stop, when the time
+                        is up or below 1 GB of free memory; if the time runs out while
+                        playing, a single crackle is possible
 
 GRID & SWING
   Grid                  16ths, 8th triplets, 16th triplets or 8ths
@@ -428,6 +436,7 @@ function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Boo
     GLMakie.activate!(title = "DrumMachine.jl")
     set_lang!(initial_lang())
     session = new_session()
+    gcpause_set!(gcpause_setting())
     fig, eng, tick! = build_gui(song; audio, session)
     screen = display(fig)
     session.screen[] = screen
@@ -449,6 +458,7 @@ function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Boo
             cur_tick[]()
             sleep(1 / 60)
         end
+        gcpause_release!()
         stop_audio!(eng)
     end
     if block
@@ -554,6 +564,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     sw_lab = Label(top[1, 10], "", width = 40, font = :bold)
     sw_opts = Ls(first.(SWING_OPTS))                # displayed options, mapped back by index
     sw_menu = Menu(top[1, 11], options = sw_opts, width = 95)
+    Label(top[1, 12], L("   GC-Pause"), halign = :right, color = C_TEXT2)
+    gc_opts = [m == 0 ? L("aus") : "$m min" for m in GC_PAUSE_OPTS]
+    gc_menu = Menu(top[1, 13], options = gc_opts, width = 80,
+                   default = gc_opts[something(findfirst(==(GCPAUSE.minutes), GC_PAUSE_OPTS), 1)])
 
     top2 = tbox[2, 1] = GridLayout(halign = :left)
     Label(top2[1, 1], L("Raster"), halign = :right, color = C_TEXT2)
@@ -922,6 +936,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         eng.songmode = !eng.songmode
         modebtn.label[] = eng.songmode ? L("Modus: Song") : L("Modus: Pattern")
         eng.playing && play!(eng)
+    end
+    on(gc_menu.selection) do sel
+        k = findfirst(==(sel), gc_opts)
+        k === nothing && return
+        m = GC_PAUSE_OPTS[k]
+        m == GCPAUSE.minutes && return
+        gcpause_set!(m); save_setting!("gc_pause", m)
+        status[] = m == 0 ? L("GC-Pause aus.") :
+                   L("GC-Pause: Speicherbereinigung beim Abspielen bis zu {1} min angehalten.", m)
     end
     on(bpm_sl.value) do v
         eng.song.bpm = v; refresh_export_info!()
@@ -1357,6 +1380,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             k = findfirst(==(eng.song.kit), kitnames)
             k !== nothing && (kit_menu.i_selected[] = k)
         end
+        gc = gcpause_update!(eng.playing || metro_active(eng.metro))      # runs in the GUI task
+        gc === :paused && (status[] = L("Speicherbereinigung angehalten für {1} min.", GCPAUSE.minutes))
+        gc === :time && (status[] = L("GC-Pause abgelaufen – Speicherbereinigung läuft wieder."))
+        gc === :memory && (status[] = L("Arbeitsspeicher knapp – Speicherbereinigung läuft wieder."))
         st = eng.playing ? eng.shown_step[] : -1
         pt = eng.shown_pat[]
         sp = eng.shown_seqpos[]

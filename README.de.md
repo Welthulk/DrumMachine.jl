@@ -82,6 +82,8 @@ JSON-Format und speichert jede als Song. Toms 1 und 2 landen auf *Tom*, Tom 3 au
 
 **Reaktionszeit:** Play/Stop und Metronom reagieren mit dem Audio-Puffer, voreingestellt 0,08 s.
 Knackt es, in `~/.config/DrumMachine/settings.toml` z. B. `audio_latency = 0.15` eintragen.
+Alternativ hält *GC-Pause* (Transportzeile) die Speicherbereinigung von Julia beim Abspielen bis
+zu 2–20 min an. Sie läuft bei Stop, nach Ablauf der Zeit oder bei unter 1 GB freiem Speicher wieder.
 
 **Info:** Knopf *Info* in der Kopfzeile: Version, Lizenzen, Grüße.
 

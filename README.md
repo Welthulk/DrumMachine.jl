@@ -90,7 +90,9 @@ More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are a
 - *JSON-Import* (Drum-JSON): take over compositions from browser drum machines in JSON format,
   several files at once or Ctrl+V from the clipboard; each is saved as a song
 - Play/stop and metronome react with the audio buffer, 0.08 s by default. If it crackles, set e.g.
-  `audio_latency = 0.15` in `~/.config/DrumMachine/settings.toml`
+  `audio_latency = 0.15` in `~/.config/DrumMachine/settings.toml`. Alternatively, *GC-Pause* in the
+  transport row halts Julia's garbage collection during playback for up to 2–20 min; it resumes on
+  stop, when the time is up or below 1 GB of free memory
 - *Info* button: version, licenses, greetings
 - *Docs* button: the documentation inside the app
 
