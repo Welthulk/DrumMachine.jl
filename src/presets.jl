@@ -52,18 +52,54 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Rock: Tom-Sawyer-Stil (Rush)" => function ()
-        # Heavy mid-tempo rock groove in the style of Neil Peart: accented 8th hi-hats, snare on
-        # 2 and 4, syncopated kick, open hi-hat before the 1, fill down the toms in 16ths.
-        g = P(HiHat  = "X.x.X.x.X.x.X...",
-              HHOpen = "..............X.",
-              Snare  = "....X.......X...",
-              Kick   = "X.....X...X..X..")
-        f = P(HiHat  = "X.x.X.x.........",
-              Snare  = "....X...XxXx....",
-              Tom    = "............xx..",
-              FloorTom = "..............xX",
-              Kick   = "X.....X.........")
-        Song(name = "Rock: Tom-Sawyer-Stil (Rush)", bpm = 88, patterns = [with_crash(g), g, f], chain = form(4))
+        # Neil Peart's "accent groove": 16th hi-hat accented on the 8ths throughout.
+        # Verse: kick 1, 3, 3+ (2nd bar plus 4e with open hi-hat). Chorus: kick 1, 1e, 1a, 3+,
+        # open hi-hat on the 1e, crash on the 2.
+        v1 = P(HiHat   = "XxXxXxXxXxXxXxXx",
+               Snare   = "....X.......X...",
+               Kick    = "X.......X.X.....")
+        v2 = P(HiHat   = "XxXxXxXxXxXxX.Xx",
+               HHOpen  = ".............x..",
+               HHPedal = "..............x.",
+               Snare   = "....X.......X...",
+               Kick    = "X.......X.X..X..")
+        c1 = P(Crash   = "....X...........",
+               HiHat   = "X.Xx.xXxXxXxXxXx",
+               HHOpen  = ".x..............",
+               HHPedal = "..x.............",
+               Snare   = "....X.......X...",
+               Kick    = "XX.X......X.....")
+        c2 = P(Crash   = "....X...........",
+               HiHat   = "X.Xx.xXxXxXxX.Xx",
+               HHOpen  = ".x...........x..",
+               HHPedal = "..x...........x.",
+               Snare   = "....X.......X...",
+               Kick    = "XX.X......X..X..")
+        Song(name = "Rock: Tom-Sawyer-Stil (Rush)", bpm = 87, patterns = [with_crash(v1), v1, v2, c1, c2],
+             chain = [1, 2, 2, 3, 2, 2, 2, 3, 4, 5, 4, 5])
+    end,
+
+    "Rock: Wild-Thing-Stil (808)" => function ()
+        # The classic "Wild Thing" beat (Troggs / Runaways cover), here on the 808 kit. 8th grid.
+        #   1 + 2 + 3 + 4 +
+        intro  = P(Snare = "..X...X.",          # kick 1, 2+, 3, 4+ - the signature figure
+                   Kick  = "X..XX..X")
+        verse  = P(HiHat = "xxxxxxxx",
+                   Snare = "..X...X.",
+                   Kick  = "XX.XXX.X")
+        chorus = P(Snare = "..X...X.",          # "Wild thing": no cymbals, kick in pairs
+                   Kick  = "XX..XX..")
+        quart  = P(HiHat = "x.x.x.x.",          # hi-hat on the quarters
+                   Snare = "..X...X.",
+                   Kick  = "XX..XX..")
+        build  = P(HHOpen = "X.X.X...",         # build-up: snare quarters, kick 8ths
+                   Snare  = "X.X.X.X.",
+                   Kick   = "XXXXXXXX")
+        brk    = P(Crash = "X.......",          # break: kick on the quarters
+                   Kick  = "X.X.X.X.")
+        Song(name = "Rock: Wild-Thing-Stil (808)", bpm = 140, steps_per_beat = 2,
+             patterns = [intro, with_crash(verse), verse, chorus, quart, build, brk],
+             chain = [1, 1, 1, 1, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 6, 7, 7], kit = "808 (Synth)")
     end,
 
     "Rock: Half-Time" => function ()
@@ -438,22 +474,6 @@ const PRESETS = Pair{String,Function}[
               Snare = "....X.......X...",
               Kick  = "X......X.XX.....")
         Song(name = "Hip-Hop: Boom Bap", bpm = 90, swing = 0.58, patterns = [g])
-    end,
-
-    "Hip-Hop: Wild-Thing-Stil (Tone Loc, 808)" => function ()
-        # Late-80s drum-machine groove on the 808 kit: straight 8th hi-hats with an open one
-        # before the backbeat, snare (plus side stick as clap layer) on 2 and 4, bouncy kick.
-        g = P(HiHat  = "x.x.x.x.x.x.x...",
-              HHOpen = "..............X.",
-              Rim    = "....x.......x...",
-              Snare  = "....X.......X...",
-              Kick   = "X......XX.X.....")
-        v = P(HiHat  = "x.x.x.x.x.x.x.x.",
-              Rim    = "....x.......x...",
-              Snare  = "....X.......X..o",
-              Kick   = "X......XX.X..X..")
-        Song(name = "Hip-Hop: Wild-Thing-Stil (Tone Loc, 808)", bpm = 104, swing = 0.54, swing_on = 16,
-             patterns = [g, g, g, v], chain = [1, 2, 3, 4], kit = "808 (Synth)")
     end,
 
     "R&B: Neo Soul" => function ()
