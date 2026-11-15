@@ -300,7 +300,7 @@ end
 const DOWNLOADABLE_KITS = [("CrocellKit", "561 MB", build_crocell), ("VirtuosityDrums", "1,2 GB", build_virtuosity)]
 
 "Downloadable kits that are not installed yet."
-missing_kits() = [k for k in DOWNLOADABLE_KITS if !any(kit -> kit.name == k[1], available_kits())]
+missing_kits() = [k for k in DOWNLOADABLE_KITS if !any(e -> e.name == k[1], kit_entries())]
 
 """
 Automatic download is on unless the setting `auto_kits = false` is stored or the environment

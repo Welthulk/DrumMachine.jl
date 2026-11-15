@@ -23,7 +23,7 @@ All keys are optional. A missing key gets the default listed below, so a minimal
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `name` | string | `"Neu"` | Song name, also used for the file names of save and export |
-| `bpm` | number | `100.0` | Tempo in beats per minute (GUI range 30–260) |
+| `bpm` | number | `100.0` | Tempo in beats per minute (GUI range 30–400) |
 | `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths |
 | `swing` | number | `0.5` (`2/3` for triplet grids in files without `swing_version`) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8) |
 | `swing_on` | integer | `0` | What swings in a straight grid: `0` auto, `8` 8ths, `16` 16ths |

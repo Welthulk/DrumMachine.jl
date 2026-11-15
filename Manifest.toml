@@ -2,7 +2,7 @@
 
 julia_version = "1.13.2"
 manifest_format = "2.1"
-project_hash = "b747db4342eb8a3e51a59197891c84b3c7f3c146"
+project_hash = "69bf24174d42e3ea96bc19ecf1e3db3bd83f59bc"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -409,10 +409,10 @@ uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.7.0"
 
 [[deps.DrumMachine]]
-deps = ["Downloads", "FLAC_jll", "GLMakie", "Markdown", "PortAudio", "Random", "TOML", "WAV"]
+deps = ["Downloads", "FLAC_jll", "GLMakie", "Markdown", "PortAudio", "PrecompileTools", "Random", "TOML", "WAV"]
 path = "."
 uuid = "d7327aa8-29c9-46ee-884d-493085bbc330"
-version = "0.9.2"
+version = "1.0.0"
 
 [[deps.EarCut_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]

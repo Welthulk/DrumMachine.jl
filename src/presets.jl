@@ -351,6 +351,27 @@ const PRESETS = Pair{String,Function}[
         Song(name = "Jazz: Swing Ride", bpm = 130, steps_per_beat = 3, patterns = [g])
     end,
 
+    "Jazz: Double-Time Swing (Whiplash-Stil)" => function ()
+        # Very fast swing (quarter = 300+): ride with skip notes on the "+" of 2 and 4, hi-hat
+        # pedal on 2 and 4, feathered bass drum. 16th grid so the fill can run in 16ths; at this
+        # tempo the swing is almost straight (58 %).
+        g = P(Ride    = "x...X.x.x...X.x.",
+              HHPedal = "....x.......x...",
+              Kick    = "o...o...o...o...")
+        c = P(Ride    = "x...X.x.x...X.x.",
+              HHPedal = "....x.......x...",
+              Snare   = "......o.......x.",
+              Kick    = "o...o...o.X.o...")
+        f = P(Ride    = "x...X...........",
+              HHPedal = "....x...........",
+              Snare   = "........XxxxX...",
+              Tom     = ".............x..",
+              FloorTom = "..............xx",
+              Kick    = "o...o...........")
+        Song(name = "Jazz: Double-Time Swing (Whiplash-Stil)", bpm = 300, swing = 0.58, swing_on = 8,
+             patterns = [with_crash(g), g, c, f], chain = [1, 2, 3, 2, 2, 3, 2, 4], fx = "Room", fxmix = 0.3)
+    end,
+
     "Jazz: Walzer 3/4" => function ()
         g = P(Ride    = "x..x.xx..",
               HHPedal = "...x..x..",

@@ -344,6 +344,14 @@ function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Boo
     return fig, eng
 end
 
+"Axis options without ticks, labels, grid and spines (faster than `hidedecorations!` afterwards)."
+const BARE_AXIS = (xticksvisible = false, yticksvisible = false, xticklabelsvisible = false,
+                   yticklabelsvisible = false, xgridvisible = false, ygridvisible = false,
+                   xminorgridvisible = false, yminorgridvisible = false, xminorticksvisible = false,
+                   yminorticksvisible = false, xlabelvisible = false, ylabelvisible = false,
+                   titlevisible = false, leftspinevisible = false, rightspinevisible = false,
+                   topspinevisible = false, bottomspinevisible = false)
+
 """
     build_gui(song; audio=true) -> (fig, eng, tick!)
 
@@ -361,11 +369,11 @@ new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = 
                  kits_changed = Threads.Atomic{Bool}(false))
 
 function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new_session())
-    kits = available_kits()
+    kits = kit_entries()                                  # samples are loaded on selection
     kitnames = [k.name for k in kits]
     kitidx = something(findfirst(==(song.kit), kitnames), 1)
     if eng === nothing
-        eng = Engine(song, kits[kitidx])
+        eng = Engine(song, get_kit(kits[kitidx]))
         eng.song.kit = kitnames[kitidx]
         audio && start_audio!(eng)
     end
@@ -408,7 +416,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     Label(top[1, 3], L("Einzähler"), halign = :right, color = C_TEXT2)
     ci_toggle = Toggle(top[1, 4], active = false)
     Label(top[1, 5], "BPM", halign = :right, color = C_TEXT2)
-    bpm_sl = Slider(top[1, 6], range = 30:1:260, startvalue = song.bpm, width = 160)
+    bpm_sl = Slider(top[1, 6], range = 30:1:400, startvalue = song.bpm, width = 160)
     bpm_lab = Label(top[1, 7], "", width = 40, font = :bold)
     Label(top[1, 8], "Swing", halign = :right, color = C_TEXT2)
     sw_sl = Slider(top[1, 9], range = 50:1:75, startvalue = round(Int, 100song.swing), width = 110)
@@ -479,10 +487,9 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         sb = Button(grid[r, 3], label = "S", width = 30)
         vs = Slider(grid[r, 4], range = 0:0.01:1.5, startvalue = song.tracks[t].vol, width = 90)
         push!(mutebtns, mb); push!(solobtns, sb); push!(volsls, vs)
-        ax = Axis(grid[r, 5], height = 34, backgroundcolor = :transparent,
+        ax = Axis(grid[r, 5]; height = 34, backgroundcolor = :transparent,
                   xrectzoom = false, yrectzoom = false, xzoomlock = true, yzoomlock = true,
-                  xpanlock = true, ypanlock = true)
-        hidedecorations!(ax); hidespines!(ax)
+                  xpanlock = true, ypanlock = true, BARE_AXIS...)
         for k in (:rectanglezoom, :scrollzoom, :dragpan, :limitreset)
             try deregister_interaction!(ax, k) catch end
         end
@@ -731,15 +738,13 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         cancel_overwrite!()
         was = eng.playing
         was && stop!(eng)
+        k = findfirst(==(s.kit), kitnames)
+        kit = k === nothing ? eng.kit : get_kit(kits[k])   # load outside the audio lock
         lock(eng.lock) do
             eng.song = s
             eng.edit_pat = 1
-            k = findfirst(==(s.kit), kitnames)
-            if k === nothing
-                s.kit = eng.kit.name
-            else
-                eng.kit = kits[k]
-            end
+            s.kit = kit.name
+            eng.kit = kit
             apply_fx!(eng)
         end
         refresh_all!()
@@ -792,8 +797,9 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(kit_menu.selection) do sel
         sel === nothing && return
         k = findfirst(==(sel), kitnames)
+        kit = get_kit(kits[k])                            # load outside the audio lock
         lock(eng.lock) do
-            eng.kit = kits[k]
+            eng.kit = kit
         end
         eng.song.kit = sel
     end
@@ -1131,7 +1137,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
         if session.kits_changed[]
             session.kits_changed[] = false
-            kits = available_kits(); kitnames = [k.name for k in kits]
+            kits = kit_entries(); kitnames = [k.name for k in kits]
             kit_menu.options[] = kitnames
             k = findfirst(==(eng.song.kit), kitnames)
             k !== nothing && (kit_menu.i_selected[] = k)

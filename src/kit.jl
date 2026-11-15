@@ -240,13 +240,30 @@ const KIT_DIR = normpath(joinpath(@__DIR__, "..", "kits"))
 kit_dirs() = unique([KIT_DIR, user_kit_dir()])
 
 """
-All kits: WAV kits from the kit folders (alphabetical, a name appears once; the package's own
-`kits/` wins), followed by the 808- and 909-style synth kits. The basic synth kit only serves as a
-fallback for missing samples.
+    KitEntry
+
+A kit in the kit menu: name plus how to get it (kit folder or synth constructor). The samples
+are only read by `get_kit` (and then kept in `KIT_CACHE`), so listing the kits costs nothing.
 """
-function available_kits(dirs = kit_dirs())
-    syn = synth_kit()
-    kits = Kit[]
+struct KitEntry
+    name::String
+    src::Union{String,Function}           # kit folder, or function returning a synth kit
+end
+
+"Loaded kits: key = kit folder (or synth name), value = (mtime of kit.toml, kit)."
+const KIT_CACHE = Dict{String,Tuple{Float64,Kit}}()
+const KIT_CACHE_LOCK = ReentrantLock()
+
+const SYNTH_KIT = Ref{Union{Kit,Nothing}}(nothing)
+cached_synth_kit() = (SYNTH_KIT[] === nothing && (SYNTH_KIT[] = synth_kit()); SYNTH_KIT[]::Kit)
+
+"""
+    kit_entries(dirs = kit_dirs()) -> Vector{KitEntry}
+
+All kits without loading samples: WAV kits from the kit folders (alphabetical by folder, a folder
+name appears once; the package's own `kits/` wins), followed by the 808- and 909-style synth kits.
+"""
+function kit_entries(dirs = kit_dirs())
     found = Dict{String,String}()                       # kit folder name => path
     for dir in (dirs isa AbstractString ? [dirs] : dirs)
         isdir(dir) || continue
@@ -256,13 +273,47 @@ function available_kits(dirs = kit_dirs())
             found[basename(d)] = d
         end
     end
+    es = KitEntry[]
     for name in sort(collect(keys(found)))
         try
-            push!(kits, load_kit(found[name]; fallback = syn))
+            cfg = TOML.parsefile(joinpath(found[name], "kit.toml"))
+            push!(es, KitEntry(get(cfg, "name", name), found[name]))
         catch e
             @warn L("Kit {1} konnte nicht geladen werden", name) exception = e
         end
     end
-    push!(kits, kit_808(), kit_909())
-    return kits
+    push!(es, KitEntry("808 (Synth)", kit_808), KitEntry("909 (Synth)", kit_909))
+    return es
 end
+
+"""
+    get_kit(e::KitEntry) -> Kit
+
+Loads the kit (once; again only if its kit.toml changed). If the samples cannot be read, the
+synth kit is returned under the kit's name.
+"""
+function get_kit(e::KitEntry)
+    key = e.src isa String ? e.src : e.name
+    mt = e.src isa String ? mtime(joinpath(e.src, "kit.toml")) : 0.0
+    lock(KIT_CACHE_LOCK) do
+        c = get(KIT_CACHE, key, nothing)
+        c !== nothing && c[1] == mt && return c[2]
+        kit = try
+            e.src isa String ? load_kit(e.src; fallback = cached_synth_kit()) : e.src()
+        catch err
+            @warn L("Kit {1} konnte nicht geladen werden", e.name) exception = err
+            s = cached_synth_kit()
+            Kit(e.name, s.layers, s.pan, s.gain, s.choke, s.level_gain)
+        end
+        KIT_CACHE[key] = (mt, kit)
+        return kit
+    end
+end
+
+"""
+    available_kits(dirs = kit_dirs()) -> Vector{Kit}
+
+All kits, loaded (see `kit_entries`). The basic synth kit only serves as a fallback for missing
+samples.
+"""
+available_kits(dirs = kit_dirs()) = [get_kit(e) for e in kit_entries(dirs)]

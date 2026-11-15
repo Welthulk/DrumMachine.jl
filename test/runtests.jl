@@ -277,6 +277,15 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test k.name == "CrocellKit" && all(!isempty, k.layers)
             withenv("DRUMMACHINE_KIT_DIR" => joinpath(dir, "kits")) do      # found in the user kit dir
                 @test "CrocellKit" in [x.name for x in available_kits(D.kit_dirs())]
+                # listing reads no samples; a kit is loaded once and then taken from the cache
+                es = kit_entries([joinpath(dir, "kits")])
+                @test [e.name for e in es] == ["CrocellKit", "808 (Synth)", "909 (Synth)"]
+                k1 = get_kit(es[1]); @test get_kit(es[1]) === k1
+                touch(joinpath(dest, "kit.toml")); sleep(0.01)
+                @test get_kit(es[1]) !== k1                                     # kit.toml changed
+                write(joinpath(dest, "kit.toml"), "name = [")                   # broken file
+                k3 = @test_logs (:warn,) match_mode = :any get_kit(es[1])
+                @test k3.name == "CrocellKit" && length(k3.layers[1]) == 1     # synth fallback
             end
             # download with progress (file:// URL instead of the 561 MB archive)
             blob = joinpath(dir, "blob.bin"); write(blob, rand(UInt8, 3_000_000))
@@ -425,6 +434,15 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         # export is reproducible (seeded randomness)
         s = preset("Funk: Ghost Notes")
         @test render_song(s, bp; repeats = 2) == render_song(s, bp; repeats = 2)
+    end
+
+    @testset "Beispiel-Songs" begin
+        for f in filter(endswith(".toml"), readdir(DrumMachine.SONG_DIR; join = true))
+            s = load_song(f)
+            @test !isempty(s.chain) && all(1 <= i <= length(s.patterns) <= 16 for i in s.chain)
+        end
+        s = load_song(joinpath(DrumMachine.SONG_DIR, "Double-Time Swing (Whiplash-Stil).toml"))
+        @test s.bpm == 330 && length(s.chain) == 63 && 28 in [p.steps for p in s.patterns]
     end
 
     @testset "Speichern/Laden" begin

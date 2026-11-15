@@ -54,9 +54,10 @@ und eine Soundkarte. PortAudio bringt Julia selbst mit.
 Wichtig: aus einem normalen Terminal starten. In Umgebungen ohne OpenGL (z. B. VS Code als
 Flatpak) öffnet sich kein Fenster.
 
-Schneller Start: einmalig `./start_drum.sh --build` ausführen (dauert einige Minuten). Das baut
-`build/drummachine.so` mit vorkompiliertem GLMakie, danach nutzt `./start_drum.sh` das Image
-automatisch. Nach Paket-Updates neu bauen, das Skript weist darauf hin.
+Schneller Start: Fehlt das Sysimage `build/drummachine.so` (vorkompiliertes GLMakie), fragt
+`./start_drum.sh`, ob es jetzt gebaut werden soll (dauert einige Minuten). Danach meldet das
+Skript bei jedem Start, ob es das Image gefunden hat, und fragt nach Paket-Updates von selbst
+nach einem Neubau. Direkt bauen: `./start_drum.sh --build`.
 
 **Sprache:** Deutsch oder Englisch über *DE* / *EN* in der Kopfzeile. Voreingestellt ist die
 Systemsprache, die Wahl wird in `~/.config/DrumMachine/settings.toml` gespeichert.

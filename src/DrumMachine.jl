@@ -28,10 +28,11 @@ include("engine.jl")
 include("gui.jl")
 include("docs_view.jl")
 include("wavedit_gui.jl")
+include("precompile.jl")
 
 export Song, Pattern, TrackParams, Kit, Engine,
        preset, PRESET_NAMES, pattern_from_rows, row_string, parse_chain,
-       save_song, load_song, load_kit, synth_kit, available_kits,
+       save_song, load_song, load_kit, synth_kit, available_kits, kit_entries, get_kit,
        render_song, export_wav, ascii_filename, song_seconds,
        make_fill, FILL_STYLES,
        Wave, load_wave, save_wave

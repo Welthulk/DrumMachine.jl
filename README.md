@@ -57,9 +57,10 @@ sound card. PortAudio is installed by Julia itself.
 Start it from a regular terminal. Environments without OpenGL (e.g. VS Code as Flatpak)
 cannot open the window.
 
-Faster start: run `./start_drum.sh --build` once (takes a few minutes). It builds
-`build/drummachine.so` with precompiled GLMakie, and `./start_drum.sh` uses it from then on.
-Rebuild after package updates, the script tells you when.
+Faster start: if the sysimage `build/drummachine.so` (precompiled GLMakie) is missing,
+`./start_drum.sh` asks whether to build it now (takes a few minutes). After that the script reports
+at every start whether it found the image, and offers a rebuild after package updates. Build
+directly: `./start_drum.sh --build`.
 
 More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are available under
 *Preset laden*. Worked-out example songs with form, fills and track effects are in `songs/`
