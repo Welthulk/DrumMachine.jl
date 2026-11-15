@@ -20,7 +20,15 @@ sound card. PortAudio is installed by Julia itself.
    curl -fsSL https://install.julialang.org | sh
    ```
 
-2. **Get the repo and install the packages** (takes a few minutes the first time):
+2. **Install DrumMachine** from the Julia package registry (once the registration is merged):
+
+   ```bash
+   julia -t auto -e 'using Pkg; Pkg.add("DrumMachine"); using DrumMachine; DrumMachine.run()'
+   ```
+
+   Your songs and WAV exports are then stored in `~/.local/share/DrumMachine/songs`.
+
+   **Or** get the repository and install the packages (takes a few minutes the first time):
 
    ```bash
    git clone https://github.com/Welthulk/DrumMachine.jl.git

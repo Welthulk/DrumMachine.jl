@@ -288,6 +288,24 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
+    @testset "Song-Ordner" begin
+        D = DrumMachine
+        @test D.song_dir() == D.SONG_DIR                      # writable git checkout: songs/ as before
+        mktempdir() do dir
+            withenv("DRUMMACHINE_SONG_DIR" => joinpath(dir, "own")) do   # e.g. installed read-only
+                @test D.song_dir() == joinpath(dir, "own") && isdir(D.song_dir())
+                save_song(joinpath(D.song_dir(), "Mein Groove.toml"), preset("Rock: 8tel"))
+                names = D.list_songs()
+                @test "Mein Groove" in names && "Rock 8tel" in names   # own songs + examples
+                @test D.song_file("Rock 8tel") == joinpath(D.SONG_DIR, "Rock 8tel.toml")
+                @test D.song_file("Mein Groove") == joinpath(dir, "own", "Mein Groove.toml")
+            end
+            ro = joinpath(dir, "ro"); mkpath(ro); chmod(ro, 0o555)
+            @test !D.dir_writable(ro) || Sys.iswindows() || get(ENV, "USER", "") == "root"
+            chmod(ro, 0o755)
+        end
+    end
+
     @testset "Datei-Dialog" begin
         mktempdir() do bin
             fake = joinpath(bin, "zenity")

@@ -56,7 +56,7 @@ function wave_editor_figure(eng::Engine; wave::Union{Nothing,Wave} = nothing, la
     aac = Ref(false)                                     # format menu on AAC (export copies as .m4a)                                # widgets are being set from the state
     pending_discard = Ref("")                            # action waiting for a second click
     modified = Ref(false)
-    last_dir = Ref(SONG_DIR)
+    last_dir = Ref(song_dir())
 
     # ----------------------------------------------------------------- header
     hdr = fig[1, 1] = GridLayout(tellwidth = false, halign = :left)

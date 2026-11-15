@@ -2,7 +2,42 @@
 
 using GLMakie
 
-const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))
+const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))     # example songs shipped with the package
+
+"""
+Folder for the user's songs and WAV exports: the package's `songs/` in a writable checkout (git
+clone), otherwise (package installed with Pkg, read-only) `~/.local/share/DrumMachine/songs`.
+`DRUMMACHINE_SONG_DIR` overrides it.
+"""
+function song_dir()
+    d = get(ENV, "DRUMMACHINE_SONG_DIR", "")
+    if isempty(d)
+        d = dir_writable(SONG_DIR) ? SONG_DIR : joinpath(data_dir(), "songs")
+    end
+    mkpath(d)
+    return d
+end
+
+"True if files can be created in `dir`."
+function dir_writable(dir)
+    isdir(dir) || return false
+    probe = joinpath(dir, ".write_test_$(getpid())")
+    try
+        touch(probe); rm(probe)
+        return true
+    catch
+        return false
+    end
+end
+
+"Path of song `name`: the user's folder first, then the example songs."
+function song_file(name::AbstractString)
+    for d in unique([song_dir(), SONG_DIR])
+        f = joinpath(d, name * ".toml")
+        isfile(f) && return f
+    end
+    return joinpath(song_dir(), name * ".toml")
+end
 
 # Color palette (dark)
 const C_BG      = Makie.to_color("#121418")     # window background
@@ -247,12 +282,16 @@ function pick_file(startdir::AbstractString; title::AbstractString, ext::Abstrac
 end
 
 "File dialog for loading a song (.toml)."
-pick_song_file(startdir::AbstractString = SONG_DIR) =
+pick_song_file(startdir::AbstractString = song_dir()) =
     pick_file(startdir; title = L("Song laden"), ext = "toml", kind = "Songs")
 
 function list_songs()
-    isdir(SONG_DIR) || return String[]
-    sort([splitext(f)[1] for f in readdir(SONG_DIR) if endswith(f, ".toml")])
+    names = String[]
+    for d in unique([song_dir(), SONG_DIR])     # own songs and the example songs
+        isdir(d) || continue
+        append!(names, splitext(f)[1] for f in readdir(d) if endswith(f, ".toml"))
+    end
+    sort(unique(names))
 end
 
 "Short summary for the status line, e.g. `100 BPM · Swing 63 % (Auto) · Kette 1 1 2`."
@@ -670,7 +709,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     end
 
     safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")   # i18n-ok: regex
-    song_path(name) = joinpath(SONG_DIR, safe(name) * ".toml")
+    song_path(name) = joinpath(song_dir(), safe(name) * ".toml")
     # first free name: `base`, `base 2`, `base 3`, …
     function unique_name(base)
         name = base; k = 2
@@ -998,7 +1037,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     end
     on(load_menu.selection) do sel
         (sel === nothing || sel == "—") && return
-        path = joinpath(SONG_DIR, sel * ".toml")
+        path = song_file(sel)
         try
             set_song!(load_song(path)); set_edit!(path)
             status[] = L("Geladen: {1}  ({2}) – Bearbeiten an, „Speichern“ überschreibt.", path, song_summary(eng.song))
@@ -1007,7 +1046,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
         load_menu.i_selected[] = 0            # the same song can be reloaded (from disk)
     end
-    last_dir = Ref(SONG_DIR)
+    last_dir = Ref(song_dir())
     dialog_open = Ref(false)
     on(filebtn.clicks) do _
         dialog_open[] && return
@@ -1057,7 +1096,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(expbtn.clicks) do _
         commit_fields!()
         s = eng.song
-        path = joinpath(SONG_DIR, safe(s.name) * (s.loop ? " Loop" : "") * ".wav")
+        path = joinpath(song_dir(), safe(s.name) * (s.loop ? " Loop" : "") * ".wav")
         status[] = L("Exportiere …")
         try
             t = @elapsed (path = export_wav(path, s, eng.kit))
