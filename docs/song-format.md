@@ -25,7 +25,7 @@ All keys are optional. A missing key gets the default listed below, so a minimal
 | `name` | string | `"Neu"` | Song name, also used for the file names of save and export |
 | `bpm` | number | `100.0` | Tempo in beats per minute (GUI range 30–260) |
 | `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths |
-| `swing` | number | `0.5` (`2/3` for triplet grids) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8) |
+| `swing` | number | `0.5` (`2/3` for triplet grids in files without `swing_version`) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8) |
 | `swing_on` | integer | `0` | What swings in a straight grid: `0` auto, `8` 8ths, `16` 16ths |
 | `swing_version` | integer | `1` | Written as `2` by current versions. Files without it that use a triplet grid and `swing = 0.5` are read as exact triplets (compatibility with v0.1) |
 | `chain` | array of integers | `[1]` | Pattern order for song mode and export, 1-based. Invalid numbers are dropped |
@@ -93,7 +93,7 @@ a shorter one is filled with rests.
 | `RideBell` | ride bell |
 | `Crash` | crash |
 
-Unknown track names are ignored with a warning.
+Unknown track names are ignored: in pattern rows with a warning, `[track.<name>]` tables silently.
 
 ## Tracks: mixer and effects
 

@@ -25,8 +25,16 @@ und eine Soundkarte. PortAudio bringt Julia selbst mit.
    julia --project=. -e 'using Pkg; Pkg.instantiate()'
    ```
 
-3. **Optional:** Für *Datei öffnen …* braucht es `zenity` (GNOME) oder `kdialog` (KDE),
-   z. B. `sudo apt install zenity`.
+3. **Empfohlene Systemprogramme** (Debian/Ubuntu):
+
+   ```bash
+   sudo apt install libarchive-tools zenity ffmpeg
+   ```
+
+   - `libarchive-tools` (bsdtar) entpackt beim ersten Start die großen Sample-Kits
+     (Alternativen: `unrar` und `unzip`)
+   - `zenity` (GNOME) oder `kdialog` (KDE) für die Datei-Dialoge
+   - `ffmpeg` nur für den AAC-Export im WAV-Editor
 
 ## Start
 
@@ -42,12 +50,30 @@ Schneller Start: einmalig `./start_drum.sh --build` ausführen (dauert einige Mi
 `build/drummachine.so` mit vorkompiliertem GLMakie, danach nutzt `./start_drum.sh` das Image
 automatisch. Nach Paket-Updates neu bauen, das Skript weist darauf hin.
 
+**Sprache:** Deutsch oder Englisch über *DE* / *EN* in der Kopfzeile. Voreingestellt ist die
+Systemsprache, die Wahl wird in `~/.config/DrumMachine/settings.toml` gespeichert.
+
+**Kits beim ersten Start:** CrocellKit (561 MB) und VirtuosityDrums (1,2 GB) sind zu groß fürs
+Repo. Beim ersten Start werden sie automatisch im Hintergrund geladen und gebaut, der Fortschritt
+steht in der Statuszeile. BlackPearl und die Synth-Kits gehen sofort, die neuen Kits erscheinen
+im Kit-Menü, sobald sie fertig sind. Ablage: `~/.local/share/DrumMachine/kits`, die Downloads in
+`~/.cache/DrumMachine` (danach löschbar). Abschalten mit `auto_kits = false` in der
+Einstellungsdatei oder der Umgebungsvariable `DRUMMACHINE_NO_KIT_DOWNLOAD`.
+
 **Loop-Export:** Schalter *Loop* in der Export-Zeile. Die WAV hat dann keinen Einzähler, ist exakt
 ganze Takte lang, und das Ausklingen wird auf den Anfang gefaltet. So läuft sie ohne Lücke in
 Schleife. Am Roland TD-27: SONG → [F2] SETUP → Loop Type = LOOP.
 
 **Song-Dateien:** einfache TOML-Dateien, auch von Hand editierbar. Alle Felder inklusive Master- und
 Spur-Effekten beschreibt [docs/song-format.md](docs/song-format.md) (englisch).
+
+**WAV-Editor:** Knopf *WAV-Editor* in der Kopfzeile. Exportierte WAVs schneiden, trimmen, Fades,
+Normalisieren, Gain, Effekte und EQ, Einzähler voranstellen, BPM erkennen, mit Rückgängig. Unter
+*Format* gibt es auch AAC (.m4a), z. B. zum Verschicken per WhatsApp (braucht ffmpeg).
+
+![WAV-Editor](docs/wav-editor.png)
+ Siehe
+[docs/wav-editor.md](docs/wav-editor.md) (englisch) oder den Knopf *Docs* im Programm.
 
 **Bearbeiten:** Nach dem Laden eines eigenen Songs ist der Schalter an, *Speichern* überschreibt die
 Datei dann ohne Rückfrage.
@@ -64,12 +90,7 @@ ausgearbeitete Beispiel-Songs mit Form, Fills und Spur-Effekten unter `songs/` (
 | VirtuosityDrums | [Versilian Studios / Karoryfer](https://github.com/sfzinstruments/virtuosity_drums) | CC0 |
 | 808 / 909 (Synth) | synthetisiert | – |
 
-CrocellKit und VirtuosityDrums sind zu groß fürs Repo und werden einmalig gebaut:
-
-```bash
-julia --project=. tools/build_crocell.jl       # lädt 561 MB
-julia --project=. tools/build_virtuosity.jl    # lädt 1,2 GB
-```
+Manueller Neubau: `julia --project=. tools/build_crocell.jl` bzw. `tools/build_virtuosity.jl`.
 
 ## Lizenz
 

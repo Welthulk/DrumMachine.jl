@@ -116,6 +116,178 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
+    @testset "WAV-Editor" begin
+        D = DrumMachine
+        fs = 44100
+        x = Float32.(0.5 .* sinpi.(2 * 440 .* (0:fs-1) ./ fs))
+        w = Wave(hcat(x, -x), fs)
+        @test D.nframes(w) == fs && D.nchan(w) == 2
+        v = copy(w); D.delete_range!(v, 1:100); @test D.nframes(v) == fs - 100
+        v = copy(w); D.crop!(v, 101:200); @test D.nframes(v) == 100 && v.data[1, 1] == w.data[101, 1]
+        v = copy(w); D.silence!(v, 1:50); @test all(iszero, v.data[1:50, :]) && v.data[51, 1] == w.data[51, 1]
+        v = copy(w); D.fade_in!(v, 1:1); @test v.data[1, 1] == w.data[1, 1]         # 1-sample fade (SEdit threw)
+        v = copy(w); D.fade_in!(v, 1:1000; curve = :linear)
+        @test v.data[1, 1] == 0 && v.data[1000, 1] == w.data[1000, 1]
+        v = copy(w); D.fade_out!(v, fs-999:fs); @test v.data[end, 1] == 0
+        v = copy(w); D.normalize!(v, 1:fs; peak_db = 0); @test maximum(abs, v.data) ≈ 1
+        v = copy(w); D.gain!(v, 1:fs, -6.0206); @test maximum(abs, v.data) ≈ 0.25 atol = 1e-3
+        v = copy(w); D.reverse!(v, 1:fs); @test v.data[1, :] == w.data[end, :]
+        v = copy(w); D.insert_silence!(v, 1, 0.5); @test D.nframes(v) == fs + fs ÷ 2 && all(iszero, v.data[1:fs÷2, :])
+        v = copy(w); D.prepend_countin!(v; bpm = 120, beats = 4)
+        @test D.nframes(v) - fs == 4 * round(Int, 60fs / 120)                       # whole beats (SEdit: one short)
+        v = copy(w); c = D.copy_range(v, 1:10); D.paste!(v, 1, c); @test D.nframes(v) == fs + 10
+        m = Wave(x, fs); D.paste!(m, 1, hcat(x[1:5], x[1:5])); @test D.nchan(m) == 1 && D.nframes(m) == fs + 5
+        v = copy(w); D.set_channels!(v, 1); @test D.nchan(v) == 1
+        @test_throws ErrorException D.delete_range!(copy(w), nothing)
+        @test_throws ErrorException D.crop!(copy(w), 5:4)
+        wi = Wave(hcat(x, x), fs)          # in phase: reverb/echo take the L+R sum as input
+        for fx in D.WAVE_FX
+            v = copy(wi); D.apply_fx!(v, 1:fs, fx; mix = 0.6, eq = (6, -3, 800, 2))
+            @test all(isfinite, v.data)
+            fx in ("Hall", "Room", "Echo") && @test D.nframes(v) > fs               # tail added at the end
+        end
+        v = copy(wi); D.apply_fx!(v, 1:fs÷2, "Hall"); @test D.nframes(v) == fs    # tail rings into the rest
+        h = D.History(2); v = copy(w)
+        for k in 1:3; D.snapshot!(h, v, "Schritt $k"); D.delete_range!(v, 1:10); end
+        @test length(h.undo) == 2                                                   # limit
+        @test D.undo!(h, v) == "Schritt 3" && D.nframes(v) == fs - 20
+        @test D.redo!(h, v) == "Schritt 3" && D.nframes(v) == fs - 30
+        mn, mx = D.wave_peaks(w, 1, 1, fs, 500); @test length(mn) == 500 && isapprox(maximum(mx), 0.5; atol = 1e-3)
+        mn, mx = D.wave_peaks(w, 1, 1, 10, 500); @test length(mn) == 10           # zoomed in: one bin per frame
+        clk = zeros(Float32, 8fs); for b in 0:15; i = b * round(Int, 0.5fs) + 1; clk[i:i+400] .= 0.8f0; end
+        @test D.estimate_bpm(Wave(clk, fs)) == 120
+        s = preset("Rock: 8tel"); s.fx = "Clean"
+        @test D.estimate_bpm(Wave(render_song(s, bp; repeats = 2, countin = 0), SR)) == 100
+        mktempdir() do dir
+            p = joinpath(dir, "t.wav")
+            v = copy(w); D.gain!(v, 1:fs, 12)                                       # beyond full scale
+            for bits in (16, 24, 32)
+                save_wave(p, v; bits)
+                r = load_wave(p)
+                @test r.bits == bits && D.nframes(r) == fs && D.nchan(r) == 2
+                bits < 32 && @test maximum(abs, r.data) <= 1                        # clamped, no InexactError
+            end
+            save_wave(p, w; range = 1:100); @test D.nframes(load_wave(p)) == 100
+        end
+        eng = Engine(preset("Rock: 8tel"), bp)                                      # playback via the engine
+        D.preview_play!(eng, w.data, fs; from = 1, to = 1000, loop = true)
+        buf = zeros(Float32, 512, 2)
+        for _ in 1:6; D.render!(eng, buf); end
+        @test eng.preview.on && 1 <= eng.preview.shown[] <= 1001 && maximum(abs, buf) > 0.1
+        D.preview_play!(eng, w.data, fs; from = 1, to = 600)
+        for _ in 1:3; D.render!(eng, buf); end
+        @test !eng.preview.on
+        # --- regressions from the review ---
+        for bpm in (60, 90, 120, 140), rate in (22050, 44100, 48000)       # never negative / nonsense
+            c = zeros(Float32, 12rate); per = round(Int, 60rate / bpm)
+            for i in 1:per:length(c)-1000; c[i:i+round(Int, 0.02rate)] .= 0.8f0; end
+            b = D.estimate_bpm(Wave(c, rate))
+            @test b === nothing || 55 <= b <= 220
+        end
+        for rate in (22050, 96000)                                          # EQ at the file's own rate
+            t = Float32.(0.1 .* sinpi.(2 * 800 .* (0:rate-1) ./ rate))
+            v = Wave(t, rate); D.apply_fx!(v, 1:rate, "EQ"; eq = (0, 12, 800, 0))
+            g = 20log10(maximum(abs, v.data[rate÷2:end, 1]) / 0.1)
+            @test 11 < g < 13
+        end
+        v = Wave(x, 48000); c = D.copy_range(v, 1:48000)                   # clipboard keeps the rate
+        u = Wave(x, fs); D.paste!(u, 1, c; fs = 48000); @test abs(D.nframes(u) - (fs + fs * fs / 48000)) <= 2
+        v = Wave(Float32[1 2 3; 4 5 6], fs); D.set_channels!(v, 2); @test v.data == Float32[2 2; 5 5]
+        mktempdir() do dir                                                   # formats and channels on load
+            p8 = joinpath(dir, "8.wav"); WAV.wavwrite(hcat(x, x), p8; Fs = fs, nbits = 8, compression = WAV.WAVE_FORMAT_PCM)
+            @test load_wave(p8).bits == 16
+            p3 = joinpath(dir, "3.wav"); WAV.wavwrite(hcat(x, x, x), p3; Fs = fs, nbits = 16, compression = WAV.WAVE_FORMAT_PCM)
+            @test D.nchan(load_wave(p3)) == 2
+        end
+        eng2 = Engine(preset("Rock: 8tel"), bp)                              # short loop at 96 kHz: no OOB
+        d96 = rand(Float32, 1000, 2)
+        D.preview_play!(eng2, d96, 96000; from = 999, to = 1000, loop = true)
+        for _ in 1:4; D.render!(eng2, buf); end
+        @test eng2.preview.on && 999 <= eng2.preview.shown[] <= 1001
+        @test D.layout_char(D.GLMakie.Keyboard.z) in ('z', 'y')             # QWERTZ-aware shortcut letter
+        @test !isempty(D.load_docs())                                               # docs viewer finds docs/
+        @test all(p -> !isempty(p[2]), D.load_docs()[1][3])
+    end
+
+    @testset "Sprache" begin
+        D = DrumMachine
+        @test D.locale_lang(Dict("LANG" => "de_DE.UTF-8")) == :de
+        @test D.locale_lang(Dict("LANG" => "en_US.UTF-8")) == :en
+        @test D.locale_lang(Dict("LC_ALL" => "de_AT.UTF-8", "LANG" => "en_US.UTF-8")) == :de   # LC_ALL wins
+        @test D.locale_lang(Dict("LANG" => "C")) == :en
+        @test D.locale_lang(Dict{String,String}()) == :en
+        old = D.LANG[]
+        try
+            D.set_lang!(:en)
+            @test D.L("Speichern") == "Save"
+            @test D.L("Unbekannte Spur {1} ignoriert", "Cowbell") == "Unknown track Cowbell ignored"
+            @test D.L("kein Eintrag {1}", 7) == "kein Eintrag 7"                 # fallback: German text
+            D.set_lang!(:de)
+            @test D.L("Speichern") == "Speichern"
+        finally
+            D.set_lang!(old)
+        end
+        mktempdir() do dir                                                      # stored choice wins
+            withenv("XDG_CONFIG_HOME" => dir, "LANG" => "de_DE.UTF-8") do
+                @test D.initial_lang() == :de
+                D.save_setting!("language", "en")
+                @test D.initial_lang() == :en
+            end
+        end
+        # every L("…") key has an English entry, no German UI text outside L()
+        out = read(`$(Base.julia_cmd()) --project=$(pkgdir(DrumMachine)) $(joinpath(pkgdir(DrumMachine), "tools", "check_i18n.jl"))`, String)
+        @test occursin("0 missing translations, 0 German literals outside L()", out)
+    end
+
+    @testset "AAC" begin
+        D = DrumMachine
+        if D.has_ffmpeg()
+            mktempdir() do dir
+                fs = 44100
+                x = Float32.(0.3 .* sinpi.(2 * 440 .* (0:2fs-1) ./ fs))
+                p = D.save_aac(joinpath(dir, "t.m4a"), Wave(hcat(x, x), fs); range = 1:fs)
+                @test filesize(p) > 1000
+                info = read(`ffprobe -v error -show_entries stream=codec_name,channels -of csv=p=0 $p`, String)
+                @test strip(info) == "aac,2"
+            end
+        else
+            @test_skip "ffmpeg not installed"
+        end
+    end
+
+    @testset "Kits laden" begin
+        D = DrumMachine
+        mktempdir() do dir
+            # fake extracted CrocellKit mix: a few hits per instrument at 48 kHz
+            src = joinpath(dir, "CrocellKit_Stereo_MIX")
+            for (_, insts) in D.CROCELL_MAP, inst in insts
+                mkpath(joinpath(src, inst, "samples"))
+                for (k, a) in enumerate((0.05, 0.1, 0.2, 0.4, 0.8))
+                    y = a .* exp.(-(0:4799) ./ 800) .* sinpi.(2 .* 200 .* (0:4799) ./ 48000)
+                    WAV.wavwrite(hcat(y, y), joinpath(src, inst, "samples", "hit$k.wav"); Fs = 48000, nbits = 16, compression = WAV.WAVE_FORMAT_PCM)
+                end
+            end
+            msgs = String[]
+            dest = joinpath(dir, "kits", "CrocellKit")
+            D.build_crocell(; src, dest, log = m -> push!(msgs, m))
+            @test isfile(joinpath(dest, "kit.toml")) && isfile(joinpath(dest, "LICENSE.txt"))
+            @test !isdir(dest * ".building")                                   # built atomically
+            @test any(occursin("11/11", m) for m in msgs) && occursin("CrocellKit", msgs[end])
+            k = load_kit(dest)
+            @test k.name == "CrocellKit" && all(!isempty, k.layers)
+            withenv("DRUMMACHINE_KIT_DIR" => joinpath(dir, "kits")) do      # found in the user kit dir
+                @test "CrocellKit" in [x.name for x in available_kits(D.kit_dirs())]
+            end
+            # download with progress (file:// URL instead of the 561 MB archive)
+            blob = joinpath(dir, "blob.bin"); write(blob, rand(UInt8, 3_000_000))
+            got = D.fetch_file("file://" * blob, joinpath(dir, "cache", "blob.bin"), "Test"; log = m -> push!(msgs, m))
+            @test read(got) == read(blob) && !isfile(got * ".part")
+            withenv("DRUMMACHINE_NO_KIT_DOWNLOAD" => "1") do
+                @test !D.auto_kits_enabled() && D.auto_fetch_kits!(println, println) === nothing
+            end
+        end
+    end
+
     @testset "Datei-Dialog" begin
         mktempdir() do bin
             fake = joinpath(bin, "zenity")

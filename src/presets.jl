@@ -10,7 +10,7 @@
 function P(; steps = nothing, kw...)
     rows = Dict(String(k) => v for (k, v) in kw)
     lens = unique(length.(values(rows)))
-    length(lens) == 1 || error("Preset-Zeilen unterschiedlich lang: $(Dict(k => length(v) for (k, v) in rows))")
+    length(lens) == 1 || error(L("Preset-Zeilen unterschiedlich lang: {1}", Dict(k => length(v) for (k, v) in rows)))
     return pattern_from_rows(rows; steps)
 end
 
@@ -445,6 +445,6 @@ const PRESET_NAMES = first.(PRESETS)
 
 function preset(name::AbstractString)
     k = findfirst(p -> p.first == name, PRESETS)
-    k === nothing && error("Unbekanntes Preset \"$name\". Verfügbar: $(join(PRESET_NAMES, ", "))")
+    k === nothing && error(L("Unbekanntes Preset \"{1}\". Verfügbar: {2}", name, join(PRESET_NAMES, ", ")))
     return PRESETS[k].second()
 end

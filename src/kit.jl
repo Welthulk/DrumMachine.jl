@@ -117,7 +117,7 @@ function synth_sound(id::AbstractString)
         att = min.(1.0, t ./ 0.002)
         return finish(x .* att .* exp.(-t ./ 0.9))
     end
-    error("Unbekanntes Instrument $id")
+    error(L("Unbekanntes Instrument {1}", id))
 end
 
 "Synthetic kit: one layer per track (dynamics via level only)."
@@ -198,7 +198,7 @@ function load_kit(dir::AbstractString; fallback::Kit = synth_kit())
         ls = haskey(t, "folder") ? load_folder_layers(joinpath(dir, t["folder"])) :
                                     load_prefix_layers(dir, t["file"])
         if isempty(ls)
-            @warn "Kit $name: keine Samples für $id gefunden, nutze Synth-Klang" t
+            @warn L("Kit {1}: keine Samples für {2} gefunden, nutze Synth-Klang", name, id) t
         else
             layers[k] = ls
         end
@@ -236,21 +236,31 @@ end
 
 const KIT_DIR = normpath(joinpath(@__DIR__, "..", "kits"))
 
+"Kit folders: the kits shipped with the package, then the user's built/downloaded kits."
+kit_dirs() = unique([KIT_DIR, user_kit_dir()])
+
 """
-All kits: WAV kits from `kits/` (alphabetical), followed by the 808- and 909-style synth kits.
-The basic synth kit only serves as a fallback for missing samples.
+All kits: WAV kits from the kit folders (alphabetical, a name appears once; the package's own
+`kits/` wins), followed by the 808- and 909-style synth kits. The basic synth kit only serves as a
+fallback for missing samples.
 """
-function available_kits(dir = KIT_DIR)
+function available_kits(dirs = kit_dirs())
     syn = synth_kit()
     kits = Kit[]
-    if isdir(dir)
+    found = Dict{String,String}()                       # kit folder name => path
+    for dir in (dirs isa AbstractString ? [dirs] : dirs)
+        isdir(dir) || continue
         for d in sort(readdir(dir; join = true))
             isfile(joinpath(d, "kit.toml")) || continue
-            try
-                push!(kits, load_kit(d; fallback = syn))
-            catch e
-                @warn "Kit $(basename(d)) konnte nicht geladen werden" exception = e
-            end
+            haskey(found, basename(d)) && continue
+            found[basename(d)] = d
+        end
+    end
+    for name in sort(collect(keys(found)))
+        try
+            push!(kits, load_kit(found[name]; fallback = syn))
+        catch e
+            @warn L("Kit {1} konnte nicht geladen werden", name) exception = e
         end
     end
     push!(kits, kit_808(), kit_909())

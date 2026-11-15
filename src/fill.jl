@@ -71,8 +71,8 @@ const FILL_STYLES = [
     ("Snare/Tom-Wechsel",     2, fill_wechsel),
     ("Akzente 3-3-2",         2, fill_akzente),
     ("Snare-Crescendo",       2, fill_crescendo),
-    ("Tom-Abgang (2 Schläge)", 2, fill_abgang),
-    ("Ganzer Takt",           4, fill_rundlauf),
+    ("Tom-Abgang (2 Schläge)", 2, fill_abgang),   # i18n-ok: names translated at display
+    ("Ganzer Takt",           4, fill_rundlauf),   # i18n-ok: names translated at display
 ]
 
 """

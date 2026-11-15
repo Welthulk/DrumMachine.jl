@@ -118,14 +118,16 @@ struct Reverb
     apR::Vector{Allpass}
 end
 
-function Reverb(roomsize::Real, damp::Real)
+function Reverb(roomsize::Real, damp::Real; fs::Real = SR)
+    k = fs / 44100                     # delay lengths are tuned for 44.1 kHz
+    n(x) = max(1, round(Int, x * k))
     sizes = (1116, 1188, 1277, 1356)
     fb = Float32(roomsize)
     d = Float32(damp)
-    Reverb([Comb(s, fb, d) for s in sizes],
-           [Comb(s + 23, fb, d) for s in sizes],
-           [Allpass(556), Allpass(441)],
-           [Allpass(579), Allpass(464)])
+    Reverb([Comb(n(s), fb, d) for s in sizes],
+           [Comb(n(s + 23), fb, d) for s in sizes],
+           [Allpass(n(556)), Allpass(n(441))],
+           [Allpass(n(579)), Allpass(n(464))])
 end
 
 @inline function process(r::Reverb, l::Float32, rr::Float32)
@@ -234,9 +236,10 @@ function set_coeffs!(q::Biquad, b0, b1, b2, a0, a1, a2)
 end
 
 "Shelf/bell: `kind` = :low, :peak or :high; `gain` in dB."
-function design!(q::Biquad, kind::Symbol, f0::Real, gain::Real; Q::Real = 0.9)
+function design!(q::Biquad, kind::Symbol, f0::Real, gain::Real; Q::Real = 0.9, fs::Real = SR)
+    f0 = min(f0, 0.45fs)               # stay below Nyquist for low sample rates
     A = 10.0^(gain / 40)
-    w = 2π * f0 / SR
+    w = 2π * f0 / fs
     c = cos(w); sn = sin(w)
     if kind == :peak
         α = sn / (2Q)
@@ -271,8 +274,10 @@ mutable struct ModDelay
     bufR::Vector{Float32}
     idx::Int
     phase::Float64
+    fs::Float64
 end
-ModDelay() = ModDelay(zeros(Float32, 2048), zeros(Float32, 2048), 1, 0.0)
+ModDelay(fs::Real = SR) = (n = ceil(Int, 2048 * fs / 44100);
+                           ModDelay(zeros(Float32, n), zeros(Float32, n), 1, 0.0, Float64(fs)))
 
 @inline function tap(buf::Vector{Float32}, idx::Int, d::Float64)
     n = length(buf)
@@ -287,12 +292,13 @@ end
 "`chorus=true`: chorus, otherwise flanger. Output: (1 - mix/2)·dry + mix/2·wet."
 @inline function process(m::ModDelay, chorus::Bool, l::Float32, r::Float32,
                          mix::Float32, rate::Float32, depth::Float32, fb::Float32)
-    m.phase += rate / SR
+    fs = m.fs
+    m.phase += rate / fs
     m.phase >= 1 && (m.phase -= 1)
     if chorus
-        base = 0.012 * SR; sweep = depth * 0.006 * SR; off = 0.25     # L/R phase-offset
+        base = 0.012 * fs; sweep = depth * 0.006 * fs; off = 0.25     # L/R phase-offset
     else
-        base = 0.0008 * SR; sweep = depth * 0.0042 * SR; off = 0.08
+        base = 0.0008 * fs; sweep = depth * 0.0042 * fs; off = 0.08
     end
     dl = base + sweep * (0.5 + 0.5 * sinpi(2m.phase))
     dr = base + sweep * (0.5 + 0.5 * sinpi(2(m.phase + off)))

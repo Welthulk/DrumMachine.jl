@@ -52,7 +52,7 @@ has_trackfx(t::TrackParams) = has_eq(t) || t.mod > 1
 "Select effect `name` and set its default rate, depth and feedback."
 function set_mod!(t::TrackParams, name::AbstractString)
     k = findfirst(==(name), MOD_NAMES)
-    k === nothing && error("Unbekannter Effekt $name (erlaubt: $(join(MOD_NAMES, ", ")))")
+    k === nothing && error(L("Unbekannter Effekt {1} (erlaubt: {2})", name, join(MOD_NAMES, ", ")))
     t.mod = k
     if haskey(MOD_DEFAULTS, name)
         d = MOD_DEFAULTS[name]
@@ -86,11 +86,11 @@ end
 "Neutral swing value per grid: straight for 8ths/16ths, exact triplet for triplet grids."
 default_swing(steps_per_beat) = steps_per_beat in (3, 6) ? 2 / 3 : 0.5
 
-function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,
+function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,   # i18n-ok: default song name
               patterns = [Pattern(16)], chain = [1], kit = "CrocellKit", fx = "Clean",
               fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false, mono = false,
               swap_lr = false, loop = false)
-    swing_on in (0, 8, 16) || error("swing_on muss 0 (Auto), 8 oder 16 sein")
+    swing_on in (0, 8, 16) || error(L("swing_on muss 0 (Auto), 8 oder 16 sein"))
     swing = something(swing, default_swing(steps_per_beat))
     Song(name, bpm, swing, swing_on, steps_per_beat, patterns, chain,
          [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono, swap_lr, loop)
@@ -112,7 +112,7 @@ function level_from_char(c::Char)
     c == 'o' && return UInt8(1)
     c in ('x', '*') && return UInt8(2)
     c in ('X', '#') && return UInt8(3)
-    error("Unbekanntes Rasterzeichen '$c' (erlaubt: . o x X)")
+    error(L("Unbekanntes Rasterzeichen '{1}' (erlaubt: . o x X)", c))
 end
 
 row_string(p::Pattern, t::Int) = String([LEVEL_CHARS[p.grid[t, s]+1] for s in 1:p.steps])
@@ -125,7 +125,7 @@ function pattern_from_rows(rows::AbstractDict; steps::Union{Nothing,Int} = nothi
     p = Pattern(n)
     for (id, str) in rows
         t = track_index(String(id))
-        t === nothing && (@warn "Unbekannte Spur $id ignoriert"; continue)
+        t === nothing && (@warn L("Unbekannte Spur {1} ignoriert", id); continue)
         for (s, c) in enumerate(collect(str))
             s > MAXSTEPS && break
             p.grid[t, s] = level_from_char(c)
@@ -187,7 +187,7 @@ function track_from_dict(tp::AbstractDict)
         if name in MOD_NAMES
             set_mod!(t, name)
         else
-            @warn "Unbekannter Effekt $name ignoriert"
+            @warn L("Unbekannter Effekt {1} ignoriert", name)
         end
     end
     t.mod_mix = get(tp, "mod_mix", t.mod_mix)
@@ -201,7 +201,7 @@ end
 function song_from_dict(d::AbstractDict)
     pats = [pattern_from_rows(get(p, "rows", Dict()); steps = get(p, "steps", 16)) for p in get(d, "pattern", [])]
     isempty(pats) && push!(pats, Pattern(16))
-    s = Song(name = get(d, "name", "Neu"), bpm = get(d, "bpm", 100.0), swing = get(d, "swing", 0.5),
+    s = Song(name = get(d, "name", "Neu"), bpm = get(d, "bpm", 100.0), swing = get(d, "swing", 0.5),   # i18n-ok: default song name
              swing_on = get(d, "swing_on", 0),
              steps_per_beat = get(d, "steps_per_beat", 4), patterns = pats,
              chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "CrocellKit"), fx = get(d, "fx", "Clean"),

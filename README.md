@@ -6,7 +6,8 @@ Step sequencer in Julia for drum practice: enter a groove, listen to it, export 
 
 ![Screenshot](docs/screenshot.png)
 
-The user interface is in German. The **?** button opens a short help in German or English.
+The interface is available in English and German (buttons *EN* / *DE* in the header; the default
+follows the system language). The **?** button opens a short help, *Docs* the documentation.
 
 ## Installation
 
@@ -27,8 +28,16 @@ sound card. PortAudio is installed by Julia itself.
    julia --project=. -e 'using Pkg; Pkg.instantiate()'
    ```
 
-3. **Optional:** *Datei öffnen …* (open file) needs `zenity` (GNOME) or `kdialog` (KDE),
-   e.g. `sudo apt install zenity`.
+3. **Recommended system tools** (Debian/Ubuntu names):
+
+   ```bash
+   sudo apt install libarchive-tools zenity ffmpeg
+   ```
+
+   - `libarchive-tools` (bsdtar) unpacks the large sample kits on first start
+     (alternatives: `unrar` and `unzip`)
+   - `zenity` (GNOME) or `kdialog` (KDE) for the file dialogs
+   - `ffmpeg` only for AAC export in the WAV editor
 
 ## Start
 
@@ -61,6 +70,11 @@ More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are a
   without a gap. On a Roland TD-27 set SONG → [F2] SETUP → Loop Type = LOOP
 - *Bearbeiten* (edit) mode: *Speichern* overwrites the loaded song without asking
 - Songs are plain TOML files that can be edited by hand, see [docs/song-format.md](docs/song-format.md)
+- *WAV-Editor*: edit exported WAVs (cut, trim, fades, normalize, gain, effects, EQ, count-in, BPM
+  detection, undo, AAC export for messengers), see [docs/wav-editor.md](docs/wav-editor.md)
+
+  ![WAV editor](docs/wav-editor.png)
+- *Docs* button: the documentation inside the app
 
 ## Kits
 
@@ -71,12 +85,25 @@ More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are a
 | VirtuosityDrums | [Versilian Studios / Karoryfer](https://github.com/sfzinstruments/virtuosity_drums) | CC0 |
 | 808 / 909 (Synth) | synthesized | – |
 
-CrocellKit and VirtuosityDrums are too large for the repo and are built once:
+CrocellKit and VirtuosityDrums are too large for the repo. **On first start they are downloaded
+and built automatically in the background** (561 MB and 1.2 GB downloads, progress in the status
+line); BlackPearl and the synth kits work right away, and the new kits appear in the kit menu as
+soon as they are ready. Built kits go to `~/.local/share/DrumMachine/kits`, the downloads to
+`~/.cache/DrumMachine` (can be deleted afterwards).
+
+To switch the automatic download off, set `auto_kits = false` in
+`~/.config/DrumMachine/settings.toml` or the environment variable `DRUMMACHINE_NO_KIT_DOWNLOAD`.
+Manual (re)build:
 
 ```bash
-julia --project=. tools/build_crocell.jl       # downloads 561 MB
-julia --project=. tools/build_virtuosity.jl    # downloads 1.2 GB
+julia --project=. tools/build_crocell.jl
+julia --project=. tools/build_virtuosity.jl
 ```
+
+## Settings
+
+`~/.config/DrumMachine/settings.toml` stores the language chosen in the header
+(`language = "en"` or `"de"`) and `auto_kits` (see above).
 
 ## License
 

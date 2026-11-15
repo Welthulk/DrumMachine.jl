@@ -33,6 +33,22 @@ mutable struct Voice
 end
 Voice() = (b = Float32[]; Voice(b, b, 0.0, 1.0, 0f0, 0f0, 0, 0, 0, false))
 
+"""
+Playback of a WAV from the editor. Mixed in after master effect and limiter, so the file is heard
+unchanged. `pos` is a fractional frame position in the source (its own sample rate).
+"""
+mutable struct Preview
+    data::Matrix{Float32}
+    fs::Int
+    pos::Float64
+    stop::Int                        # last frame to play
+    loop_from::Int                   # loop start frame
+    loop::Bool
+    on::Bool
+    shown::Threads.Atomic{Int}       # current frame for the GUI (0 = not playing)
+end
+Preview() = Preview(zeros(Float32, 0, 1), SR, 1.0, 0, 1, false, false, Threads.Atomic{Int}(0))
+
 mutable struct Engine
     song::Song
     kit::Kit
@@ -67,6 +83,7 @@ mutable struct Engine
     lock::ReentrantLock
     running::Bool
     task::Union{Task,Nothing}
+    preview::Preview
 end
 
 function Engine(song::Song, kit::Kit)
@@ -77,7 +94,7 @@ function Engine(song::Song, kit::Kit)
                  click_sound(true), click_sound(false),
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
-                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing)
+                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview())
     apply_fx!(eng)
     return eng
 end
@@ -163,7 +180,7 @@ function nth_sample(layers, r, k)
         k <= length(layers[l]) && return layers[l][k]
         k -= length(layers[l])
     end
-    error("Index außerhalb der Layer")
+    error("Index außerhalb der Layer")   # i18n-ok: internal error, never shown
 end
 
 function click!(eng::Engine, accent::Bool)
@@ -379,7 +396,59 @@ function render!(eng::Engine, out::Matrix{Float32})
         out[k, 1] = tanh(l * m)
         out[k, 2] = tanh(r * m)
     end
+    eng.preview.on && mix_preview!(eng.preview, out)
     return out
+end
+
+"Adds the editor playback to `out` (linear interpolation, own sample rate, optional loop)."
+function mix_preview!(p::Preview, out::Matrix{Float32})
+    d = p.data; n = size(d, 1); st = p.fs / SR; c2 = size(d, 2) > 1 ? 2 : 1
+    n == 0 && (p.on = false; p.shown[] = 0; return out)
+    @inbounds for k in 1:size(out, 1)
+        if p.pos >= p.stop + 1
+            if p.loop && p.stop >= p.loop_from
+                # wrap into the loop, however far the step went past the end (short loops, other fs)
+                len = p.stop - p.loop_from + 1
+                p.pos = p.loop_from + mod(p.pos - p.loop_from, len)
+            else
+                p.on = false; p.shown[] = 0
+                return out
+            end
+        end
+        i = clamp(unsafe_trunc(Int, p.pos), 1, n); f = Float32(p.pos - i); j = min(i + 1, n)
+        out[k, 1] += d[i, 1] * (1f0 - f) + d[j, 1] * f
+        out[k, 2] += d[i, c2] * (1f0 - f) + d[j, c2] * f
+        p.pos += st
+    end
+    p.shown[] = unsafe_trunc(Int, p.pos)
+    return out
+end
+
+"""
+    preview_play!(eng, data, fs; from = 1, to = size(data, 1), loop = false)
+
+Starts playing `data` (frames × channels) from frame `from` to `to`; with `loop`, the range
+`from:to` repeats. Replaces any running preview.
+"""
+function preview_play!(eng::Engine, data::Matrix{Float32}, fs::Integer; from::Integer = 1,
+                       to::Integer = size(data, 1), loop::Bool = false)
+    n = size(data, 1)
+    n == 0 && return eng
+    a = clamp(from, 1, n); b = clamp(to, a, n)
+    lock(eng.lock) do
+        p = eng.preview
+        p.data = data; p.fs = fs; p.pos = a; p.stop = b; p.loop_from = a; p.loop = loop
+        p.on = true; p.shown[] = a
+    end
+    return eng
+end
+
+"Stops the editor playback."
+function preview_stop!(eng::Engine)
+    lock(eng.lock) do
+        eng.preview.on = false; eng.preview.shown[] = 0
+    end
+    return eng
 end
 
 "Send the track bus through EQ and modulation and add it to the sum `out`."
@@ -419,7 +488,7 @@ For a practice tool the delay at startup is not critical.
 function start_audio!(eng::Engine; device = nothing, latency::Real = 0.15)
     eng.running && return eng
     if Threads.nthreads() < 2
-        @warn "Julia läuft mit nur einem Thread – Audio kann stottern. Starte mit `julia -t auto`."
+        @warn L("Julia läuft mit nur einem Thread – Audio kann stottern. Starte mit `julia -t auto`.")
     end
     # Warm-up: precompile the render! paths so the JIT doesn't hit during playback
     warm = Engine(copy(eng.song), eng.kit)
@@ -537,7 +606,7 @@ function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = son
     y = render_song(s, kit; kw...)
     mono && (y = y[:, 1:1])                # both channels are identical
     mkpath(dirname(abspath(path)))
-    bits in (16, 24) || error("bits muss 16 oder 24 sein")
+    bits in (16, 24) || error(L("bits muss 16 oder 24 sein"))
     q = 2^(bits - 1) - 1
     pcm = round.(Int32, clamp.(y, -1, 1) .* q)
     WAV.wavwrite(bits == 16 ? Int16.(pcm) : pcm, path; Fs = SR, nbits = bits,
@@ -555,8 +624,8 @@ name ending in `_Click` is taken as the click track of another song. Returns `""
 function td27_name_warning(path::AbstractString)
     base = splitext(basename(path))[1]
     msgs = String[]
-    length(base) > 16 && push!(msgs, "Name hat $(length(base)) Zeichen, das TD-27 zeigt nur 16")
-    endswith(lowercase(base), "_click") && push!(msgs, "Name endet auf _Click – das TD-27 hält die Datei für eine Klick-Spur")
+    length(base) > 16 && push!(msgs, L("Name hat {1} Zeichen, das TD-27 zeigt nur 16", length(base)))
+    endswith(lowercase(base), "_click") && push!(msgs, L("Name endet auf _Click – das TD-27 hält die Datei für eine Klick-Spur"))
     return join(msgs, "; ")
 end
 
