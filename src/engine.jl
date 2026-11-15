@@ -40,6 +40,9 @@ mutable struct Engine
     last::Vector{Sample}             # zuletzt gespieltes Sample je Spur (keine direkte Wiederholung)
     rng::MersenneTwister             # geseedet → Exporte sind reproduzierbar
     fx::FXState
+    trackfx::Vector{TrackFX}         # EQ/Chorus/Flanger je Spur
+    bus::Vector{Matrix{Float32}}     # Spur-Busse (nur für Spuren mit Effekt benutzt)
+    fxon::Vector{Bool}               # Spur läuft im aktuellen Block über ihren Bus
     click_hi::Sample
     click_lo::Sample
     # Transport
@@ -70,6 +73,7 @@ function Engine(song::Song, kit::Kit)
     fx = FXState()
     nos = Sample(Float32[])
     eng = Engine(song, kit, [Voice() for _ in 1:NVOICES], fill(nos, NTRACKS), MersenneTwister(4711), fx,
+                 [TrackFX() for _ in 1:NTRACKS], [zeros(Float32, BLOCK, 2) for _ in 1:NTRACKS], fill(false, NTRACKS),
                  click_sound(true), click_sound(false),
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
@@ -166,9 +170,10 @@ function click!(eng::Engine, accent::Bool)
     start_voice!(eng, accent ? eng.click_hi : eng.click_lo, accent ? 0.7f0 : 0.5f0, 0f0, 1.0, 0, 0)
 end
 
-@inline function mix_voices!(eng::Engine, out::Matrix{Float32}, i0::Int, n::Int)
+@inline function mix_voices!(eng::Engine, main::Matrix{Float32}, i0::Int, n::Int)
     @inbounds for v in eng.voices
         v.active || continue
+        out = 1 <= v.track <= NTRACKS && eng.fxon[v.track] ? eng.bus[v.track] : main
         buf = v.buf; bufr = v.bufr; L = length(buf)
         pos = v.pos; rate = v.rate; gl = v.gl; gr = v.gr; fade = v.fade
         for i in i0:i0+n-1
@@ -335,6 +340,14 @@ function render!(eng::Engine, out::Matrix{Float32})
         t == 0 ? click!(eng, true) : trigger!(eng, t, lv; seq = false)
     end
     N = size(out, 1)
+    for t in 1:NTRACKS                       # Spur-Effekte: Busse vorbereiten
+        tp = eng.song.tracks[t]
+        eng.fxon[t] = has_trackfx(tp)
+        eng.fxon[t] || continue
+        size(eng.bus[t], 1) == N || (eng.bus[t] = zeros(Float32, N, 2))
+        fill!(eng.bus[t], 0f0)
+        update_eq!(eng.trackfx[t], tp.eq_low, tp.eq_mid, tp.eq_midf, tp.eq_high)
+    end
     i = 1
     while i <= N
         if eng.playing
@@ -351,6 +364,9 @@ function render!(eng::Engine, out::Matrix{Float32})
         eng.samplepos += n
         i += n
     end
+    for t in 1:NTRACKS
+        eng.fxon[t] && process_track!(eng.trackfx[t], eng.song.tracks[t], eng.bus[t], out, N)
+    end
     m = Float32(eng.song.master)
     fx = eng.fx
     @inbounds for k in 1:N
@@ -360,6 +376,28 @@ function render!(eng::Engine, out::Matrix{Float32})
         end
         out[k, 1] = tanh(l * m)
         out[k, 2] = tanh(r * m)
+    end
+    return out
+end
+
+"Spur-Bus durch EQ und Modulation schicken und auf die Summe `out` addieren."
+function process_track!(fx::TrackFX, tp::TrackParams, bus::Matrix{Float32}, out::Matrix{Float32}, N::Int)
+    eq = has_eq(tp)
+    md = tp.mod
+    chorus = md == 2
+    mix = tp.mod_mix; rate = tp.mod_rate; depth = tp.mod_depth; fb = clamp(tp.mod_fb, 0f0, 0.9f0)
+    @inbounds for k in 1:N
+        l = bus[k, 1]; r = bus[k, 2]
+        if eq
+            l, r = process(fx.low, l, r)
+            l, r = process(fx.mid, l, r)
+            l, r = process(fx.high, l, r)
+        end
+        if md > 1
+            l, r = process(fx.mod, chorus, l, r, mix, rate, depth, fb)
+        end
+        out[k, 1] += l
+        out[k, 2] += r
     end
     return out
 end

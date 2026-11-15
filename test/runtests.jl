@@ -48,6 +48,35 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test make_fill(short, 4, length(FILL_STYLES)).steps == 4                 # Fill länger als Pattern
     end
 
+    @testset "Spur-Effekte" begin
+        D = DrumMachine
+        q = D.design!(D.Biquad(), :low, 120, 6)                 # +6 dB Tiefen → 50-Hz-Sinus ~ doppelt so laut
+        y = [D.process(q, Float32(sinpi(2 * 50 * k / SR)), 0f0)[1] for k in 1:SR]
+        @test 1.8 < maximum(abs, y[SR÷2:end]) < 2.1
+        q = D.design!(D.Biquad(), :high, 5000, 6)               # Höhen-Shelf lässt Bass unverändert
+        y = [D.process(q, Float32(sinpi(2 * 50 * k / SR)), 0f0)[1] for k in 1:SR]
+        @test 0.97 < maximum(abs, y[SR÷2:end]) < 1.03
+        s = preset("Rock: 8tel")
+        y0 = render_song(s, bp; repeats = 1)
+        s2 = copy(s); s2.tracks[2].eq_midf = 2000                # nur Frequenz geändert: kein Effekt
+        @test render_song(s2, bp; repeats = 1) == y0
+        D.set_mod!(s2.tracks[4], "Flanger"); s2.tracks[4].mod_mix = 1
+        s2.tracks[1].eq_low = 4.5; D.set_mod!(s2.tracks[2], "Chorus")
+        y1 = render_song(s2, bp; repeats = 1)
+        @test y1 != y0 && maximum(abs, y1) < 0.98
+        mktempdir() do dir
+            path = joinpath(dir, "fx.toml")
+            save_song(path, s2)
+            txt = read(path, String)
+            @test occursin("mod = \"Flanger\"", txt) && occursin("eq_low = 4.5", txt)
+            @test count("eq_low", txt) == 1                       # nur Spuren mit Effekt
+            t = load_song(path).tracks
+            @test t[4].mod == 3 && t[4].mod_mix == 1 && t[4].mod_fb ≈ 0.6
+            @test t[2].mod == 2 && t[1].eq_low == 4.5 && t[3].mod == 1
+            @test render_song(load_song(path), bp; repeats = 1) ≈ y1
+        end
+    end
+
     @testset "Datei-Dialog" begin
         mktempdir() do bin
             fake = joinpath(bin, "zenity")

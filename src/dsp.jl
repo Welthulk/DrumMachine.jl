@@ -1,5 +1,6 @@
 # Kleine DSP-Bausteine: Offline-Filter für die Klangsynthese und
-# Echtzeit-Effekte (Reverb, Echo, Drive, Lo-Fi) für den Master-Bus.
+# Echtzeit-Effekte (Reverb, Echo, Drive, Lo-Fi) für den Master-Bus,
+# EQ und Chorus/Flanger je Spur.
 
 const SR = 44100          # Abtastrate [Hz]
 
@@ -213,6 +214,118 @@ end
         return round(fx.holdL * q) / q, round(fx.holdR * q) / q
     end
     return l, r
+end
+
+# ---------------------------------------------------------------------------
+# Spur-Effekte: 3-Band-EQ und Chorus/Flanger (je Spur, stereo, allokationsfrei)
+# ---------------------------------------------------------------------------
+
+"Stereo-Biquad (Direktform I), Koeffizienten nach RBJ-Audio-EQ-Cookbook."
+mutable struct Biquad
+    b0::Float64; b1::Float64; b2::Float64; a1::Float64; a2::Float64
+    xl1::Float64; xl2::Float64; yl1::Float64; yl2::Float64
+    xr1::Float64; xr2::Float64; yr1::Float64; yr2::Float64
+end
+Biquad() = Biquad(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+function set_coeffs!(q::Biquad, b0, b1, b2, a0, a1, a2)
+    q.b0 = b0 / a0; q.b1 = b1 / a0; q.b2 = b2 / a0; q.a1 = a1 / a0; q.a2 = a2 / a0
+    return q
+end
+
+"Kuhschwanz/Glocke: `kind` = :low, :peak oder :high; `gain` in dB."
+function design!(q::Biquad, kind::Symbol, f0::Real, gain::Real; Q::Real = 0.9)
+    A = 10.0^(gain / 40)
+    w = 2π * f0 / SR
+    c = cos(w); sn = sin(w)
+    if kind == :peak
+        α = sn / (2Q)
+        set_coeffs!(q, 1 + α * A, -2c, 1 - α * A, 1 + α / A, -2c, 1 - α / A)
+    else                                   # Shelf mit Steilheit S = 1
+        α = sn / 2 * sqrt(2)
+        k = 2sqrt(A) * α
+        if kind == :low
+            set_coeffs!(q, A * ((A + 1) - (A - 1) * c + k), 2A * ((A - 1) - (A + 1) * c),
+                        A * ((A + 1) - (A - 1) * c - k), (A + 1) + (A - 1) * c + k,
+                        -2 * ((A - 1) + (A + 1) * c), (A + 1) + (A - 1) * c - k)
+        else
+            set_coeffs!(q, A * ((A + 1) + (A - 1) * c + k), -2A * ((A - 1) + (A + 1) * c),
+                        A * ((A + 1) + (A - 1) * c - k), (A + 1) - (A - 1) * c + k,
+                        2 * ((A - 1) - (A + 1) * c), (A + 1) - (A - 1) * c - k)
+        end
+    end
+    return q
+end
+
+@inline function process(q::Biquad, l::Float32, r::Float32)
+    yl = q.b0 * l + q.b1 * q.xl1 + q.b2 * q.xl2 - q.a1 * q.yl1 - q.a2 * q.yl2
+    q.xl2 = q.xl1; q.xl1 = l; q.yl2 = q.yl1; q.yl1 = yl
+    yr = q.b0 * r + q.b1 * q.xr1 + q.b2 * q.xr2 - q.a1 * q.yr1 - q.a2 * q.yr2
+    q.xr2 = q.xr1; q.xr1 = r; q.yr2 = q.yr1; q.yr1 = yr
+    return Float32(yl), Float32(yr)
+end
+
+"Modulierte Verzögerung für Chorus (12–18 ms) und Flanger (0,8–5 ms, mit Feedback)."
+mutable struct ModDelay
+    bufL::Vector{Float32}
+    bufR::Vector{Float32}
+    idx::Int
+    phase::Float64
+end
+ModDelay() = ModDelay(zeros(Float32, 2048), zeros(Float32, 2048), 1, 0.0)
+
+@inline function tap(buf::Vector{Float32}, idx::Int, d::Float64)
+    n = length(buf)
+    p = idx - d
+    p < 1 && (p += n)
+    i = unsafe_trunc(Int, p)
+    f = Float32(p - i)
+    j = i == n ? 1 : i + 1
+    @inbounds return buf[i] * (1f0 - f) + buf[j] * f
+end
+
+"`chorus=true`: Chorus, sonst Flanger. Ausgabe: (1 - mix/2)·trocken + mix/2·nass."
+@inline function process(m::ModDelay, chorus::Bool, l::Float32, r::Float32,
+                         mix::Float32, rate::Float32, depth::Float32, fb::Float32)
+    m.phase += rate / SR
+    m.phase >= 1 && (m.phase -= 1)
+    if chorus
+        base = 0.012 * SR; sweep = depth * 0.006 * SR; off = 0.25     # L/R gegenphasig verschoben
+    else
+        base = 0.0008 * SR; sweep = depth * 0.0042 * SR; off = 0.08
+    end
+    dl = base + sweep * (0.5 + 0.5 * sinpi(2m.phase))
+    dr = base + sweep * (0.5 + 0.5 * sinpi(2(m.phase + off)))
+    wl = tap(m.bufL, m.idx, dl)
+    wr = tap(m.bufR, m.idx, dr)
+    @inbounds m.bufL[m.idx] = l + fb * wl
+    @inbounds m.bufR[m.idx] = r + fb * wr
+    m.idx = m.idx == length(m.bufL) ? 1 : m.idx + 1
+    g = 0.5f0 * mix
+    return (1f0 - g) * l + g * wl, (1f0 - g) * r + g * wr
+end
+
+const EQ_LOW_F = 120.0
+const EQ_HIGH_F = 5000.0
+
+"Effektzustand einer Spur. `key` merkt sich die EQ-Einstellung der aktuellen Koeffizienten."
+mutable struct TrackFX
+    low::Biquad
+    mid::Biquad
+    high::Biquad
+    mod::ModDelay
+    key::NTuple{4,Float32}
+end
+TrackFX() = TrackFX(Biquad(), Biquad(), Biquad(), ModDelay(), (0f0, 0f0, 0f0, 0f0))
+
+function update_eq!(fx::TrackFX, low::Float32, mid::Float32, midf::Float32, high::Float32)
+    key = (low, mid, midf, high)
+    key == fx.key && return fx
+    design!(fx.low, :low, EQ_LOW_F, low)
+    design!(fx.mid, :peak, midf, mid)
+    design!(fx.high, :high, EQ_HIGH_F, high)
+    fx.key = key
+    return fx
 end
 
 # ---------------------------------------------------------------------------

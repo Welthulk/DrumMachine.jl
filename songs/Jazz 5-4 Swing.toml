@@ -1,0 +1,109 @@
+# Jazz-Swing im 5/4-Takt (3+2), 35 Takte, Kit BlackPearl (im Repo)
+# Raster: 8tel-Triolen, 15 Steps pro Takt, Viertel = 160
+# Swing 64 %: etwas gerader als exakte Triolen, wie bei schnellem Jazz üblich
+# Form: Intro Ride (2) | A (8) | B Hihat + Cross-Stick (4) | A (4)
+#       | Trading: 3 Takte Time, 1 Takt Drum-Solo (8) | A (8) | Schluss (1)
+# Zeigt: ungerade Taktart, Ride-Pattern „Spang-a-lang“ mit Hihat-Pedal auf 2 und 4,
+#        gefederte Bassdrum (Ghost auf allen Vierteln), Snare-Comping auf dem „a“,
+#        lineares Triolen-Solo, Ride mit EQ und Panorama
+bpm = 160.0
+chain = [8, 8,  1, 2, 3, 2, 2, 3, 2, 5,  4, 4, 4, 5,  1, 2, 3, 5,
+         2, 2, 2, 6, 2, 3, 2, 6,  1, 2, 3, 2, 2, 3, 2, 5,  7]
+click = false
+countin = 1
+fx = "Room"
+fxmix = 0.35
+kit = "BlackPearl"
+master = 0.8
+mono = false
+name = "Jazz 5-4 Swing"
+repeats = 1
+steps_per_beat = 3
+swing = 0.64
+swing_on = 0
+swing_version = 2
+#            1+a2+a3+a4+a5+a
+# 1: A mit Crash auf der Eins
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Crash   = "X.............."
+    Ride    = "...x.xx..x.xx.x"
+    HHPedal = "...x.....x....."
+    Snare   = "........o..x..."
+    Kick    = "X..o..o..o..o.."
+# 2: A, Grundgroove: Ride, Hihat-Pedal auf 2 und 4, gefederte Bassdrum, Comping
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Ride    = "X..x.xx..x.xx.x"
+    HHPedal = "...x.....x....."
+    Snare   = "........o..x..."
+    Kick    = "o..o..o..o..o.."
+# 3: A-Variation, anderes Comping, „Bomb“ der Bassdrum auf dem „a“ der 4
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Ride    = "X..x.xx..x.xx.x"
+    HHPedal = "...x.....x....."
+    Snare   = "..o.....x.....o"
+    Kick    = "o..o..o..o.Xo.."
+# 4: B, geschlossene Hihat statt Ride, Cross-Stick auf der 4
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    HiHat = "X..x.xx..x.xx.x"
+    Rim   = ".........x....."
+    Snare = ".....o........o"
+    Kick  = "o..o..o..o..o.."
+# 5: Fill, Triolen über Snare und Toms auf 4 und 5
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Ride     = "X..x.xx........"
+    HHPedal  = "...x..........."
+    Snare    = ".........Xox..."
+    Tom      = "............xx."
+    FloorTom = "..............X"
+    Kick     = "o..o..o.......X"
+# 6: Solo-Takt (Trading): lineare Triolen Snare – Tom – Bassdrum, Crash auf der 5a
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Snare    = "X..x..X..x..xx."
+    Tom      = ".x..x.........."
+    FloorTom = ".......x..x...."
+    Kick     = "..x..x..x..x..X"
+    Crash    = "..............X"
+# 7: Schluss
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Crash = "X.............."
+    Ride  = "X.............."
+    Snare = "X.............."
+    Kick  = "X.............."
+# 8: Intro, nur Ride und Hihat-Pedal
+[[pattern]]
+steps = 15
+    [pattern.rows]
+    Ride    = "X..x.xx..x.xx.x"
+    HHPedal = "...x.....x....."
+
+[track.Ride]
+vol = 0.95
+pan = 0.25
+eq_high = 2.5
+eq_mid = -2.0
+eq_mid_freq = 630.0
+eq_low = 0.0
+
+[track.Kick]
+vol = 0.8
+
+[track.Snare]
+vol = 0.95
+
+[track.Crash]
+vol = 0.8
+pan = -0.2

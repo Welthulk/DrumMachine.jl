@@ -13,15 +13,53 @@ end
 Pattern(steps::Int = 16) = Pattern(steps, zeros(UInt8, NTRACKS, MAXSTEPS))
 Base.copy(p::Pattern) = Pattern(p.steps, copy(p.grid))
 
+# Modulationseffekte je Spur und ihre Standardwerte (Rate in Hz, Tiefe 0…1, Feedback 0…0,9)
+const MOD_NAMES = ["Aus", "Chorus", "Flanger"]
+const MOD_DEFAULTS = Dict("Chorus" => (rate = 0.8, depth = 0.5, fb = 0.0),
+                          "Flanger" => (rate = 0.25, depth = 0.7, fb = 0.6))
+const EQ_MIDF_DEFAULT = 800.0
+
 mutable struct TrackParams
     vol::Float32                 # 0 … 1.5
     pan::Float32                 # Versatz zum Kit-Panorama, -1 … 1
     pitch::Float32               # Halbtöne
     mute::Bool
     solo::Bool
+    # 3-Band-EQ in dB (-12 … +12): Tiefen-Shelf 120 Hz, Mitten-Glocke bei eq_midf, Höhen-Shelf 5 kHz
+    eq_low::Float32
+    eq_mid::Float32
+    eq_midf::Float32             # Hz, 200 … 6000
+    eq_high::Float32
+    # Modulation: Index in MOD_NAMES
+    mod::Int
+    mod_mix::Float32             # 0 … 1
+    mod_rate::Float32            # Hz
+    mod_depth::Float32           # 0 … 1
+    mod_fb::Float32              # 0 … 0.9
 end
-TrackParams() = TrackParams(1f0, 0f0, 0f0, false, false)
-Base.copy(t::TrackParams) = TrackParams(t.vol, t.pan, t.pitch, t.mute, t.solo)
+function TrackParams(; vol = 1, pan = 0, pitch = 0, mute = false, solo = false,
+                     eq_low = 0, eq_mid = 0, eq_midf = EQ_MIDF_DEFAULT, eq_high = 0,
+                     mod = 1, mod_mix = 0.5, mod_rate = 0.8, mod_depth = 0.5, mod_fb = 0)
+    TrackParams(vol, pan, pitch, mute, solo, eq_low, eq_mid, eq_midf, eq_high,
+                mod, mod_mix, mod_rate, mod_depth, mod_fb)
+end
+Base.copy(t::TrackParams) = TrackParams((getfield(t, f) for f in fieldnames(TrackParams))...)
+
+has_eq(t::TrackParams) = t.eq_low != 0 || t.eq_mid != 0 || t.eq_high != 0
+"Spur braucht einen eigenen Effekt-Bus (EQ oder Modulation aktiv)."
+has_trackfx(t::TrackParams) = has_eq(t) || t.mod > 1
+
+"Effekt `name` wählen und dessen Standardwerte für Rate, Tiefe und Feedback setzen."
+function set_mod!(t::TrackParams, name::AbstractString)
+    k = findfirst(==(name), MOD_NAMES)
+    k === nothing && error("Unbekannter Effekt $name (erlaubt: $(join(MOD_NAMES, ", ")))")
+    t.mod = k
+    if haskey(MOD_DEFAULTS, name)
+        d = MOD_DEFAULTS[name]
+        t.mod_rate = d.rate; t.mod_depth = d.depth; t.mod_fb = d.fb
+    end
+    return t
+end
 
 mutable struct Song
     name::String
@@ -116,10 +154,45 @@ function song_to_dict(s::Song)
                                        "rows" => Dict(TRACK_IDS[t] => row_string(p, t)
                                                       for t in 1:NTRACKS if any(!iszero, @view p.grid[t, 1:p.steps])))
                       for p in s.patterns],
-        "track" => Dict(TRACK_IDS[t] => Dict{String,Any}("vol" => tp.vol, "pan" => tp.pan, "pitch" => tp.pitch,
-                                                          "mute" => tp.mute, "solo" => tp.solo)
-                        for (t, tp) in enumerate(s.tracks)),
+        "track" => Dict(TRACK_IDS[t] => track_to_dict(tp) for (t, tp) in enumerate(s.tracks)),
     )
+end
+
+"Spur-Einstellungen; Effekt-Parameter nur, wenn sie vom Standard abweichen (Datei bleibt lesbar)."
+function track_to_dict(tp::TrackParams)
+    d = Dict{String,Any}("vol" => tp.vol, "pan" => tp.pan, "pitch" => tp.pitch, "mute" => tp.mute, "solo" => tp.solo)
+    r(x) = round(Float64(x); digits = 3)
+    if has_eq(tp)
+        d["eq_low"] = r(tp.eq_low); d["eq_mid"] = r(tp.eq_mid); d["eq_high"] = r(tp.eq_high)
+        d["eq_mid_freq"] = r(tp.eq_midf)
+    end
+    if tp.mod > 1
+        d["mod"] = MOD_NAMES[tp.mod]
+        d["mod_mix"] = r(tp.mod_mix); d["mod_rate"] = r(tp.mod_rate)
+        d["mod_depth"] = r(tp.mod_depth); d["mod_feedback"] = r(tp.mod_fb)
+    end
+    return d
+end
+
+function track_from_dict(tp::AbstractDict)
+    t = TrackParams(vol = get(tp, "vol", 1.0), pan = get(tp, "pan", 0.0), pitch = get(tp, "pitch", 0.0),
+                    mute = get(tp, "mute", false), solo = get(tp, "solo", false),
+                    eq_low = get(tp, "eq_low", 0.0), eq_mid = get(tp, "eq_mid", 0.0),
+                    eq_midf = get(tp, "eq_mid_freq", EQ_MIDF_DEFAULT), eq_high = get(tp, "eq_high", 0.0))
+    if haskey(tp, "mod")
+        name = String(tp["mod"])
+        if name in MOD_NAMES
+            set_mod!(t, name)
+        else
+            @warn "Unbekannter Effekt $name ignoriert"
+        end
+    end
+    t.mod_mix = get(tp, "mod_mix", t.mod_mix)
+    t.mod_rate = get(tp, "mod_rate", t.mod_rate)
+    t.mod_depth = get(tp, "mod_depth", t.mod_depth)
+    t.mod_fb = clamp(get(tp, "mod_feedback", t.mod_fb), 0, 0.9)
+    t.eq_midf = clamp(t.eq_midf, 200, 6000)
+    return t
 end
 
 function song_from_dict(d::AbstractDict)
@@ -141,8 +214,7 @@ function song_from_dict(d::AbstractDict)
     for (id, tp) in get(d, "track", Dict())
         t = track_index(id)
         t === nothing && continue
-        s.tracks[t] = TrackParams(get(tp, "vol", 1.0), get(tp, "pan", 0.0), get(tp, "pitch", 0.0),
-                                  get(tp, "mute", false), get(tp, "solo", false))
+        s.tracks[t] = track_from_dict(tp)
     end
     return s
 end

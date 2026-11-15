@@ -53,6 +53,8 @@ EINGABE
   Linksklick            Schlag an / aus
   Rechtsklick           Ghost  →  normal  →  Akzent
   Spurname              Vorhören      M / S   Stumm / Solo (gilt auch für den Export)
+  Spur-Effekte          Spurname anklicken: EQ (Tiefen, Mitten, Höhen) und
+                        Chorus / Flanger für diese Spur, wird im Song gespeichert
 
 TRANSPORT
   Leertaste             Play / Stop
@@ -86,7 +88,7 @@ EXPORT
 
 "Figure mit der Kurzhilfe."
 help_figure() = with_theme(DM_THEME) do
-    f = Figure(size = (760, 585), figure_padding = 16)
+    f = Figure(size = (760, 625), figure_padding = 16)
     panel!(f[1, 1])
     Label(f[1, 1], HELP_TEXT; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
           halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
@@ -260,12 +262,16 @@ function _build_gui(song::Song; audio::Bool = true)
     cellrects = [Rect2f(s - 1 + 0.06, 0.1, 0.88, 0.8) for s in 1:MAXSTEPS]
     rowcolors = [Observable(fill(C_OFF_A, MAXSTEPS)) for _ in 1:NTRACKS]
     axes = Axis[]
-    mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]
+    mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]; namebtns = Button[]
+    fx_track = Ref(1)                          # Spur, deren Effekte rechts angezeigt werden
     for t in 1:NTRACKS
         r = t + 1
         nb = Button(grid[r, 1], label = TRACKS[t][2], width = 100)
+        push!(namebtns, nb)
         on(nb.clicks) do _
             put!(eng.pads, (t, 2))
+            fx_track[] = t
+            refresh_fx!()
         end
         mb = Button(grid[r, 2], label = "M", width = 30)
         sb = Button(grid[r, 3], label = "S", width = 30)
@@ -298,8 +304,39 @@ function _build_gui(song::Song; audio::Bool = true)
         end
     end
     colgap!(grid, 8); rowgap!(grid, 4)
-    leg = Label(grid[NTRACKS+2, 5], "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören",
+    leg = Label(grid[NTRACKS+2, 5], "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören + Effekte",
                 halign = :left, color = C_TEXT2, fontsize = 12, tellwidth = false)
+
+    # Spur-Effekte (rechts neben dem Raster): EQ + Chorus/Flanger der gewählten Spur
+    fxbox = grid[1:NTRACKS+2, 6] = GridLayout(valign = :top, halign = :left)
+    Label(fxbox[1, 1:3], "SPUR-EFFEKTE", font = :bold, color = C_TEXT2, halign = :left)
+    fx_title = Label(fxbox[2, 1:3], "", font = :bold, color = C_ACTIVE, halign = :left, fontsize = 16)
+    fx_sliders = Dict{Symbol,Slider}()
+    fx_vals = Dict{Symbol,Observable{String}}()
+    midf_range = [200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6000]   # Terzen
+    rate_range = vcat(0.05:0.05:1, 1.1:0.1:5)
+    fx_rows = [(:eq_low, "Tiefen", -12:0.5:12, v -> "$(v) dB"),
+               (:eq_mid, "Mitten", -12:0.5:12, v -> "$(v) dB"),
+               (:eq_midf, "Mitten bei", midf_range, v -> v >= 1000 ? "$(round(v / 1000, digits = 1)) kHz" : "$(round(Int, v)) Hz"),
+               (:eq_high, "Höhen", -12:0.5:12, v -> "$(v) dB"),
+               (:mod_mix, "Mix", 0:0.01:1, v -> "$(round(Int, 100v)) %"),
+               (:mod_rate, "Rate", rate_range, v -> "$(round(v, digits = 2)) Hz"),
+               (:mod_depth, "Tiefe", 0:0.01:1, v -> "$(round(Int, 100v)) %"),
+               (:mod_fb, "Feedback", 0:0.01:0.9, v -> "$(round(Int, 100v)) %")]
+    Label(fxbox[3, 1:3], "EQ", color = C_DIM, fontsize = 12, halign = :left)
+    Label(fxbox[8, 1], "Effekt", color = C_TEXT2, halign = :left)
+    mod_menu = Menu(fxbox[8, 2:3], options = MOD_NAMES, default = "Aus", width = 150)
+    for (k, (f, name, rng, fmt)) in enumerate(fx_rows)
+        row = k <= 4 ? 3 + k : 4 + k
+        Label(fxbox[row, 1], name, color = C_TEXT2, halign = :left)
+        sl = Slider(fxbox[row, 2], range = rng, startvalue = getfield(TrackParams(), f), width = 130)
+        val = Observable("")
+        Label(fxbox[row, 3], val, color = C_TEXT, halign = :left, width = 62, fontsize = 12)
+        on(v -> (val[] = fmt(v)), sl.value; update = true)
+        fx_sliders[f] = sl; fx_vals[f] = val
+    end
+    fx_reset = Button(fxbox[13, 1:3], label = "Effekte der Spur zurücksetzen")
+    rowgap!(fxbox, 4); colgap!(fxbox, 6)
 
     # ---------------------------------------------------------------- Datei / Export
     panel!(fig[5, 1])
@@ -377,6 +414,27 @@ function _build_gui(song::Song; audio::Bool = true)
         end
     end
 
+    fx_updating = Ref(false)                   # Slider werden gerade aus der Spur gesetzt
+    function refresh_fx!()
+        t = fx_track[]
+        tp = eng.song.tracks[t]
+        fx_updating[] = true
+        try
+            fx_title.text[] = TRACKS[t][2]
+            for (f, sl) in fx_sliders
+                set_close_to!(sl, getfield(tp, f))
+            end
+            mod_menu.i_selected[] = tp.mod
+        finally
+            fx_updating[] = false
+        end
+        for (k, b) in enumerate(namebtns)
+            on_fx = has_trackfx(eng.song.tracks[k])
+            b.labelcolor[] = on_fx ? C_ACTIVE : C_TEXT
+            b.buttoncolor[] = k == t ? C_BTN_A : C_BTN
+        end
+    end
+
     function refresh_patbtns!()
         n = length(eng.song.patterns)
         playing = eng.playing ? eng.shown_pat[] : 0
@@ -412,7 +470,7 @@ function _build_gui(song::Song; audio::Bool = true)
         set_toggle!(mono_toggle, s.mono)
         k = findfirst(==(s.kit), kitnames)
         k !== nothing && (kit_menu.i_selected[] = k)
-        refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
+        refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!(); refresh_fx!()
     end
 
     safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")
@@ -520,6 +578,37 @@ function _build_gui(song::Song; audio::Bool = true)
             eng.song.tracks[t].solo = !eng.song.tracks[t].solo; refresh_tracks!()
         end
         on(v -> (eng.song.tracks[t].vol = v), volsls[t].value)
+    end
+    # Spur-Effekte
+    for (f, sl) in fx_sliders
+        on(sl.value) do v
+            fx_updating[] && return
+            tp = eng.song.tracks[fx_track[]]
+            lock(eng.lock) do
+                setfield!(tp, f, Float32(v))
+            end
+            f in (:eq_low, :eq_mid, :eq_high) && refresh_fx!()     # Anzeige „Spur hat Effekte“
+        end
+    end
+    on(mod_menu.selection) do sel
+        (sel === nothing || fx_updating[]) && return
+        tp = eng.song.tracks[fx_track[]]
+        MOD_NAMES[tp.mod] == sel && return
+        lock(eng.lock) do
+            set_mod!(tp, sel)
+        end
+        refresh_fx!()
+        sel == "Aus" || (status[] = "$(sel) auf $(TRACKS[fx_track[]][2]) – Mix, Rate, Tiefe und Feedback einstellbar.")
+    end
+    on(fx_reset.clicks) do _
+        tp = eng.song.tracks[fx_track[]]
+        d = TrackParams()
+        lock(eng.lock) do
+            for f in (:eq_low, :eq_mid, :eq_midf, :eq_high, :mod, :mod_mix, :mod_rate, :mod_depth, :mod_fb)
+                setfield!(tp, f, getfield(d, f))
+            end
+        end
+        refresh_fx!()
     end
 
     # Patterns

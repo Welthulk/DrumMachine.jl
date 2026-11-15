@@ -2,7 +2,7 @@
 # Form: A 8tel-Hihat (8) | B 16tel-Hihat mit Offbeat-Akzenten (8) | Stopp (1) | A kurz (4)
 #       | Breakdown Side Stick (8) | B (8) | Schluss (1)
 # Zeigt: 16tel-Swing, drei Dynamikstufen auf Snare und Hihat, Paradiddle-Fill, Ghost-Crescendo,
-#        Breakdown mit Side Stick
+#        Breakdown mit Side Stick, Spur-Effekte: Snare-EQ für knackige Ghost Notes, Bassdrum mit mehr Tiefe
 bpm = 92.0
 chain = [1, 2, 3, 2, 2, 3, 2, 4,  6, 5, 7, 5, 5, 7, 5, 8,  11,  1, 2, 3, 4,
          9, 9, 10, 10, 9, 9, 10, 11,  6, 5, 7, 5, 5, 7, 5, 8,  12]
@@ -118,6 +118,14 @@ pan = 0.15
 
 [track.Snare]
 vol = 1.05
+eq_mid = 2.0
+eq_mid_freq = 2000.0
+eq_high = 3.0
 
 [track.Rim]
 vol = 1.15
+
+[track.Kick]
+eq_low = 3.5
+eq_mid = -3.0
+eq_mid_freq = 315.0
