@@ -243,10 +243,10 @@ function metronome_figure(eng::Engine)
         c = fill(RGBAf(C_OFF_A), np)
         pulse > 0 && (c[pulse] = muted ? RGBAf(C_DIM) : pulse == 1 ? RGBAf(C_LEVEL_H[3]) : RGBAf(C_ACTIVE))
         cols[] = c
-        info.text[] = !m.on ? L("gestoppt") :
+        set_if_changed!(info.text, !m.on ? L("gestoppt") :           # text relayout only once per bar
                       bar < 0 ? "" :
                       L("Takt {1}", bar + 1) * (muted ? "  ·  " * L("stumm – weiterzählen!") : "") *
-                      (m.trainer_step > 0 ? "  ·  " * L("Trainer bis {1} BPM", m.trainer_max) : "")
+                      (m.trainer_step > 0 ? "  ·  " * L("Trainer bis {1} BPM", m.trainer_max) : ""))
     end
     tick!()
     return fig, tick!

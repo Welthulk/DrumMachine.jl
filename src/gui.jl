@@ -463,6 +463,9 @@ parse_bpm(str) = round(Int, parse(Float64, replace(strip(str), ',' => '.')))
 valid_bpm(str) = (v = tryparse(Float64, replace(strip(str), ',' => '.'));
                   v !== nothing && isfinite(v) && 30 <= round(Int, v) <= 400)
 
+"Sets observable `o` to `v` only if the value differs (avoids needless Makie updates)."
+set_if_changed!(o, v) = (o[] == v || (o[] = v); o)
+
 "Axis options without ticks, labels, grid and spines (faster than `hidedecorations!` afterwards)."
 const BARE_AXIS = (xticksvisible = false, yticksvisible = false, xticklabelsvisible = false,
                    yticklabelsvisible = false, xgridvisible = false, ygridvisible = false,
@@ -763,26 +766,39 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     function refresh_row!(t)
         p = cur_pattern(); spb = eng.song.steps_per_beat
         cols = rowcolors[t][]
+        changed = false
         for s in 1:MAXSTEPS
             v = p.grid[t, s]
             head = (s - 1) == playhead[]
-            cols[s] = v > 0 ? (head ? C_LEVEL_H[v] : C_LEVEL[v]) :
-                      head ? C_HEAD : (iseven((s - 1) ÷ spb) ? C_OFF_A : C_OFF_B)
+            c = v > 0 ? (head ? C_LEVEL_H[v] : C_LEVEL[v]) :
+                head ? C_HEAD : (iseven((s - 1) ÷ spb) ? C_OFF_A : C_OFF_B)
+            cols[s] == c && continue
+            cols[s] = c; changed = true
         end
-        notify(rowcolors[t])
+        changed && notify(rowcolors[t])
     end
 
+    # Grid geometry (step count, raster) of the last refresh: a pattern change in song mode
+    # with the same geometry only recolors the cells – axes, labels and menu stay untouched
+    # (relayouting them creates a lot of garbage, and the GC pauses then stall the audio thread).
+    grid_geom = Ref((0, 0))
     function refresh_grid!()
         p = cur_pattern()
-        for (t, ax) in enumerate(axes)
-            limits!(ax, 0, p.steps, 0, 1)
+        geom = (p.steps, eng.song.steps_per_beat)
+        if geom != grid_geom[]
+            grid_geom[] = geom
+            for ax in axes
+                limits!(ax, 0, p.steps, 0, 1)
+            end
+            limits!(headax, 0, p.steps, 0, 1)
+            headtxt[] = count_labels(p.steps, eng.song.steps_per_beat)
+            headpos[] = [Point2f(s - 0.5, 0.5) for s in 1:p.steps]
+            k = findfirst(==(p.steps), STEP_OPTS)
+            k === nothing || steps_menu.i_selected[] == k || (steps_menu.i_selected[] = k)
+        end
+        for t in 1:NTRACKS
             refresh_row!(t)
         end
-        limits!(headax, 0, p.steps, 0, 1)
-        headtxt[] = count_labels(p.steps, eng.song.steps_per_beat)
-        headpos[] = [Point2f(s - 0.5, 0.5) for s in 1:p.steps]
-        k = findfirst(==(p.steps), STEP_OPTS)
-        k === nothing || (steps_menu.i_selected[] = k)
     end
 
     function refresh_tracks!()
@@ -817,10 +833,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     function refresh_patbtns!()
         n = length(eng.song.patterns)
         playing = eng.playing ? eng.shown_pat[] : 0
-        for (i, b) in enumerate(patbtns)
-            b.buttoncolor[] = i == eng.edit_pat ? C_ACTIVE : i <= n ? C_BTN : C_PANEL
-            b.labelcolor[] = i == eng.edit_pat ? C_BG : i <= n ? C_TEXT : C_DIM
-            b.label[] = i == playing ? "▸$i" : string(i)
+        for (i, b) in enumerate(patbtns)       # only write what changed: every write relayouts the button
+            set_if_changed!(b.buttoncolor, i == eng.edit_pat ? C_ACTIVE : i <= n ? C_BTN : C_PANEL)
+            set_if_changed!(b.labelcolor, i == eng.edit_pat ? C_BG : i <= n ? C_TEXT : C_DIM)
+            set_if_changed!(b.label, i == playing ? "▸$i" : string(i))
         end
     end
 
@@ -1364,7 +1380,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         if !eng.playing && last[][3]
             playbtn.label[] = "▶  Play"
         elseif eng.playing && pt == 0
-            status[] = L("Einzähler …")
+            set_if_changed!(status, L("Einzähler …"))
         end
         last[] = cur
         return
