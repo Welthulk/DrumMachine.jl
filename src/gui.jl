@@ -109,9 +109,10 @@ PATTERNS & KETTE
   Steps                 Länge des Patterns (z. B. 12 für 3/4, 20 für 5/4)
   Kette                 Reihenfolge für Song-Modus und Export, z. B. „1x3 2“ = 1 1 1 2
 
-WAV-EDITOR & DOCS
+WAV-EDITOR, METRONOM & DOCS
   WAV-Editor            exportierte WAVs schneiden, Fades, Effekte, Einzähler (eigenes Fenster)
   Docs                  Dokumentation: Song-Dateiformat, WAV-Editor
+  Metronom              Klick mit Taktart, Unterteilung, Betonung, Klang, Lücken- und Tempo-Trainer
 
 DATEI
   Neu / Duplizieren     neuer Groove bzw. Kopie, das Original bleibt erhalten
@@ -159,9 +160,10 @@ PATTERNS & CHAIN
   Steps                 pattern length (e.g. 12 for 3/4, 20 for 5/4)
   Chain                 order for song mode and export, e.g. “1x3 2” = 1 1 1 2
 
-WAV EDITOR & DOCS
+WAV EDITOR, METRONOME & DOCS
   WAV Editor            cut exported WAVs, fades, effects, count-in (own window)
   Docs                  documentation: song file format, WAV editor
+  Metronome             click with time signature, subdivision, accents, sound, gap and tempo trainer
 
 FILE
   New / Duplicate       new groove or copy, the original stays untouched
@@ -372,6 +374,7 @@ State that outlives a rebuild of the main window (language switch): last WAV exp
 editor window and the rebuild callback set by `run`.
 """
 new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = Ref{Any}(nothing),
+                 metro_win = Ref{Any}(nothing),
                  kitmsg = Channel{String}(64),            # messages of the background kit download
                  kits_changed = Threads.Atomic{Bool}(false))
 
@@ -396,11 +399,12 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     hdr_r = fig[1, 1] = GridLayout(tellwidth = false, halign = :right)
     Label(hdr_r[1, 1], app_version(), fontsize = 13, color = C_TEXT2, padding = (0, 8, 0, 0))
     ghbtn = Button(hdr_r[1, 2], label = "GitHub ↗", height = 34, fontsize = 13)
-    wavbtn = Button(hdr_r[1, 3], label = L("WAV-Editor"), height = 34, fontsize = 13)
-    docsbtn = Button(hdr_r[1, 4], label = "Docs", height = 34, fontsize = 13)
-    helpbtn = Button(hdr_r[1, 5], label = "?", width = 34, height = 34, cornerradius = 17,
+    metbtn = Button(hdr_r[1, 3], label = L("Metronom"), height = 34, fontsize = 13)
+    wavbtn = Button(hdr_r[1, 4], label = L("WAV-Editor"), height = 34, fontsize = 13)
+    docsbtn = Button(hdr_r[1, 5], label = "Docs", height = 34, fontsize = 13)
+    helpbtn = Button(hdr_r[1, 6], label = "?", width = 34, height = 34, cornerradius = 17,
                      fontsize = 17, font = :bold)
-    langbtns = [Button(hdr_r[1, 5+k], label = uppercase(String(l)), width = 40, height = 34, fontsize = 13,
+    langbtns = [Button(hdr_r[1, 6+k], label = uppercase(String(l)), width = 40, height = 34, fontsize = 13,
                        buttoncolor = LANG[] == l ? C_ACTIVE : C_BTN, labelcolor = LANG[] == l ? C_BG : C_TEXT)
                 for (k, l) in enumerate(LANGS)]
     for (b, l) in zip(langbtns, LANGS)
@@ -619,6 +623,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         else
             wave_win[] = show_wave_editor(eng; path = isfile(last_export[]) ? last_export[] : "", last_export)
             status[] = L("WAV-Editor geöffnet.")
+        end
+    end
+    on(metbtn.clicks) do _
+        win = session.metro_win[]
+        if win !== nothing && isopen(win)
+            status[] = L("Metronom ist schon offen.")
+        else
+            session.metro_win[] = show_metronome(eng)
+            status[] = L("Metronom geöffnet.")
         end
     end
     on(ghbtn.clicks) do _

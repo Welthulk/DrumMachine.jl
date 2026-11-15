@@ -84,6 +84,7 @@ mutable struct Engine
     running::Bool
     task::Union{Task,Nothing}
     preview::Preview
+    metro::Metronome
 end
 
 function Engine(song::Song, kit::Kit)
@@ -94,7 +95,7 @@ function Engine(song::Song, kit::Kit)
                  click_sound(true), click_sound(false),
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
-                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview())
+                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview(), Metronome())
     apply_fx!(eng)
     return eng
 end
@@ -397,6 +398,7 @@ function render!(eng::Engine, out::Matrix{Float32})
         out[k, 2] = tanh(r * m)
     end
     eng.preview.on && mix_preview!(eng.preview, out)
+    metro_active(eng.metro) && mix_metro!(eng.metro, out)
     return out
 end
 
@@ -493,6 +495,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = 0.15)
     # Warm-up: precompile the render! paths so the JIT doesn't hit during playback
     warm = Engine(copy(eng.song), eng.kit)
     start_seq!(warm, [1], 1)
+    metro_start!(warm.metro)
     wbuf = zeros(Float32, BLOCK, 2)
     for _ in 1:200
         render!(warm, wbuf)
@@ -501,6 +504,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = 0.15)
     stream = device === nothing ? PortAudio.PortAudioStream(0, 2; kw...) :
                                   PortAudio.PortAudioStream(device, 0, 2; kw...)
     eng.running = true
+    eng.metro.latency = latency
     eng.task = Threads.@spawn begin
         buf = zeros(Float32, BLOCK, 2)
         try

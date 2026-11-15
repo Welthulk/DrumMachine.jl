@@ -83,6 +83,10 @@ More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are a
   detection, undo, AAC export for messengers), see [docs/wav-editor.md](docs/wav-editor.md)
 
   ![WAV editor](docs/wav-editor.png)
+- *Metronom* (metronome) window: 30–400 BPM with slider, field and tap tempo, time signatures up to
+  12/8 with accent groups, subdivisions (8ths, triplets, 16ths, swing, dotted …), accents (one,
+  none, 2 and 4, offbeats), seven click sounds, gap training (play n bars, mute m bars) and a
+  tempo trainer (+x BPM every n bars)
 - *Docs* button: the documentation inside the app
 
 ## Kits

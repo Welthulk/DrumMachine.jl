@@ -436,6 +436,44 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test render_song(s, bp; repeats = 2) == render_song(s, bp; repeats = 2)
     end
 
+    @testset "Metronom" begin
+        D = DrumMachine
+        function onsets(eng, secs)                  # first sample of each click (silence before)
+            out = zeros(Float32, D.BLOCK, 2); on = Int[]; quiet = 1000; i = 0
+            for _ in 1:ceil(Int, secs * SR / D.BLOCK)
+                D.render!(eng, out)
+                for a in abs.(view(out, :, 1))
+                    a > 1f-3 && quiet >= 400 && push!(on, i)
+                    quiet = a > 1f-3 ? 0 : quiet + 1; i += 1
+                end
+            end
+            return on
+        end
+        eng = D.Engine(preset("Leer"), synth_kit()); m = eng.metro
+        m.bpm = 120; D.metro_start!(m)
+        @test onsets(eng, 2.1) ⊆ (0:4) .* 22050 .+ (0:1)'           # quarters, sample-accurate
+        m.subdiv = 2; D.metro_stop!(m); D.metro_start!(m)
+        @test length(onsets(eng, 1.05)) == 5                         # 8ths
+        m.subdiv = 1; m.accent = 4; D.metro_stop!(m); D.metro_start!(m)
+        @test first(onsets(eng, 1.1)) in 11025:11026                 # offbeats only
+        m.accent = 3; @test [l for (_, l) in D.metro_events(m)] == [1, 1] && D.metro_events(m)[1][1] == 1.0
+        m.accent = 1; m.meter = findfirst(o -> o[1] == "7/8 (2+2+3)", D.METER_OPTS)
+        @test D.metro_events(m) == [(0.0, 3), (0.5, 1), (1.0, 2), (1.5, 1), (2.0, 2), (2.5, 1), (3.0, 1)]
+        m.meter = 4; m.gap_play = 1; m.gap_mute = 1; D.metro_stop!(m); D.metro_start!(m)
+        on = onsets(eng, 4.05)
+        @test length(on) == 5 && on[end] in 176400:176401           # bar 2 silent, bar 3 plays
+        m.gap_mute = 0; m.trainer_step = 10; m.trainer_bars = 1; m.trainer_max = 135
+        D.metro_stop!(m); D.metro_start!(m); onsets(eng, 6)
+        @test m.bpm == 135
+        for k in eachindex(D.SOUND_OPTS)
+            a, b, c = D.metro_sounds(k, D.kit_808())
+            @test 0.3 < maximum(abs, a.l) <= 1 && !isempty(b.l) && !isempty(c.l)
+        end
+        d = D.metro_settings(m); m2 = D.Metronome(); D.metro_apply_settings!(m2, d)
+        @test D.metro_settings(m2) == d
+        @test D.metro_apply_settings!(D.Metronome(), Dict("bpm" => "x", "meter" => "13/7")).bpm == 100
+    end
+
     @testset "Beispiel-Songs" begin
         for f in filter(endswith(".toml"), readdir(DrumMachine.SONG_DIR; join = true))
             s = load_song(f)
