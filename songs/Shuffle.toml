@@ -1,106 +1,97 @@
+# Blues-Shuffle, 4 × 12 Takte, Triolen-Raster, Kit BlackPearl (im Repo)
+# Form: Chorus 1 Hihat-Shuffle (12) | Chorus 2 mit Blues-Stopps (12) | Solo-Chorus Ride (12)
+#       | letzter Chorus mit Blues-Ende auf der 4 (12)
+# Zeigt: Shuffle-Triolen, Ghost Notes auf dem "a", Stop-Time, Triolen-Fill im Turnaround,
+#        Ride mit Hihat-Pedal, Spur-Einstellungen
 bpm = 90.0
-chain = [1, 1, 1, 2]
+chain = [1, 2, 2, 2, 2, 2, 2, 8, 2, 2, 2, 3,
+         6, 6, 6, 6, 1, 2, 2, 8, 2, 2, 2, 3,
+         5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3,
+         1, 2, 2, 8, 2, 2, 2, 8, 2, 2, 2, 7]
 click = false
 countin = 1
-fx = "Clean"
+fx = "Room"
 fxmix = 0.25
 kit = "BlackPearl"
 master = 0.8
+mono = false
 name = "Shuffle"
-repeats = 8
+repeats = 1
 steps_per_beat = 3
-swing = 0.5
-
+swing = 0.6666666666666666
+swing_on = 0
+swing_version = 2
+#            1+a2+a3+a4+a
+# 1: Shuffle mit Crash
 [[pattern]]
 steps = 12
-
+    [pattern.rows]
+    Crash = "X..........."
+    HiHat = "..xx.xx.xx.x"
+    Snare = "...X.....X.."
+    Kick  = "X.....X....."
+# 2: Shuffle mit Ghost Notes auf dem "a"
+[[pattern]]
+steps = 12
     [pattern.rows]
     HiHat = "x.xx.xx.xx.x"
-    Kick = "X.....X....."
-    Snare = "...X.....X.."
+    Snare = "..oX....oX.o"
+    Kick  = "X.....X....."
+# 3: Turnaround-Fill, Triolen über Snare und Toms
 [[pattern]]
 steps = 12
-
     [pattern.rows]
+    HiHat    = "x.xx.x......"
+    Snare    = "...X..Xxx..."
+    Tom      = ".........Xx."
     FloorTom = "...........X"
-    HiHat = "x.xx.xx....."
-    Kick = "X.....X....."
-    Snare = "...X.....XoX"
-    Tom = "......xx...."
-
-[track.Crash]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.FloorTom]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HHOpen]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HHPedal]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HiHat]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+    Kick     = "X.....X....X"
+# 4: Solo, Ride-Shuffle, Hihat-Pedal auf 2 und 4
+[[pattern]]
+steps = 12
+    [pattern.rows]
+    Ride    = "X.xX.xX.xX.x"
+    HHPedal = "...x.....x.."
+    Snare   = "..oX....oX.."
+    Kick    = "X.....X....."
+# 5: Solo mit Crash
+[[pattern]]
+steps = 12
+    [pattern.rows]
+    Crash   = "X..........."
+    Ride    = "..xX.xX.xX.x"
+    HHPedal = "...x.....x.."
+    Snare   = "..oX....oX.."
+    Kick    = "X.....X....."
+# 6: Blues-Stopp, nur die Eins, das Hihat-Pedal zählt weiter
+[[pattern]]
+steps = 12
+    [pattern.rows]
+    Crash   = "X..........."
+    Kick    = "X..........."
+    HHPedal = "...x.....x.."
+# 7: Blues-Ende, Triolen-Crescendo auf die 4
+[[pattern]]
+steps = 12
+    [pattern.rows]
+    Snare = "oooxxxXXX..."
+    Crash = ".........X.."
+    Kick  = ".........X.."
+# 8: Shuffle mit offener Hihat auf dem letzten "a"
+[[pattern]]
+steps = 12
+    [pattern.rows]
+    HiHat  = "x.xx.xx.xx.."
+    HHOpen = "...........x"
+    Snare  = "..oX....oX.."
+    Kick   = "X.....X....."
 
 [track.Kick]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 0.9
 
 [track.Ride]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 0.9
+pan = 0.2
 
-[track.RideBell]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Rim]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Snare]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Tom]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+[track.Crash]
+vol = 0.85

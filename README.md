@@ -11,6 +11,10 @@ Step-Sequencer in Julia zum Schlagzeug-Üben: Groove eintragen, vorhören, als W
 # oder: julia -t auto --project=. run.jl
 ```
 
+Schneller Start: einmalig `./start_drum.sh --build` ausführen (dauert einige Minuten). Das baut
+`build/drummachine.so` mit vorkompiliertem GLMakie, danach nutzt `./start_drum.sh` das Image
+automatisch. Nach Paket-Updates neu bauen, das Skript weist darauf hin.
+
 Die Bedienung erklärt der **?**-Button im Programm. Über 40 Grooves (Rock, Funk, Shuffle, Blues, Jazz, Latin, ungerade Taktarten) liegen unter *Preset laden*.
 
 ## Kits

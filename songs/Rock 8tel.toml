@@ -1,114 +1,154 @@
+# Rock-Song im 8tel-Feel, 38 Takte, Kit BlackPearl (im Repo), Raum-Hall
+# Form: Intro Floor Tom (4) | Strophe (8) | Pre-Chorus Four-on-the-Floor (4) | Chorus Ride + Push (8)
+#       | Bridge Half-Time mit Side Stick (4) | Stopp im 2/4-Takt (1) | Chorus (8) | Schlussschlag (1)
+# Zeigt: Akzente, Ghost Notes, Taktwechsel 4/4 → 2/4, 3er-Gruppen-Fill, Ride Bell, Anticipation,
+#        gestimmte Floor Tom, Spur-Lautstärken und Panorama
 bpm = 100.0
-chain = [1, 2, 2, 3]
+chain = [1, 1, 1, 2,  3, 4, 5, 6, 4, 4, 5, 6,  7, 7, 7, 8,  9, 10, 10, 11, 10, 10, 10, 6,
+         12, 12, 12, 13,  14,  9, 10, 10, 11, 10, 10, 10, 13,  15]
 click = false
 countin = 1
-fx = "Clean"
-fxmix = 0.25
+fx = "Room"
+fxmix = 0.3
 kit = "BlackPearl"
 master = 0.8
+mono = false
 name = "Rock 8tel"
-repeats = 8
+repeats = 1
 steps_per_beat = 4
 swing = 0.5
-
+swing_on = 0
+swing_version = 2
+#                 1e+a2e+a3e+a4e+a
+# 1: Intro, Floor Tom in 8teln mit Akzenten auf den Vierteln
 [[pattern]]
 steps = 16
-
+    [pattern.rows]
+    FloorTom = "X.x.X.x.X.x.X.x."
+    Kick     = "X.......X......."
+# 2: Intro-Fill, Snare-Crescendo
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    FloorTom = "X.x.X.x........."
+    Snare    = "........o.o.xxXX"
+    Kick     = "X.......X......X"
+# 3: Strophe mit Crash
+[[pattern]]
+steps = 16
     [pattern.rows]
     Crash = "X..............."
-    HiHat = "..x.x.x.x.x.x.x."
-    Kick = "X.......X.X....."
-    Snare = "....X.......X..."
+    HiHat = "..x.X.x.X.x.X.x."
+    Snare = "....X..o....X..."
+    Kick  = "X.......X.X....."
+# 4: Strophe, Hihat-Akzente auf den Vierteln, Ghost vor der 3
 [[pattern]]
 steps = 16
-
     [pattern.rows]
-    HiHat = "x.x.x.x.x.x.x.x."
-    Kick = "X.......X.X....."
-    Snare = "....X.......X..."
+    HiHat = "X.x.X.x.X.x.X.x."
+    Snare = "....X..o....X..."
+    Kick  = "X.......X.X....."
+# 5: Strophe-Variation, Bassdrum auf der 1+, offene Hihat auf der 4+
 [[pattern]]
 steps = 16
-
     [pattern.rows]
-    FloorTom = "...............x"
-    HiHat = "x.x.x.x.x.x....."
-    Kick = "X.......X.X....."
-    Snare = "....X.......Xx.."
-    Tom = "..............x."
+    HiHat  = "X.x.X.x.X.x.X..."
+    HHOpen = "..............x."
+    Snare  = "....X..o....X..."
+    Kick   = "X.x.....X.X..x.."
+# 6: kurzer Fill auf der 4
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat    = "X.x.X.x.X.x....."
+    Snare    = "....X..o....Xxx."
+    FloorTom = "...............X"
+    Kick     = "X.......X.X....X"
+# 7: Pre-Chorus, Four-on-the-Floor mit offener Hihat auf den Offbeats
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HHOpen  = "..x...x...x...x."
+    HHPedal = "X...X...X...X..."
+    Snare   = "....X.......X..."
+    Kick    = "X...X...X...X..."
+# 8: Pre-Chorus-Fill (Paradiddle-Feel über Snare und Toms)
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HHOpen   = "..x...x........."
+    Snare    = "....X...Xoxo...."
+    Tom      = "............xx.."
+    FloorTom = "..............xX"
+    Kick     = "X...X...X......X"
+# 9: Chorus mit Crash, Ride Bell auf den Vierteln
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash    = "X..............."
+    RideBell = "....X...X...X..."
+    Ride     = "..x...x...x...x."
+    Snare    = "....X.......X..o"
+    Kick     = "X.x....xX.X....."
+# 10: Chorus
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    RideBell = "X...X...X...X..."
+    Ride     = "..x...x...x...x."
+    Snare    = "....X.......X..o"
+    Kick     = "X.x....xX.X....."
+# 11: Chorus-Push: Crash + Snare vorgezogen auf die 4+
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    RideBell = "X...X...X...X..."
+    Ride     = "..x...x...x....."
+    Crash    = "..............X."
+    Snare    = "....X.......X.X."
+    Kick     = "X.x....xX.X...X."
+# 12: Bridge Half-Time, 16tel-Hihat mit Dynamik, Side Stick auf der 3
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "XoxoXoxoXoxoXoxo"
+    Rim   = "........X......."
+    Snare = "..............o."
+    Kick  = "X......x..x....."
+# 13: 3er-Gruppen-Fill über den Taktstrich (Snare – Tom – Bassdrum, linear)
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare    = "X..x..x..x..X..X"
+    Tom      = ".x..x..x........"
+    FloorTom = "..........x..x.."
+    Kick     = "..x..x..x..x..x."
+# 14: Stopp im 2/4-Takt, nur Crash + Bassdrum, Hihat-Pedal zählt weiter
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Crash   = "X......."
+    Kick    = "X......."
+    HHPedal = "....x..."
+# 15: Schlussschlag
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash    = "X..............."
+    Snare    = "X..............."
+    FloorTom = "X..............."
+    Kick     = "X..............."
 
 [track.Crash]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 0.85
+pan = -0.2
 
 [track.FloorTom]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HHOpen]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HHPedal]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HiHat]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Kick]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+pitch = -1.0
 
 [track.Ride]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.RideBell]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 0.9
+pan = 0.2
 
 [track.Rim]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Snare]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Tom]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 1.1

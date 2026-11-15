@@ -57,7 +57,7 @@ EINGABE
 TRANSPORT
   Leertaste             Play / Stop
   Modus Pattern         spielt das angezeigte Pattern in Schleife
-  Modus Song            spielt die Kette in Schleife
+  Modus Song            spielt die Kette in Schleife, das Raster zeigt das laufende Pattern
   Einzähler             Klick-Takt(e) vor dem Start
 
 RASTER & SWING
@@ -125,7 +125,7 @@ function pick_song_file(startdir::AbstractString = SONG_DIR)
         return nothing
     end
     out = IOBuffer()
-    p = run(pipeline(ignorestatus(cmd); stdout = out, stderr = devnull))
+    p = Base.run(pipeline(ignorestatus(cmd); stdout = out, stderr = devnull))   # `run` ist hier die GUI
     success(p) || return ""                       # Abbrechen
     return strip(String(take!(out)))
 end
@@ -734,12 +734,25 @@ function _build_gui(song::Song; audio::Bool = true)
     refresh_all!()
     status[] = HELP
 
-    last = Ref((-2, -2, false))
+    last = Ref((-2, -2, false, 0))
     function tick!()
         st = eng.playing ? eng.shown_step[] : -1
         pt = eng.shown_pat[]
-        cur = (st, pt, eng.playing)
+        sp = eng.shown_seqpos[]
+        cur = (st, pt, eng.playing, sp)
         cur == last[] && return
+        # Song-Modus: Raster folgt dem gerade spielenden Pattern
+        if eng.songmode && eng.playing && 1 <= pt <= length(eng.song.patterns)
+            if pt != eng.edit_pat
+                eng.edit_pat = pt
+                refresh_grid!()
+            end
+            if sp != last[][4]
+                seq = eng.seq
+                k = count(>(0), @view seq[1:min(sp, length(seq))])
+                status[] = "Song: Takt $k von $(count(>(0), seq)) · Pattern $pt   (Kette: $(chain_string(eng.song.chain)))"
+            end
+        end
         playhead[] = pt == eng.edit_pat ? st : -1
         for t in 1:NTRACKS; refresh_row!(t); end
         refresh_patbtns!()

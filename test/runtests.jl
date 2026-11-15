@@ -48,6 +48,18 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test make_fill(short, 4, length(FILL_STYLES)).steps == 4                 # Fill länger als Pattern
     end
 
+    @testset "Datei-Dialog" begin
+        mktempdir() do bin
+            fake = joinpath(bin, "zenity")
+            withenv("PATH" => bin * ":" * ENV["PATH"]) do
+                write(fake, "#!/bin/sh\necho /x/y.toml\n"); chmod(fake, 0o755)
+                @test DrumMachine.pick_song_file() == "/x/y.toml"
+                write(fake, "#!/bin/sh\nexit 1\n")
+                @test DrumMachine.pick_song_file() == ""                  # Abbrechen
+            end
+        end
+    end
+
     @testset "Timing" begin
         s = preset("Rock: 16tel"); s.bpm = 120
         @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # 4 Viertel à 0,5 s

@@ -1,97 +1,123 @@
+# Funk-Song mit Ghost Notes, 38 Takte, leichter 16tel-Swing (57 %)
+# Form: A 8tel-Hihat (8) | B 16tel-Hihat mit Offbeat-Akzenten (8) | Stopp (1) | A kurz (4)
+#       | Breakdown Side Stick (8) | B (8) | Schluss (1)
+# Zeigt: 16tel-Swing, drei Dynamikstufen auf Snare und Hihat, Paradiddle-Fill, Ghost-Crescendo,
+#        Breakdown mit Side Stick
 bpm = 92.0
-chain = [1]
+chain = [1, 2, 3, 2, 2, 3, 2, 4,  6, 5, 7, 5, 5, 7, 5, 8,  11,  1, 2, 3, 4,
+         9, 9, 10, 10, 9, 9, 10, 11,  6, 5, 7, 5, 5, 7, 5, 8,  12]
 click = false
 countin = 1
-fx = "Clean"
-fxmix = 0.25
-kit = "BlackPearl"
+fx = "Room"
+fxmix = 0.2
+kit = "CrocellKit"
 master = 0.8
+mono = false
 name = "Funk Ghost Notes"
-repeats = 8
+repeats = 1
 steps_per_beat = 4
-swing = 0.5
-
+swing = 0.57
+swing_on = 16
+swing_version = 2
+#               1e+a2e+a3e+a4e+a
+# 1: A mit Crash
 [[pattern]]
 steps = 16
-
+    [pattern.rows]
+    Crash = "X..............."
+    HiHat = "..x.x.x.x.x.x.x."
+    Snare = "....X..o.o..X..o"
+    Kick  = "X.x.......X..x.."
+# 2: A, Grundgroove
+[[pattern]]
+steps = 16
     [pattern.rows]
     HiHat = "x.x.x.x.x.x.x.x."
-    Kick = "X.x.......X..x.."
     Snare = "....X..o.o..X..o"
-
-[track.Crash]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.FloorTom]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HHOpen]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.HHPedal]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+    Kick  = "X.x.......X..x.."
+# 3: A-Variation, mehr Ghosts, offene Hihat auf der 4+
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat  = "x.x.x.x.x.x.x..."
+    HHOpen = "..............x."
+    Snare  = ".o..X.oo.o.oX..o"
+    Kick   = "X.x...x...X..x.."
+# 4: A-Fill, Ghost-Wirbel in den Akzent
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "x.x.x.x.x.x....."
+    Snare = "....X..o.o..oxxX"
+    Kick  = "X.x.......X....."
+# 5: B, 16tel-Hihat mit Akzenten auf den Offbeats
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "xoXoxoXoxoXoxoXo"
+    Snare = "....X..o.o..X..."
+    Kick  = "X..x..x...X..x.."
+# 6: B mit Crash
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash = "X..............."
+    HiHat = "..XoxoXoxoXoxoXo"
+    Snare = "....X..o.o..X..."
+    Kick  = "X..x..x...X..x.."
+# 7: B-Variation, offene Hihat auf 2a und 4a
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat  = "xoXoxoX.xoXoxoX."
+    HHOpen = ".......x.......x"
+    Snare  = "....X..o.o..X..o"
+    Kick   = "X..x..x...X..x.."
+# 8: Paradiddle-Fill (RLRR LRLL) über Tom und Snare
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat    = "xoXoxoXo........"
+    Snare    = "....X..o.o..X.ox"
+    Tom      = "........X.xx...."
+    FloorTom = ".............x.."
+    Kick     = "X..x..x.X......."
+# 9: Breakdown, leise 16tel-Hihat, Side Stick
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "xoxoxoxoxoxoxoxo"
+    Rim   = "....x.......x..."
+    Kick  = "X.........x....."
+# 10: Breakdown mit Snare-Ghosts zwischen den Side Sticks
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "xoxoxoxoxoxoxoxo"
+    Rim   = "....x.......x..."
+    Snare = ".o.o...o.o.o...o"
+    Kick  = "X..x......x..x.."
+# 11: Stopp mit Ghost-Crescendo
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash = "X..X............"
+    Kick  = "X..X............"
+    Snare = "...X....oooxxxXX"
+# 12: Schluss
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash = "X..............."
+    Snare = "X..............."
+    Kick  = "X..............."
 
 [track.HiHat]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Kick]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Ride]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.RideBell]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
-
-[track.Rim]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 0.9
+pan = 0.15
 
 [track.Snare]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+vol = 1.05
 
-[track.Tom]
-mute = false
-pan = 0.0
-pitch = 0.0
-solo = false
-vol = 1.0
+[track.Rim]
+vol = 1.15

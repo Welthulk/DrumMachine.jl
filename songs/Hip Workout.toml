@@ -1,0 +1,124 @@
+# Song auf Basis von "Funk: What-Is-Hip-Stil (Tower of Power)", 32 Takte
+# Form: A (8) | Ride-Bridge (4) | A + Break (8) | Breakdown (4) | Schluss-A + Tom-Fill (8)
+bpm = 124.0
+chain = [1, 2, 2, 3, 2, 2, 3, 4,  5, 6, 6, 10,  1, 2, 2, 3, 2, 3, 7, 8,  9, 9, 9, 10,  1, 2, 2, 3, 2, 3, 2, 11]
+click = false
+countin = 1
+fx = "Clean"
+fxmix = 0.25
+kit = "CrocellKit"
+master = 0.8
+mono = false
+name = "Hip Workout"
+repeats = 2
+steps_per_beat = 4
+swing = 0.5
+swing_on = 0
+swing_version = 2
+
+#               1e+a2e+a3e+a4e+a
+
+# 1: Groove mit Crash (Abschnittsanfang)
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash  = "X..............."
+    HHOpen = "..............X."
+    HiHat  = "..x.x.x.x.x.x..."
+    Kick   = "X..x..x..x....x."
+    Snare  = ".o..X..o.o..X..o"
+
+# 2: Groove
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HHOpen = "..............X."
+    HiHat  = "x.x.x.x.x.x.x..."
+    Kick   = "X..x..x..x....x."
+    Snare  = ".o..X..o.o..X..o"
+
+# 3: Groove-Variation
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HHOpen = "......X.......X."
+    HiHat  = "x.x.x...x.x.x..."
+    Kick   = "X..x..x...X..x.."
+    Snare  = ".o..X..o.o.oX.o."
+
+# 4: halber Groove + Fill Snare -> Tom -> Floor
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat    = "x.x.x.x........."
+    Kick     = "X..x..x..x......"
+    Snare    = ".o..X..oX.xx...."
+    Tom      = "............xx.."
+    FloorTom = "..............xX"
+
+# 5: Ride-Bridge mit Crash
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash    = "X..............."
+    Ride     = "....x...x...x..."
+    RideBell = "..x...x...x...x."
+    HHPedal  = "....x.......x..."
+    Kick     = "X.x....x..x..x.."
+    Snare    = "....X..o.o..X..o"
+
+# 6: Ride-Bridge
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Ride     = "x...x...x...x..."
+    RideBell = "..x...x...x...x."
+    HHPedal  = "....x.......x..."
+    Kick     = "X.x....x..x..x.."
+    Snare    = "....X..o.o..X..o"
+
+# 7: Break, Unisono-Kicks auf 1 und 2a, dann Luft
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash   = "X.....X........."
+    Kick    = "X.....X........."
+    Snare   = "X.....X........."
+    HHPedal = "........x...x..."
+
+# 8: Break, Kicks auf 1, 2a, 3+ und Auftakt-Fill
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Crash    = "X.....X...X....."
+    Kick     = "X.....X...X....."
+    Snare    = "X.....X...X.xx.."
+    Tom      = "..............x."
+    FloorTom = "...............X"
+
+# 9: Breakdown, Hihat + Rim
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat = "x.x.x.x.x.x.x.x."
+    Rim   = "....x.......x..."
+    Kick  = "X.........x....."
+
+# 10: linearer Fill (nie zwei Stimmen gleichzeitig)
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    HiHat    = "x..x..x........."
+    Snare    = ".o..X..o.xx..x.."
+    Kick     = "..x..x..x..x..x."
+    Tom      = "............x..."
+    FloorTom = "...............X"
+
+# 11: Schluss-Fill über den ganzen Takt
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare    = "X.xxX.xx........"
+    Tom      = "........X.xx...."
+    FloorTom = "............X.xX"
+    Kick     = "X...x...x...x..."

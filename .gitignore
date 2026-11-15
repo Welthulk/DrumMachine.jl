@@ -10,3 +10,6 @@ songs/*.wav
 *.jl.mem
 /docs/build/
 .vscode/
+
+# Sysimage (tools/build_sysimage.jl)
+/build/
