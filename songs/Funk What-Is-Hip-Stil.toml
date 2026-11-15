@@ -1,0 +1,109 @@
+bpm = 124.0
+chain = [1, 1, 1, 2]
+click = false
+countin = 1
+fx = "Clean"
+fxmix = 0.25
+kit = "CrocellKit"
+master = 0.8
+mono = false
+name = "Funk: What-Is-Hip-Stil (Tower of Power)"
+repeats = 8
+steps_per_beat = 4
+swing = 0.5
+swing_on = 0
+swing_version = 2
+
+[[pattern]]
+steps = 16
+
+    [pattern.rows]
+    HHOpen = "..............X."
+    HiHat = "x.x.x.x.x.x.x..."
+    Kick = "X..x..x..x....x."
+    Snare = ".o..X..o.o..X..o"
+[[pattern]]
+steps = 16
+
+    [pattern.rows]
+    HHOpen = "......X.......X."
+    HiHat = "x.x.x...x.x.x..."
+    Kick = "X..x..x...X..x.."
+    Snare = ".o..X..o.o.oX.o."
+
+[track.Crash]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.FloorTom]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HHOpen]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HHPedal]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HiHat]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Kick]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Ride]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.RideBell]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Rim]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Snare]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Tom]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
