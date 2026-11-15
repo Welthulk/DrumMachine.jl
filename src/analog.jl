@@ -1,27 +1,27 @@
-# Analog modellierte Drumcomputer-Kits im Stil der klassischen TR-808 und TR-909.
-# Alle Klänge werden beim Start synthetisiert (keine Samples).
+# Analog-modelled drum machine kits in the style of the classic TR-808 and TR-909.
+# All sounds are synthesized at startup (no samples).
 
 using Random: MersenneTwister
 
-# --- kleine Bausteine -------------------------------------------------------
+# --- small building blocks --------------------------------------------------
 
 _env(t, τ) = exp.(-t ./ τ)
 _sq(f, t, ph = 0.0) = sign.(sin.(2π .* (f .* t .+ ph)))
-"Sinus mit zeitabhängiger Frequenz f(t) (Vektor), phasenkontinuierlich."
+"Sine with time-varying frequency f(t) (vector), phase-continuous."
 _sweep(f) = sin.(cumsum(2π .* f ./ SR))
-"Sechs inharmonische Rechteck-Oszillatoren (die Metall-Quelle der 808/909)."
+"Six inharmonic square-wave oscillators (the metal source of the 808/909)."
 const METAL_FREQS = (205.3, 304.4, 369.6, 522.7, 540.0, 800.0)
 _metal6(t; scale = 1.0) = sum(_sq(f * scale, t, 0.13k) for (k, f) in enumerate(METAL_FREQS))
 _noise(rng, n) = 2 .* rand(rng, n) .- 1
-"Weiche Sättigung wie bei überfahrenen Analogstufen."
+"Soft saturation like an overdriven analog stage."
 _sat(x, drive) = tanh.(drive .* x) ./ tanh(drive)
 
-# --- 808-Stil ---------------------------------------------------------------
+# --- 808 style --------------------------------------------------------------
 
 function sound_808(id::AbstractString)
     rng = MersenneTwister(hash((808, id)))
     if id == "Kick"
-        # Brückentonfilter-Resonator: tiefer Sinus, leichter Pitch-Drop, langer Ausklang
+        # Bridged-T resonator: low sine, slight pitch drop, long decay
         n = _n(1.4); t = _t(n)
         f = 49 .+ 14 .* _env(t, 0.06)
         click = lowpass!(_noise(rng, n), 4000) .* _env(t, 0.002)
@@ -33,7 +33,7 @@ function sound_808(id::AbstractString)
         snappy = highpass!(lowpass!(_noise(rng, n), 9000), 1800) .* _env(t, 0.11)
         return finish(tone .+ 0.75 .* snappy)
     elseif id == "Rim"
-        # Rimshot: zwei hohe, sehr kurze Resonanzen
+        # Rimshot: two high, very short resonances
         n = _n(0.08); t = _t(n)
         x = (sin.(2π * 1720 .* t) .+ 0.6 .* sin.(2π * 470 .* t)) .* _env(t, 0.009)
         return finish(highpass!(x, 300))
@@ -51,14 +51,14 @@ function sound_808(id::AbstractString)
         nz = lowpass!(_noise(rng, n), 2500) .* _env(t, 0.004)
         return finish(_sweep(f) .* _env(t, 0.22) .+ 0.08 .* nz)
     elseif id == "Ride"
-        # 808 hat kein Ride: Becken-Schaltung, kürzer und heller
+        # 808 has no ride: cymbal circuit, shorter and brighter
         n = _n(2.2); t = _t(n)
         m = _metal6(t; scale = 1.45)
         x = bandpass!(copy(m), 7800, 1.5) .+ 0.3 .* bandpass!(copy(m), 4200, 2.0)
         highpass!(x, 4000)
         return finish(x .* (0.7 .* _env(t, 0.5) .+ 0.3 .* _env(t, 0.05)))
     elseif id == "RideBell"
-        # die berühmte 808-Cowbell: zwei Rechtecke 540/800 Hz durch einen Bandpass
+        # the famous 808 cowbell: two squares at 540/800 Hz through a bandpass
         n = _n(0.7); t = _t(n)
         x = _sq(540, t) .+ _sq(800, t)
         bandpass!(x, 2640, 1.8)
@@ -74,15 +74,15 @@ function sound_808(id::AbstractString)
     error("Unbekanntes Instrument $id")
 end
 
-# --- 909-Stil ---------------------------------------------------------------
+# --- 909 style --------------------------------------------------------------
 
-"Grobe 6-Bit-Quantisierung (Charakter der 909-Becken-ROMs)."
+"Coarse 6-bit quantization (character of the 909 cymbal ROMs)."
 _bits6(x) = round.(x .* 31) ./ 31
 
 function sound_909(id::AbstractString)
     rng = MersenneTwister(hash((909, id)))
     if id == "Kick"
-        # schneller Pitch-Sweep, Klick und Druck
+        # fast pitch sweep, click and punch
         n = _n(0.8); t = _t(n)
         f = 52 .+ 190 .* _env(t, 0.018) .+ 40 .* _env(t, 0.09)
         click = bandpass!(_noise(rng, n), 3500, 0.8) .* _env(t, 0.0025)
@@ -134,21 +134,21 @@ end
 
 # --- Kits -------------------------------------------------------------------
 
-# Pegelangleich an die akustischen Kits (Synth-Klänge sind sehr dicht, v. a. die Kick)
+# Level match to the acoustic kits (synth sounds are very dense, especially the kick)
 const ANALOG_GAIN = 0.42
 
 function analog_kit(name, sound, gain)
     layers = [[[Sample(sound(id))]] for id in TRACK_IDS]
     pan = Float32[0, 0, 0.1, -0.25, -0.25, -0.25, -0.2, 0.25, 0.3, 0.2, -0.3]
     choke = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
-    # Synth-Klänge haben nur einen Layer: Dynamik über den Pegel (Akzent wie an der Maschine)
+    # Synth sounds have only one layer: dynamics via level (accent like on the machine)
     return Kit(name, layers, pan, Float32.(ANALOG_GAIN .* gain), choke, (0.45f0, 0.75f0, 1.0f0))
 end
 
-"Kit im Stil der TR-808 (Ride Bell = Cowbell)."
+"Kit in the style of the TR-808 (Ride Bell = cowbell)."
 kit_808() = analog_kit("808 (Synth)", sound_808,
                        [1.0, 0.75, 0.6, 0.45, 0.45, 0.35, 0.8, 0.85, 0.35, 0.45, 0.4])
 
-"Kit im Stil der TR-909."
+"Kit in the style of the TR-909."
 kit_909() = analog_kit("909 (Synth)", sound_909,
                        [1.0, 0.8, 0.6, 0.4, 0.4, 0.3, 0.75, 0.8, 0.35, 0.4, 0.4])

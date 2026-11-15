@@ -1,10 +1,10 @@
-# Song im Stil von "Everybody Wants to Rule the World" (Tears for Fears), 12/8, 37 Takte
-# Raster: 8tel-Triolen, 4 punktierte Viertel pro Takt, punktierte Viertel = 112, Hall wie in den 80ern
-# Form: Intro Hihat + Side Stick (4) | Strophe (8) | Chorus Ride Bell (8) | Strophe (8)
-#       | Chorus mit 6/8-Takt am Ende (8) | Schluss (1)
-# Zeigt: Triolen-Raster, Taktwechsel 12/8 → 6/8, Triolen-Fill über die Toms, Hall-Effekt,
-#        Spur-Effekte: Chorus auf Hihat und Side Stick (80er-Schimmer), Flanger auf dem Crash,
-#        Snare mit EQ aufgehellt
+# Song in the style of "Everybody Wants to Rule the World" (Tears for Fears), 12/8, 37 bars
+# Grid: 8th-note triplets, 4 dotted quarters per bar, dotted quarter = 112, 80s-style reverb
+# Form: intro hi-hat + side stick (4) | verse (8) | chorus ride bell (8) | verse (8)
+#       | chorus with a 6/8 bar at the end (8) | ending (1)
+# Shows: triplet grid, time signature change 12/8 → 6/8, triplet fill across the toms, reverb effect,
+#        track effects: chorus on hi-hat and side stick (80s shimmer), flanger on the crash,
+#        snare brightened with EQ
 bpm = 112.0
 chain = [1, 1, 2, 2,  3, 4, 4, 6, 4, 5, 4, 6,  8, 7, 7, 9, 8, 7, 7, 9,
          3, 4, 5, 6, 4, 5, 4, 9,  8, 7, 7, 9, 8, 7, 7, 10,  11]
@@ -22,20 +22,20 @@ swing = 0.6666666666666666
 swing_on = 0
 swing_version = 2
 #            1+a2+a3+a4+a
-# 1: Intro, nur Hihat und Bassdrum
+# 1: Intro, hi-hat and bass drum only
 [[pattern]]
 steps = 12
     [pattern.rows]
     HiHat = ".x.x.x.x.x.x"
     Kick  = "X.....X....."
-# 2: Intro 2, Side Stick auf 2 und 4
+# 2: Intro 2, side stick on 2 and 4
 [[pattern]]
 steps = 12
     [pattern.rows]
     HiHat = ".x.x.x.x.x.x"
     Rim   = "...x.....x.."
     Kick  = "X.....X....."
-# 3: Grundgroove mit Crash
+# 3: Basic groove with crash
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -43,21 +43,21 @@ steps = 12
     HiHat = "...x.x.x.x.x"
     Snare = "...X.....X.."
     Kick  = "X.xX..X.xX.."
-# 4: Grundgroove
+# 4: Basic groove
 [[pattern]]
 steps = 12
     [pattern.rows]
     HiHat = ".x.x.x.x.x.x"
     Snare = "...X.....X.."
     Kick  = "X.xX..X.xX.."
-# 5: Grundgroove mit Ghost Notes
+# 5: Basic groove with ghost notes
 [[pattern]]
 steps = 12
     [pattern.rows]
     HiHat = ".x.x.x.x.x.x"
     Snare = "...X.o..oX.o"
     Kick  = "X.xX..X.xX.."
-# 6: Überleitung mit Snare-Doppel und offener Hihat
+# 6: Transition with snare doubles and open hi-hat
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -65,7 +65,7 @@ steps = 12
     HHOpen = "...........x"
     Snare  = "...X.....Xx."
     Kick   = "X.xX..X.xX.."
-# 7: Chorus, Ride-Triolen mit Glocke auf den Schlägen
+# 7: Chorus, ride triplets with bell on the beats
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -73,7 +73,7 @@ steps = 12
     Ride     = ".xx.xx.xx.xx"
     Snare    = "...X.....X.."
     Kick     = "X.xX..X.xX.."
-# 8: Chorus mit Crash
+# 8: Chorus with crash
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -82,7 +82,7 @@ steps = 12
     Ride     = ".xx.xx.xx.xx"
     Snare    = "...X.....X.."
     Kick     = "X.xX..X.xX.."
-# 9: Triolen-Fill Snare → Tom → Floor Tom
+# 9: Triplet fill snare → tom → floor tom
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -90,14 +90,14 @@ steps = 12
     Tom      = "......XxX..."
     FloorTom = ".........XxX"
     Kick     = "X.....X....."
-# 10: Taktwechsel: ein 6/8-Takt mit Snare-Anlauf
+# 10: Time signature change: one 6/8 bar with snare lead-in
 [[pattern]]
 steps = 6
     [pattern.rows]
     Crash = "X....."
     Kick  = "X....."
     Snare = "...oxX"
-# 11: Schluss mit Crash und offener Hihat
+# 11: Ending with crash and open hi-hat
 [[pattern]]
 steps = 12
     [pattern.rows]

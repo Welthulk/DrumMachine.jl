@@ -1,13 +1,13 @@
-# Baut das Kit "VirtuosityDrums" (Jazz-Kit von Versilian Studios / Karoryfer, CC0).
+# Builds the kit "VirtuosityDrums" (jazz kit by Versilian Studios / Karoryfer, CC0).
 #
-#   julia --project=. tools/build_virtuosity.jl           # lädt herunter (1,2 GB) und baut
-#   julia --project=. tools/build_virtuosity.jl /pfad/zum/entpackten/Ordner
+#   julia --project=. tools/build_virtuosity.jl           # downloads (1.2 GB) and builds
+#   julia --project=. tools/build_virtuosity.jl /path/to/extracted/folder
 #
-# Ergebnis: kits/VirtuosityDrums/ (nicht im Git). Entpacken mit `bsdtar` oder `unzip`;
-# FLAC wird mit dem `flac` aus FLAC_jll dekodiert (keine Systempakete nötig).
+# Result: kits/VirtuosityDrums/ (not in git). Extracted with `bsdtar` or `unzip`;
+# FLAC is decoded with the `flac` from FLAC_jll (no system packages needed).
 #
-# Mix wie im Hersteller-Preset „Basic Kit“: Overheads (Stereo) + Kick-Mikro + Snare-Mikro,
-# alle gleich laut; das Übersprechen der Nahmikrofone gehört zum Klang.
+# Mix as in the vendor preset "Basic Kit": overheads (stereo) + kick mic + snare mic,
+# all at equal level; the bleed of the close mics is part of the sound.
 
 include("kitbuilder.jl")
 import Downloads
@@ -17,9 +17,9 @@ const URL = "https://github.com/sfzinstruments/virtuosity_drums/releases/downloa
 const DEST = joinpath(@__DIR__, "..", "kits", "VirtuosityDrums")
 const MICS = ("oh", "kickmic", "snaremic")
 
-# Spur => (Instrument-Ordner, Artikulation)  →  <mic>/<inst>/<mic>_<inst>_<art>_vl<N>[_rr<M>].flac
+# Track => (instrument folder, articulation)  →  <mic>/<inst>/<mic>_<inst>_<art>_vl<N>[_rr<M>].flac
 const MAP = [
-    "Kick"     => ("kick", "snon"),          # Kick mit eingeschaltetem Snare-Teppich
+    "Kick"     => ("kick", "snon"),          # kick with snare wires engaged
     "Snare"    => ("snare", "center"),
     "Rim"      => ("snare", "crossstick"),
     "HiHat"    => ("hh", "closed"),
@@ -55,7 +55,7 @@ function fetch()
     return dir
 end
 
-"Sucht den Ordner `Samples` unterhalb von `root`."
+"Finds the `Samples` folder below `root`."
 function samples_dir(root)
     for (d, dirs, _) in walkdir(root)
         "Samples" in dirs && isdir(joinpath(d, "Samples", "oh")) && return joinpath(d, "Samples")
@@ -74,7 +74,7 @@ function read_flac(path)
     end
 end
 
-"Mischt alle vorhandenen Mikrofone einer Aufnahme zu Stereo (Mono-Mikros in die Mitte)."
+"Mixes all available mics of a recording to stereo (mono mics panned center)."
 function mix_mics(sdir, inst, stem)
     parts = Matrix{Float64}[]
     fs = 0.0

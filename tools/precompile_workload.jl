@@ -1,5 +1,5 @@
-# Typischer Programmablauf ohne Audio, damit PackageCompiler die nötigen Methoden mitkompiliert.
-# Wird von tools/build_sysimage.jl ausgeführt.
+# Typical program run without audio, so PackageCompiler compiles the required methods.
+# Run by tools/build_sysimage.jl.
 using DrumMachine
 const D = DrumMachine
 
@@ -16,7 +16,7 @@ make_fill(song.patterns[1], song.steps_per_beat, 2)
 D.GLMakie.activate!(title = "DrumMachine.jl")
 fig, eng, tick! = D.build_gui(song; audio = false)
 tick!()
-try                                   # Fenster kurz öffnen (nur mit OpenGL möglich)
+try                                   # open the window briefly (only possible with OpenGL)
     screen = display(fig)
     for _ in 1:30
         tick!(); sleep(1 / 60)

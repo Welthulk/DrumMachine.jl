@@ -1,19 +1,19 @@
-# GLMakie-Oberfläche: Step-Raster, Transport, Patterns/Kette, Speichern/Laden, WAV-Export.
+# GLMakie GUI: step grid, transport, patterns/chain, save/load, WAV export.
 
 using GLMakie
 
 const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))
 
-# Farbpalette (dunkel)
-const C_BG      = Makie.to_color("#121418")     # Fensterhintergrund
-const C_PANEL   = Makie.to_color("#1b1e24")     # Panels
-const C_LINE    = Makie.to_color("#2c313a")     # Panel-Rahmen, Trennlinien
+# Color palette (dark)
+const C_BG      = Makie.to_color("#121418")     # window background
+const C_PANEL   = Makie.to_color("#1b1e24")     # panels
+const C_LINE    = Makie.to_color("#2c313a")     # panel borders, separators
 const C_TEXT    = Makie.to_color("#e3e6eb")
-const C_TEXT2   = Makie.to_color("#8c94a0")     # Nebentext
-const C_DIM     = Makie.to_color("#4a505b")     # inaktive Beschriftung
-const C_OFF_A   = Makie.to_color("#2b3038")     # Step aus, Schlag 1/3/…
-const C_OFF_B   = Makie.to_color("#23272e")     # Step aus, Schlag 2/4/…
-const C_HEAD    = Makie.to_color("#33547c")     # Playhead auf leerem Step
+const C_TEXT2   = Makie.to_color("#8c94a0")     # secondary text
+const C_DIM     = Makie.to_color("#4a505b")     # inactive labels
+const C_OFF_A   = Makie.to_color("#2b3038")     # step off, beat 1/3/…
+const C_OFF_B   = Makie.to_color("#23272e")     # step off, beat 2/4/…
+const C_HEAD    = Makie.to_color("#33547c")     # playhead on an empty step
 const C_LEVEL   = (Makie.to_color("#8a5126"), Makie.to_color("#e8771e"), Makie.to_color("#ffb763"))
 const C_LEVEL_H = (Makie.to_color("#b06a33"), Makie.to_color("#ff9640"), Makie.to_color("#ffd59e"))
 const C_BTN     = Makie.to_color("#272b33")
@@ -41,10 +41,10 @@ const DM_THEME = Theme(
                textcolor = C_TEXT, textcolor_placeholder = C_DIM, cursorcolor = C_ACTIVE),
 )
 
-"Setzt einen Toggle nur, wenn sich der Wert ändert (sonst kippt die Anzeige)."
+"Sets a toggle only if its value changes (otherwise the display flips)."
 set_toggle!(t, v::Bool) = (t.active[] == v || (t.active[] = v); t)
 
-"Hintergrund-Panel für eine Zeile des Hauptlayouts."
+"Background panel for one row of the main layout."
 panel!(pos) = Box(pos, color = C_PANEL, strokecolor = C_LINE, strokewidth = 1, cornerradius = 10,
                   tellwidth = false, tellheight = false)
 
@@ -76,6 +76,7 @@ PATTERNS & KETTE
 DATEI
   Neu / Duplizieren     neuer Groove bzw. Kopie, das Original bleibt erhalten
   Speichern             songs/<Name>.toml – vorhandene Dateien erst nach zweitem Klick
+  Bearbeiten            an: „Speichern“ überschreibt die geladene Datei ohne Rückfrage
   Preset / Song laden   Groove-Bibliothek bzw. eigene Songs
   Datei öffnen …        Song (.toml) aus einem beliebigen Verzeichnis laden
 
@@ -84,21 +85,116 @@ EXPORT
   Einzähler, Klick      Takte vorweg bzw. Metronom auf jedem Schlag
   Stereo | Mono         wirkt auf Wiedergabe und WAV
   L ⇄ R                 linken und rechten Kanal tauschen (Wiedergabe und WAV)
+  Loop                  nahtlose Schleife ohne Einzähler, Datei „<Name> Loop.wav“;
+                        am TD-27: SONG → [F2] SETUP → Loop Type = LOOP
   WAV exportieren       songs/<Name>.wav, 44,1 kHz, 16 Bit
 """
 
-"Figure mit der Kurzhilfe."
-help_figure() = with_theme(DM_THEME) do
-    f = Figure(size = (760, 645), figure_padding = 16)
-    panel!(f[1, 1])
-    Label(f[1, 1], HELP_TEXT; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
+# English quick help. The GUI labels are German, so they appear here as in the original,
+# with an English explanation.
+const HELP_TEXT_EN = """
+INPUT
+  Left click            note on / off
+  Right click           ghost  →  normal  →  accent
+  Track name            preview      M / S   mute / solo (also applies to the export)
+  Track effects         click a track name: EQ (low, mid, high) and
+                        chorus / flanger for this track, saved with the song
+
+TRANSPORT
+  Space                 play / stop
+  Modus: Pattern        loops the pattern shown in the grid
+  Modus: Song           loops the chain, the grid follows the playing pattern
+  Einzähler             count-in bar(s) before playback starts
+
+GRID & SWING
+  Raster                16ths, 8th triplets, 16th triplets or 8ths
+  Swing                 position of the off-beat: 50 % straight, 67 % triplet, 75 % dotted
+  Auto / 8tel / 16tel   which subdivision swings in a straight grid
+
+PATTERNS & CHAIN
+  1 … 16                edit pattern
+  + Kopie / + Leer      new pattern as copy / empty
+  Löschen / Leeren      delete pattern / clear all notes
+  + Fill                new pattern: groove with a fill at the end, click again = other fill
+  Steps                 pattern length (e.g. 12 for 3/4, 20 for 5/4)
+  Kette                 order for song mode and export, e.g. "1x3 2" = 1 1 1 2
+
+FILE
+  Neu / Duplizieren     new groove or copy, the original stays untouched
+  Speichern             save as songs/<name>.toml – existing files only after a second click
+  Bearbeiten            (edit) on: "Speichern" overwrites the loaded file without asking
+  Preset / Song laden   load from the groove library or your own songs
+  Datei öffnen …        load a song (.toml) from any folder
+
+EXPORT
+  Wiederholungen        how many times the chain is written
+  Einzähler, Klick      count-in bars and metronome on every beat
+  Stereo | Mono         applies to playback and WAV
+  L ⇄ R                 swap left and right channel (playback and WAV)
+  Loop                  seamless loop without count-in, file "<name> Loop.wav";
+                        on the TD-27: SONG → [F2] SETUP → Loop Type = LOOP
+  WAV exportieren       songs/<name>.wav, 44.1 kHz, 16 bit
+"""
+
+"Figure with the quick help, switchable between German and English."
+help_figure(lang::Symbol = :de) = with_theme(DM_THEME) do
+    f = Figure(size = (820, 790), figure_padding = 16)
+    bar = f[1, 1] = GridLayout(halign = :left, tellwidth = false)
+    de = Button(bar[1, 1], label = "Deutsch", width = 90)
+    en = Button(bar[1, 2], label = "English", width = 90)
+    Label(bar[1, 3], "DrumMachine.jl $(app_version())  ·  $(REPO_URL)", color = C_TEXT2, fontsize = 12,
+          padding = (14, 0, 0, 0))
+    panel!(f[2, 1])
+    txt = Observable(lang == :en ? HELP_TEXT_EN : HELP_TEXT)
+    Label(f[2, 1], txt; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
           halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
           tellwidth = false, tellheight = false)
+    function mark(l)
+        de.buttoncolor[] = l == :de ? C_ACTIVE : C_BTN; de.labelcolor[] = l == :de ? C_BG : C_TEXT
+        en.buttoncolor[] = l == :en ? C_ACTIVE : C_BTN; en.labelcolor[] = l == :en ? C_BG : C_TEXT
+    end
+    mark(lang)
+    on(_ -> (txt[] = HELP_TEXT; mark(:de)), de.clicks)
+    on(_ -> (txt[] = HELP_TEXT_EN; mark(:en)), en.clicks)
+    rowsize!(f.layout, 1, Fixed(36))
     f
 end
 
-"Öffnet ein Fenster mit der Kurzhilfe."
-show_help() = display(GLMakie.Screen(; title = "DrumMachine – Hilfe"), help_figure())
+"Opens a window with the quick help."
+function show_help()
+    screen = display(GLMakie.Screen(; title = "DrumMachine – Hilfe / Help"), help_figure())
+    set_icon!(screen)
+    return screen
+end
+
+const REPO_URL = "https://github.com/Welthulk/DrumMachine.jl"
+const ICON_DIR = normpath(joinpath(@__DIR__, "..", "assets", "icon"))
+
+"Version from Project.toml, e.g. \"v0.6.1\"."
+app_version() = "v" * string(something(pkgversion(@__MODULE__), v"0.0.0"))
+
+"Sets the practice-pad icon (assets/icon) as the window icon. May have no effect on macOS/Wayland."
+function set_icon!(screen)
+    try
+        files = filter(endswith(".png"), readdir(ICON_DIR; join = true))
+        isempty(files) && return
+        GLMakie.GLFW.SetWindowIcon(screen.glscreen, map(GLMakie.Makie.load_icon, files))
+    catch e
+        @debug "Fenster-Icon nicht gesetzt" exception = e
+    end
+    return
+end
+
+"Opens `url` in the default browser."
+function open_url(url::AbstractString)
+    cmd = Sys.isapple() ? `open $url` : Sys.iswindows() ? `cmd /c start "" $url` : `xdg-open $url`
+    try
+        Base.run(pipeline(cmd; stdout = devnull, stderr = devnull); wait = false)
+        return true
+    catch
+        return false
+    end
+end
 
 const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),
                      ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2)]
@@ -106,7 +202,7 @@ const SWING_OPTS = [("Auto", 0), ("auf 8tel", 8), ("auf 16tel", 16)]
 const STEP_OPTS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 28, 30, 32]
 const MAXPATTERNS = 16
 
-"Zählsilben für die Kopfzeile: 1 e + a / 1 + a / 1 la li + la li / 1 +."
+"Count syllables for the header row: 1 e + a / 1 + a / 1 la li + la li / 1 +."
 function count_labels(steps::Int, spb::Int)
     syl = spb == 4 ? ("", "e", "+", "a") : spb == 3 ? ("", "+", "a") : spb == 6 ? ("", "la", "li", "+", "la", "li") :
           spb == 2 ? ("", "+") : ntuple(_ -> "", spb)
@@ -114,9 +210,9 @@ function count_labels(steps::Int, spb::Int)
 end
 
 """
-Öffnet den Datei-Dialog des Systems (zenity oder kdialog) und liefert den gewählten Pfad,
-`""` bei Abbruch oder `nothing`, wenn kein Dialog-Programm installiert ist. Blockiert nur
-die aufrufende Task, die GUI läuft weiter.
+Opens the system file dialog (zenity or kdialog) and returns the chosen path, `""` on
+cancel, or `nothing` if no dialog program is installed. Blocks only the calling task, the
+GUI keeps running.
 """
 function pick_song_file(startdir::AbstractString = SONG_DIR)
     dir = isdir(startdir) ? startdir : homedir()
@@ -128,8 +224,8 @@ function pick_song_file(startdir::AbstractString = SONG_DIR)
         return nothing
     end
     out = IOBuffer()
-    p = Base.run(pipeline(ignorestatus(cmd); stdout = out, stderr = devnull))   # `run` ist hier die GUI
-    success(p) || return ""                       # Abbrechen
+    p = Base.run(pipeline(ignorestatus(cmd); stdout = out, stderr = devnull))   # `run` is the GUI here
+    success(p) || return ""                       # cancel
     return strip(String(take!(out)))
 end
 
@@ -138,7 +234,7 @@ function list_songs()
     sort([splitext(f)[1] for f in readdir(SONG_DIR) if endswith(f, ".toml")])
 end
 
-"Kurzbeschreibung für die Statuszeile, z. B. `100 BPM · Swing 63 % (Auto) · Kette 1 1 2`."
+"Short summary for the status line, e.g. `100 BPM · Swing 63 % (Auto) · Kette 1 1 2`."
 function song_summary(s::Song)
     pct = round(Int, 100s.swing)
     sw = s.steps_per_beat in (3, 6) ? (s.swing == 2 / 3 ? "exakte Triolen" : "Triolen-Swing $pct %") :
@@ -151,14 +247,15 @@ fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 6
 """
     run(; song = preset("Rock: 8tel"), block = true)
 
-Startet die Drum-Machine. `block=false` kehrt sofort zurück (für die REPL) und gibt
-`(fig, eng)` zurück.
+Starts the drum machine. `block=false` returns immediately (for the REPL) and returns
+`(fig, eng)`.
 """
 function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Bool = true)
     GLMakie.activate!(title = "DrumMachine.jl")
     fig, eng, tick! = build_gui(song; audio)
     screen = display(fig)
-    # Playhead-Anzeige (läuft auf dem Haupt-Thread)
+    set_icon!(screen)
+    # playhead display (runs on the main thread)
     @async begin
         while isopen(screen)
             tick!()
@@ -176,7 +273,7 @@ end
 """
     build_gui(song; audio=true) -> (fig, eng, tick!)
 
-Baut Figure und Engine auf (ohne Fenster). `tick!()` aktualisiert Playhead & Anzeige.
+Builds the figure and engine (without a window). `tick!()` updates the playhead and display.
 """
 build_gui(song::Song; audio::Bool = true) = with_theme(() -> _build_gui(song; audio), DM_THEME)
 
@@ -192,12 +289,14 @@ function _build_gui(song::Song; audio::Bool = true)
     HELP = "Bereit.  Linksklick: Schlag an/aus · Rechtsklick: Ghost → normal → Akzent · Leertaste: Play/Stop · ? = Hilfe"
     status = Observable(HELP)
 
-    # ---------------------------------------------------------------- Kopfzeile
+    # ---------------------------------------------------------------- Header
     hdr = fig[1, 1] = GridLayout(tellwidth = false, halign = :left)
     Label(hdr[1, 1], "DRUM MACHINE", font = :bold, fontsize = 22, color = C_TEXT)
     Label(hdr[1, 2], "Groove  ·  Vorhören  ·  WAV-Export", fontsize = 14, color = C_TEXT2, padding = (14, 0, 0, 0))
     hdr_r = fig[1, 1] = GridLayout(tellwidth = false, halign = :right)
-    helpbtn = Button(hdr_r[1, 1], label = "?", width = 34, height = 34, cornerradius = 17,
+    Label(hdr_r[1, 1], app_version(), fontsize = 13, color = C_TEXT2, padding = (0, 8, 0, 0))
+    ghbtn = Button(hdr_r[1, 2], label = "GitHub ↗", height = 34, fontsize = 13)
+    helpbtn = Button(hdr_r[1, 3], label = "?", width = 34, height = 34, cornerradius = 17,
                      fontsize = 17, font = :bold)
 
     # ---------------------------------------------------------------- Transport
@@ -243,17 +342,17 @@ function _build_gui(song::Song; audio::Bool = true)
     delbtn = Button(pbar[1, MAXPATTERNS+5], label = "Löschen")
     clrbtn = Button(pbar[1, MAXPATTERNS+6], label = "Leeren")
     colgap!(pbar, 6)
-    colgap!(pbar, MAXPATTERNS + 1, 16)       # Abstand zwischen Pattern-Nummern und Aktionen
+    colgap!(pbar, MAXPATTERNS + 1, 16)       # gap between pattern numbers and actions
     pbar2 = pbox[2, 1] = GridLayout(halign = :left)
     Label(pbar2[1, 1], "Steps", halign = :left, color = C_TEXT2, width = 70)
     steps_menu = Menu(pbar2[1, 2], options = string.(STEP_OPTS), width = 60)
     Label(pbar2[1, 3], "Kette", halign = :right, color = C_TEXT2)
     chain_tb = Textbox(pbar2[1, 4], stored_string = chain_string(song.chain), width = 260,
-                       placeholder = "z. B. 1x3 2", reset_on_defocus = true)
+                       placeholder = "z. B. 1x3 2", reset_on_defocus = false)
     Label(pbar2[1, 5], "für Song-Modus und Export", color = C_DIM, fontsize = 12)
     rowgap!(pbox, 10)
 
-    # ---------------------------------------------------------------- Raster
+    # ---------------------------------------------------------------- Grid
     panel!(fig[4, 1])
     grid = fig[4, 1] = GridLayout(halign = :left, tellwidth = false, alignmode = Outside(14))
     headax = Axis(grid[1, 5], height = 22, backgroundcolor = :transparent)
@@ -266,7 +365,7 @@ function _build_gui(song::Song; audio::Bool = true)
     rowcolors = [Observable(fill(C_OFF_A, MAXSTEPS)) for _ in 1:NTRACKS]
     axes = Axis[]
     mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]; namebtns = Button[]
-    fx_track = Ref(1)                          # Spur, deren Effekte rechts angezeigt werden
+    fx_track = Ref(1)                          # track whose effects are shown on the right
     for t in 1:NTRACKS
         r = t + 1
         nb = Button(grid[r, 1], label = TRACKS[t][2], width = 100)
@@ -310,13 +409,13 @@ function _build_gui(song::Song; audio::Bool = true)
     leg = Label(grid[NTRACKS+2, 5], "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören + Effekte",
                 halign = :left, color = C_TEXT2, fontsize = 12, tellwidth = false)
 
-    # Spur-Effekte (rechts neben dem Raster): EQ + Chorus/Flanger der gewählten Spur
+    # track effects (right of the grid): EQ + chorus/flanger of the selected track
     fxbox = grid[1:NTRACKS+2, 6] = GridLayout(valign = :top, halign = :left)
     Label(fxbox[1, 1:3], "SPUR-EFFEKTE", font = :bold, color = C_TEXT2, halign = :left)
     fx_title = Label(fxbox[2, 1:3], "", font = :bold, color = C_ACTIVE, halign = :left, fontsize = 16)
     fx_sliders = Dict{Symbol,Slider}()
     fx_vals = Dict{Symbol,Observable{String}}()
-    midf_range = [200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6000]   # Terzen
+    midf_range = [200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6000]   # third-octave steps
     rate_range = vcat(0.05:0.05:1, 1.1:0.1:5)
     fx_rows = [(:eq_low, "Tiefen", -12:0.5:12, v -> "$(v) dB"),
                (:eq_mid, "Mitten", -12:0.5:12, v -> "$(v) dB"),
@@ -341,7 +440,7 @@ function _build_gui(song::Song; audio::Bool = true)
     fx_reset = Button(fxbox[13, 1:3], label = "Effekte der Spur zurücksetzen")
     rowgap!(fxbox, 4); colgap!(fxbox, 6)
 
-    # ---------------------------------------------------------------- Datei / Export
+    # ---------------------------------------------------------------- File / export
     panel!(fig[5, 1])
     fbox = fig[5, 1] = GridLayout(tellwidth = false, halign = :left, alignmode = Outside(14))
     bot = fbox[1, 1] = GridLayout(halign = :left)
@@ -349,15 +448,18 @@ function _build_gui(song::Song; audio::Bool = true)
     newbtn = Button(bot[1, 2], label = "Neu")
     dupbtn = Button(bot[1, 3], label = "Duplizieren")
     Label(bot[1, 4], "Name", halign = :right, color = C_TEXT2)
-    name_tb = Textbox(bot[1, 5], stored_string = song.name, width = 300, reset_on_defocus = true)
+    name_tb = Textbox(bot[1, 5], stored_string = song.name, width = 300, reset_on_defocus = false)
     savebtn = Button(bot[1, 6], label = "Speichern", width = 130)
+    Label(bot[1, 7], "  Bearbeiten", halign = :right, color = C_TEXT2)
+    edit_toggle = Toggle(bot[1, 8], active = false)
+    edit_lab = Label(bot[1, 9], "", color = C_DIM, fontsize = 12, halign = :left)
     lbox = fbox[2, 1] = GridLayout(halign = :left)
     Label(lbox[1, 1], "LADEN", font = :bold, color = C_TEXT2, width = 70, halign = :left)
     preset_menu = Menu(lbox[1, 2], options = PRESET_NAMES, default = nothing, prompt = "Preset laden …", width = 340)
     load_menu = Menu(lbox[1, 3], options = vcat(["—"], list_songs()), default = nothing, prompt = "Eigenen Song laden …",
                      width = 260)
     filebtn = Button(lbox[1, 4], label = "Datei öffnen …")
-    # Song-Liste beim Aufklappen neu einlesen (Dateien können außerhalb des Programms dazukommen)
+    # re-read the song list when the menu opens (files may be added outside the program)
     on(load_menu.is_open) do open
         open || return
         opts = vcat(["—"], list_songs())
@@ -367,7 +469,7 @@ function _build_gui(song::Song; audio::Bool = true)
     Label(bot2[1, 1], "EXPORT", font = :bold, color = C_TEXT2, width = 70, halign = :left)
     Label(bot2[1, 2], "Wiederholungen", halign = :right, color = C_TEXT2)
     rep_tb = Textbox(bot2[1, 3], stored_string = string(song.repeats), validator = Int, width = 50,
-                     reset_on_defocus = true)
+                     reset_on_defocus = false)
     Label(bot2[1, 4], "Einzähler (Takte)", halign = :right, color = C_TEXT2)
     ci_menu = Menu(bot2[1, 5], options = string.(0:4), default = string(song.countin), width = 50)
     Label(bot2[1, 6], "Klick", halign = :right, color = C_TEXT2)
@@ -377,18 +479,23 @@ function _build_gui(song::Song; audio::Bool = true)
     Label(bot2[1, 10], "Mono", halign = :left, color = C_TEXT2)
     Label(bot2[1, 11], "   L ⇄ R", halign = :right, color = C_TEXT2)
     swap_toggle = Toggle(bot2[1, 12], active = song.swap_lr)
-    expbtn = Button(bot2[1, 13], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = C_BG,
+    Label(bot2[1, 13], "   Loop", halign = :right, color = C_TEXT2)
+    loop_toggle = Toggle(bot2[1, 14], active = song.loop)
+    expbtn = Button(bot2[1, 15], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = C_BG,
                     buttoncolor_hover = C_LEVEL_H[2], labelcolor_hover = C_BG, labelcolor_active = C_BG,
                     font = :bold)
-    explab = Label(bot2[1, 14], "", color = C_TEXT2)
+    explab = Label(bot2[1, 16], "", color = C_TEXT2)
     rowgap!(fbox, 10)
 
     Label(fig[6, 1], status, halign = :left, tellwidth = false, color = C_TEXT2, fontsize = 13)
     rowgap!(fig.layout, 12)
-    colsize!(fig.layout, 1, Relative(1))      # volle Breite, alles linksbündig
+    colsize!(fig.layout, 1, Relative(1))      # full width, everything left-aligned
     on(_ -> show_help(), helpbtn.clicks)
+    on(ghbtn.clicks) do _
+        status[] = open_url(REPO_URL) ? "Browser geöffnet: $REPO_URL" : "Projektseite: $REPO_URL"
+    end
 
-    # ================================================================ Logik
+    # ================================================================ Logic
     cur_pattern() = eng.song.patterns[clamp(eng.edit_pat, 1, length(eng.song.patterns))]
     playhead = Ref(-1)
 
@@ -425,7 +532,7 @@ function _build_gui(song::Song; audio::Bool = true)
         end
     end
 
-    fx_updating = Ref(false)                   # Slider werden gerade aus der Spur gesetzt
+    fx_updating = Ref(false)                   # sliders are currently being set from the track
     function refresh_fx!()
         t = fx_track[]
         tp = eng.song.tracks[t]
@@ -458,10 +565,10 @@ function _build_gui(song::Song; audio::Bool = true)
 
     function refresh_export_info!()
         s = eng.song
-        explab.text[] = "≈ $(fmt_time(song_seconds(s))) min"
+        explab.text[] = (s.loop ? "Loop " : "") * "≈ $(fmt_time(song_seconds(s))) min"
     end
 
-    "Alle Widgets aus `eng.song` neu setzen (nach Laden/Preset)."
+    # reset all widgets from `eng.song` (after loading a song or preset)
     function refresh_all!()
         s = eng.song
         set_close_to!(bpm_sl, s.bpm)
@@ -475,11 +582,12 @@ function _build_gui(song::Song; audio::Bool = true)
         name_tb.stored_string[] = s.name; name_tb.displayed_string[] = s.name
         rep_tb.stored_string[] = string(s.repeats); rep_tb.displayed_string[] = string(s.repeats)
         ci_menu.i_selected[] = clamp(s.countin, 0, 4) + 1
-        # Toggle nur bei echter Änderung setzen: Makies Toggle animiert sonst einen Wechsel
-        # und zeigt danach den falschen Zustand an.
+        # Set a toggle only on a real change: otherwise Makie's Toggle animates a switch
+        # and then shows the wrong state.
         set_toggle!(click_toggle, s.click)
         set_toggle!(mono_toggle, s.mono)
         set_toggle!(swap_toggle, s.swap_lr)
+        set_toggle!(loop_toggle, s.loop)
         k = findfirst(==(s.kit), kitnames)
         k !== nothing && (kit_menu.i_selected[] = k)
         refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!(); refresh_fx!()
@@ -487,7 +595,7 @@ function _build_gui(song::Song; audio::Bool = true)
 
     safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")
     song_path(name) = joinpath(SONG_DIR, safe(name) * ".toml")
-    "Erster freier Name: `base`, `base 2`, `base 3`, …"
+    # first free name: `base`, `base 2`, `base 3`, …
     function unique_name(base)
         name = base; k = 2
         while isfile(song_path(name))
@@ -545,7 +653,7 @@ function _build_gui(song::Song; audio::Bool = true)
         eng.song.bpm = v; bpm_lab.text[] = string(v); refresh_export_info!()
     end
     on(sw_sl.value) do v
-        eng.song.swing = v == 67 ? 2 / 3 : v / 100       # 67 % = exakte Triole
+        eng.song.swing = v == 67 ? 2 / 3 : v / 100       # 67 % = exact triplet
         sw_lab.text[] = "$v%"
         refresh_export_info!()
     end
@@ -559,7 +667,7 @@ function _build_gui(song::Song; audio::Bool = true)
         old = eng.song.steps_per_beat
         new = RASTER_OPTS[findfirst(o -> o[1] == sel, RASTER_OPTS)][2]
         eng.song.steps_per_beat = new
-        # Beim Wechsel zwischen geraden und Triolen-Rastern neutralen Swing setzen
+        # when switching between straight and triplet grids, reset to neutral swing
         if (old in (3, 6)) != (new in (3, 6)) && eng.song.swing == default_swing(old)
             eng.song.swing = default_swing(new)
             set_close_to!(sw_sl, round(Int, 100eng.song.swing))
@@ -581,7 +689,7 @@ function _build_gui(song::Song; audio::Bool = true)
     on(v -> (eng.song.fxmix = v; apply_fx!(eng)), fx_sl.value)
     on(v -> (eng.song.master = v), mst_sl.value)
 
-    # Spuren
+    # Tracks
     for t in 1:NTRACKS
         on(mutebtns[t].clicks) do _
             eng.song.tracks[t].mute = !eng.song.tracks[t].mute; refresh_tracks!()
@@ -591,7 +699,7 @@ function _build_gui(song::Song; audio::Bool = true)
         end
         on(v -> (eng.song.tracks[t].vol = v), volsls[t].value)
     end
-    # Spur-Effekte
+    # Track effects
     for (f, sl) in fx_sliders
         on(sl.value) do v
             fx_updating[] && return
@@ -599,7 +707,7 @@ function _build_gui(song::Song; audio::Bool = true)
             lock(eng.lock) do
                 setfield!(tp, f, Float32(v))
             end
-            f in (:eq_low, :eq_mid, :eq_high) && refresh_fx!()     # Anzeige „Spur hat Effekte“
+            f in (:eq_low, :eq_mid, :eq_high) && refresh_fx!()     # "track has effects" indicator
         end
     end
     on(mod_menu.selection) do sel
@@ -645,12 +753,12 @@ function _build_gui(song::Song; audio::Bool = true)
     end
     on(_ -> add_pattern!(copy(cur_pattern())), addcopy.clicks)
     on(_ -> add_pattern!(Pattern(cur_pattern().steps)), addempty.clicks)
-    # Fill: neues Pattern aus dem aktuellen, letzte Schläge als Fill. Erneuter Klick auf das
-    # (unveränderte) Fill-Pattern probiert den nächsten Stil aus.
-    fill_src = Ref{Union{Nothing,Pattern}}(nothing)   # Groove, aus dem der Fill entstand
-    fill_pat = Ref{Union{Nothing,Pattern}}(nothing)   # zuletzt erzeugter Fill (zum Wiedererkennen)
+    # Fill: new pattern from the current one, last beats as a fill. Clicking again on the
+    # (unchanged) fill pattern tries the next style.
+    fill_src = Ref{Union{Nothing,Pattern}}(nothing)   # groove the fill was made from
+    fill_pat = Ref{Union{Nothing,Pattern}}(nothing)   # last generated fill (to recognize it)
     fill_style = Ref(1)
-    fill_from = Ref(1)                                # Nummer des Ausgangs-Patterns (für den Ketten-Tipp)
+    fill_from = Ref(1)                                # number of the source pattern (for the chain hint)
     on(fillbtn.clicks) do _
         s = eng.song
         cur = cur_pattern()
@@ -713,24 +821,71 @@ function _build_gui(song::Song; audio::Bool = true)
         eng.playing && eng.songmode && play!(eng)
     end
 
-    # Datei
+    # File
     on(preset_menu.selection) do sel
         sel === nothing && return
         s = preset(sel)
-        s.kit = eng.song.kit                  # Presets behalten das gewählte Kit
-        set_song!(s)
+        s.kit = eng.song.kit                  # presets keep the selected kit
+        set_song!(s); set_edit!("")
         status[] = "Preset \"$sel\" geladen ($(song_summary(eng.song)))."
-        preset_menu.i_selected[] = 0          # gleiches Preset später erneut wählbar
+        preset_menu.i_selected[] = 0          # the same preset can be selected again later
     end
     on(name_tb.stored_string) do str
         str === nothing && return
         eng.song.name = str
         cancel_overwrite!()
     end
+    # take over the text of the name field even without Enter (otherwise it would be lost when
+    # clicking "Speichern")
+    function commit_name!()
+        str = strip(something(name_tb.displayed_string[], ""))
+        isempty(str) && return
+        if str != eng.song.name
+            eng.song.name = str
+            cancel_overwrite!()
+        end
+        name_tb.stored_string[] == str || (name_tb.stored_string[] = str)
+    end
+    on(f -> f || commit_name!(), name_tb.focused)
+    # Take over the typed text of a field as if Enter had been pressed (otherwise it would be lost
+    # when clicking "Speichern" or exporting). Invalid input resets the display to the valid value.
+    function commit_field!(tb, valid = _ -> true)
+        str = tb.displayed_string[]
+        (str === nothing || str == tb.stored_string[]) && return
+        if valid(str)
+            tb.stored_string[] = str              # triggers the normal processing
+        else
+            tb.displayed_string[] = tb.stored_string[]
+        end
+    end
+    commit_chain!() = commit_field!(chain_tb)
+    commit_repeats!() = commit_field!(rep_tb, str -> tryparse(Int, str) !== nothing)
+    commit_fields!() = (commit_name!(); commit_chain!(); commit_repeats!())
+    on(f -> f || commit_chain!(), chain_tb.focused)
+    on(f -> f || commit_repeats!(), rep_tb.focused)
+    # Edit mode ("Bearbeiten"): "Speichern" overwrites the file being edited without asking.
+    # It is switched on when a song file is loaded or saved and off for presets, new songs and copies.
+    edit_path = Ref("")                          # file being edited ("" = none)
+    edit_name = Ref("")                          # song name when that file was loaded/saved
+    function set_edit!(path::AbstractString)
+        edit_path[] = path
+        edit_name[] = path == "" ? "" : eng.song.name
+        set_toggle!(edit_toggle, path != "")
+        edit_lab.text[] = path == "" ? "" : basename(path)
+    end
+    on(edit_toggle.active) do v
+        (v && edit_path[] == "") || return
+        status[] = "Bearbeiten: Es ist noch keine Datei geladen – „Speichern“ legt sie an."
+    end
+    # target file: the edited file as long as the name is unchanged, otherwise songs/<name>.toml
+    save_target() = edit_toggle.active[] && edit_path[] != "" && eng.song.name == edit_name[] ?
+                    edit_path[] : song_path(eng.song.name)
     on(savebtn.clicks) do _
-        path = song_path(eng.song.name)
-        if isfile(path) && pending_overwrite[] != path
-            # Erster Klick auf eine vorhandene Datei: nur nachfragen
+        commit_fields!()
+        path = save_target()
+        own = edit_toggle.active[] && path == edit_path[]
+        if isfile(path) && !own && pending_overwrite[] != path
+            # first click on an existing file: only ask
             pending_overwrite[] = path
             savebtn.label[] = "Überschreiben?"
             savebtn.buttoncolor[] = C_MUTE
@@ -741,8 +896,9 @@ function _build_gui(song::Song; audio::Bool = true)
         end
         cancel_overwrite!()
         save_song(path, eng.song)
+        set_edit!(path)
         load_menu.options[] = vcat(["—"], list_songs())
-        status[] = "Gespeichert: $path  ($(song_summary(eng.song)))"
+        status[] = (own ? "Überschrieben: " : "Gespeichert: ") * "$path  ($(song_summary(eng.song)))"
     end
     on(newbtn.clicks) do _
         old = eng.song
@@ -752,25 +908,25 @@ function _build_gui(song::Song; audio::Bool = true)
                  patterns = [Pattern(spb in (2, 4) ? 16 : 4spb)], kit = old.kit,
                  repeats = old.repeats, countin = old.countin, click = old.click, mono = old.mono,
                  swap_lr = old.swap_lr)
-        set_song!(s)
+        set_song!(s); set_edit!("")
         status[] = "Neuer Groove \"$(s.name)\" angelegt (BPM, Swing, Raster und Kit übernommen)."
     end
     on(dupbtn.clicks) do _
         s = copy(eng.song)
         s.name = unique_name(s.name * " Kopie")
-        set_song!(s)
+        set_song!(s); set_edit!("")
         status[] = "Kopie \"$(s.name)\" angelegt – das Original bleibt unverändert."
     end
     on(load_menu.selection) do sel
         (sel === nothing || sel == "—") && return
         path = joinpath(SONG_DIR, sel * ".toml")
         try
-            set_song!(load_song(path))
-            status[] = "Geladen: $path  ($(song_summary(eng.song)))"
+            set_song!(load_song(path)); set_edit!(path)
+            status[] = "Geladen: $path  ($(song_summary(eng.song))) – Bearbeiten an, „Speichern“ überschreibt."
         catch e
             status[] = "Fehler beim Laden: $(sprint(showerror, e))"
         end
-        load_menu.i_selected[] = 0            # derselbe Song lässt sich erneut (von Platte) laden
+        load_menu.i_selected[] = 0            # the same song can be reloaded (from disk)
     end
     last_dir = Ref(SONG_DIR)
     dialog_open = Ref(false)
@@ -784,8 +940,8 @@ function _build_gui(song::Song; audio::Bool = true)
                 status[] = "Kein Datei-Dialog gefunden – bitte zenity oder kdialog installieren."
             elseif path != ""
                 last_dir[] = dirname(path)
-                set_song!(load_song(path))
-                status[] = "Geladen: $path  ($(song_summary(eng.song)))"
+                set_song!(load_song(path)); set_edit!(path)
+                status[] = "Geladen: $path  ($(song_summary(eng.song))) – Bearbeiten an, „Speichern“ überschreibt."
             else
                 status[] = "Laden abgebrochen."
             end
@@ -806,6 +962,12 @@ function _build_gui(song::Song; audio::Bool = true)
         eng.song.countin = parse(Int, sel); refresh_export_info!()
     end
     on(v -> (eng.song.click = v), click_toggle.active)
+    on(loop_toggle.active) do v
+        eng.song.loop = v
+        refresh_export_info!()
+        v && (status[] = "Loop-Export: ohne Einzähler, exakt ganze Takte, Ausklang auf den Anfang gefaltet. " *
+                          "Am TD-27: SONG → [F2] SETUP → Loop Type = LOOP. Für ein einzelnes Pattern Kette „1“, Wiederholungen 1.")
+    end
     on(swap_toggle.active) do v
         eng.song.swap_lr = v
         status[] = v ? "Links/Rechts getauscht (Wiedergabe und Export)." : "Links/Rechts normal."
@@ -815,19 +977,22 @@ function _build_gui(song::Song; audio::Bool = true)
         status[] = v ? "Mono: Wiedergabe und Export einkanalig." : "Stereo: Wiedergabe und Export zweikanalig."
     end
     on(expbtn.clicks) do _
+        commit_fields!()
         s = eng.song
-        path = joinpath(SONG_DIR, safe(s.name) * ".wav")
+        path = joinpath(SONG_DIR, safe(s.name) * (s.loop ? " Loop" : "") * ".wav")
         status[] = "Exportiere …"
         try
             t = @elapsed (path = export_wav(path, s, eng.kit))
+            warn = td27_name_warning(path)
             status[] = "WAV geschrieben: $path  ($(fmt_time(song_seconds(s))) min, $(s.mono ? "mono" : "stereo"), $(s.bpm) BPM, " *
-                       "$(s.repeats)× Kette, Einzähler $(s.countin) Takt(e), $(round(t, digits = 1)) s)"
+                       "$(s.repeats)× Kette, " * (s.loop ? "nahtloser Loop" : "Einzähler $(s.countin) Takt(e)") *
+                       ", $(round(t, digits = 1)) s)" * (warn == "" ? "" : "  ⚠ TD-27: $warn")
         catch e
             status[] = "Export fehlgeschlagen: $(sprint(showerror, e))"
         end
     end
 
-    # Tastatur: Leertaste = Play/Stop (nicht während Texteingabe)
+    # keyboard: space = play/stop (not while typing)
     on(events(fig).keyboardbutton) do ev
         ev.action == Keyboard.press || return
         any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb)) && return
@@ -847,7 +1012,7 @@ function _build_gui(song::Song; audio::Bool = true)
         sp = eng.shown_seqpos[]
         cur = (st, pt, eng.playing, sp)
         cur == last[] && return
-        # Song-Modus: Raster folgt dem gerade spielenden Pattern
+        # song mode: the grid follows the currently playing pattern
         if eng.songmode && eng.playing && 1 <= pt <= length(eng.song.patterns)
             if pt != eng.edit_pat
                 eng.edit_pat = pt

@@ -1,8 +1,8 @@
-# Kit-Beschreibung für DrumMachine.jl
-# file   = Dateipräfix; erwartet werden <file>-1.wav ... <file>-5.wav (leise -> laut)
-# pan    = -1 (links) ... +1 (rechts), aus Spielerperspektive (aus der SFZ übernommen)
-# choke  = Instrumente mit gleicher Gruppe > 0 würgen sich gegenseitig ab (Hi-Hat)
-# gain   = Pegelanpassung
+# Kit description for DrumMachine.jl
+# file   = file prefix; expects <file>-1.wav ... <file>-5.wav (soft -> loud)
+# pan    = -1 (left) ... +1 (right), from the player's perspective (taken from the SFZ)
+# choke  = instruments sharing the same group > 0 choke each other (hi-hat)
+# gain   = level adjustment
 name = "BlackPearl"
 
 [tracks]

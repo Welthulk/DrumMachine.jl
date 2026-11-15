@@ -1,21 +1,25 @@
 # DrumMachine.jl
 
-Step-Sequencer in Julia zum Schlagzeug-Üben: Groove eintragen, vorhören, als WAV exportieren und mitspielen.
+English | [Deutsch](README.de.md)
+
+Step sequencer in Julia for drum practice: enter a groove, listen to it, export it as WAV and play along.
 
 ![Screenshot](docs/screenshot.png)
 
+The user interface is in German. The **?** button opens a short help in German or English.
+
 ## Installation
 
-Getestet unter Linux mit Julia 1.13. Gebraucht werden ein Grafiktreiber mit OpenGL (für GLMakie)
-und eine Soundkarte. PortAudio bringt Julia selbst mit.
+Tested on Linux with Julia 1.13. You need a graphics driver with OpenGL (for GLMakie) and a
+sound card. PortAudio is installed by Julia itself.
 
-1. **Julia installieren**, am einfachsten mit [juliaup](https://github.com/JuliaLang/juliaup):
+1. **Install Julia**, easiest with [juliaup](https://github.com/JuliaLang/juliaup):
 
    ```bash
    curl -fsSL https://install.julialang.org | sh
    ```
 
-2. **Repo holen und Pakete installieren** (dauert beim ersten Mal einige Minuten):
+2. **Get the repo and install the packages** (takes a few minutes the first time):
 
    ```bash
    git clone https://github.com/Welthulk/DrumMachine.jl.git
@@ -23,42 +27,57 @@ und eine Soundkarte. PortAudio bringt Julia selbst mit.
    julia --project=. -e 'using Pkg; Pkg.instantiate()'
    ```
 
-3. **Optional:** Für *Datei öffnen …* braucht es `zenity` (GNOME) oder `kdialog` (KDE),
-   z. B. `sudo apt install zenity`.
+3. **Optional:** *Datei öffnen …* (open file) needs `zenity` (GNOME) or `kdialog` (KDE),
+   e.g. `sudo apt install zenity`.
 
 ## Start
 
 ```bash
 ./start_drum.sh
-# oder: julia -t auto --project=. run.jl
+# or: julia -t auto --project=. run.jl
 ```
 
-Wichtig: aus einem normalen Terminal starten. In Umgebungen ohne OpenGL (z. B. VS Code als
-Flatpak) öffnet sich kein Fenster.
+Start it from a regular terminal. Environments without OpenGL (e.g. VS Code as Flatpak)
+cannot open the window.
 
-Schneller Start: einmalig `./start_drum.sh --build` ausführen (dauert einige Minuten). Das baut
-`build/drummachine.so` mit vorkompiliertem GLMakie, danach nutzt `./start_drum.sh` das Image
-automatisch. Nach Paket-Updates neu bauen, das Skript weist darauf hin.
+Faster start: run `./start_drum.sh --build` once (takes a few minutes). It builds
+`build/drummachine.so` with precompiled GLMakie, and `./start_drum.sh` uses it from then on.
+Rebuild after package updates, the script tells you when.
 
-Die Bedienung erklärt der **?**-Button im Programm. Über 40 Grooves (Rock, Funk, Shuffle, Blues, Jazz, Latin, ungerade Taktarten) liegen unter *Preset laden*,
-ausgearbeitete Beispiel-Songs mit Form, Fills und Spur-Effekten unter `songs/` (*Eigenen Song laden*).
+More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are available under
+*Preset laden*. Worked-out example songs with form, fills and track effects are in `songs/`
+(*Eigenen Song laden*).
+
+## Features
+
+- Grid in 16ths, 8th triplets, 16th triplets or 8ths, swing from straight to dotted
+- Three dynamics per note: ghost, normal, accent
+- Up to 16 patterns per song, chained for song mode and export
+- *+ Fill* generates fill patterns in seven styles
+- Per track: volume, pan, pitch, 3-band EQ, chorus or flanger
+- Master effects: room, hall, echo, drive, lo-fi
+- WAV export like an audio CD (44.1 kHz, 16 bit), ASCII file names, count-in and click
+- *Loop* export: no count-in, exactly whole bars, decay folded onto the start, so the file loops
+  without a gap. On a Roland TD-27 set SONG → [F2] SETUP → Loop Type = LOOP
+- *Bearbeiten* (edit) mode: *Speichern* overwrites the loaded song without asking
+- Songs are plain TOML files that can be edited by hand, see [docs/song-format.md](docs/song-format.md)
 
 ## Kits
 
-| Kit | Herkunft | Lizenz |
+| Kit | Source | License |
 |---|---|---|
-| BlackPearl | [AVL Drumkits](http://www.bandshed.net/avldrumkits/), im Repo | CC BY-SA 3.0 |
-| CrocellKit | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits%3Acrocellkit), Stereo-Mix von Henry Järvinen | CC BY 4.0 |
+| BlackPearl | [AVL Drumkits](http://www.bandshed.net/avldrumkits/), included | CC BY-SA 3.0 |
+| CrocellKit | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits%3Acrocellkit), stereo mix by Henry Järvinen | CC BY 4.0 |
 | VirtuosityDrums | [Versilian Studios / Karoryfer](https://github.com/sfzinstruments/virtuosity_drums) | CC0 |
-| 808 / 909 (Synth) | synthetisiert | – |
+| 808 / 909 (Synth) | synthesized | – |
 
-CrocellKit und VirtuosityDrums sind zu groß fürs Repo und werden einmalig gebaut:
+CrocellKit and VirtuosityDrums are too large for the repo and are built once:
 
 ```bash
-julia --project=. tools/build_crocell.jl       # lädt 561 MB
-julia --project=. tools/build_virtuosity.jl    # lädt 1,2 GB
+julia --project=. tools/build_crocell.jl       # downloads 561 MB
+julia --project=. tools/build_virtuosity.jl    # downloads 1.2 GB
 ```
 
-## Lizenz
+## License
 
-Code: [MIT](LICENSE). Die Samples stehen unter den oben genannten Lizenzen.
+Code: [MIT](LICENSE). The samples are licensed as listed above.

@@ -1,8 +1,8 @@
-# Song-Modell: Patterns (Raster Spuren × Steps), Kette, Spur-Einstellungen, Presets, TOML-I/O.
+# Song model: patterns (grid of tracks × steps), chain, track settings, presets, TOML I/O.
 
 const MAXSTEPS = 32
 
-# Rasterwerte: 0 = aus, 1 = Ghost (leise), 2 = normal, 3 = Akzent
+# Grid values: 0 = off, 1 = ghost note (soft), 2 = normal, 3 = accent
 const LEVEL_CHARS = ('.', 'o', 'x', 'X')
 const LEVEL_NAMES = ("aus", "Ghost", "normal", "Akzent")
 
@@ -13,7 +13,7 @@ end
 Pattern(steps::Int = 16) = Pattern(steps, zeros(UInt8, NTRACKS, MAXSTEPS))
 Base.copy(p::Pattern) = Pattern(p.steps, copy(p.grid))
 
-# Modulationseffekte je Spur und ihre Standardwerte (Rate in Hz, Tiefe 0…1, Feedback 0…0,9)
+# Per-track modulation effects and their defaults (rate in Hz, depth 0…1, feedback 0…0.9)
 const MOD_NAMES = ["Aus", "Chorus", "Flanger"]
 const MOD_DEFAULTS = Dict("Chorus" => (mix = 0.8, rate = 0.8, depth = 0.8, fb = 0.0),
                           "Flanger" => (mix = 1.0, rate = 0.3, depth = 0.9, fb = 0.75))
@@ -21,16 +21,16 @@ const EQ_MIDF_DEFAULT = 800.0
 
 mutable struct TrackParams
     vol::Float32                 # 0 … 1.5
-    pan::Float32                 # Versatz zum Kit-Panorama, -1 … 1
-    pitch::Float32               # Halbtöne
+    pan::Float32                 # offset from the kit panning, -1 … 1
+    pitch::Float32               # semitones
     mute::Bool
     solo::Bool
-    # 3-Band-EQ in dB (-12 … +12): Tiefen-Shelf 120 Hz, Mitten-Glocke bei eq_midf, Höhen-Shelf 5 kHz
+    # 3-band EQ in dB (-12 … +12): low shelf 120 Hz, mid bell at eq_midf, high shelf 5 kHz
     eq_low::Float32
     eq_mid::Float32
     eq_midf::Float32             # Hz, 200 … 6000
     eq_high::Float32
-    # Modulation: Index in MOD_NAMES
+    # Modulation: index into MOD_NAMES
     mod::Int
     mod_mix::Float32             # 0 … 1
     mod_rate::Float32            # Hz
@@ -46,10 +46,10 @@ end
 Base.copy(t::TrackParams) = TrackParams((getfield(t, f) for f in fieldnames(TrackParams))...)
 
 has_eq(t::TrackParams) = t.eq_low != 0 || t.eq_mid != 0 || t.eq_high != 0
-"Spur braucht einen eigenen Effekt-Bus (EQ oder Modulation aktiv)."
+"Track needs its own effect bus (EQ or modulation active)."
 has_trackfx(t::TrackParams) = has_eq(t) || t.mod > 1
 
-"Effekt `name` wählen und dessen Standardwerte für Rate, Tiefe und Feedback setzen."
+"Select effect `name` and set its default rate, depth and feedback."
 function set_mod!(t::TrackParams, name::AbstractString)
     k = findfirst(==(name), MOD_NAMES)
     k === nothing && error("Unbekannter Effekt $name (erlaubt: $(join(MOD_NAMES, ", ")))")
@@ -64,46 +64,47 @@ end
 mutable struct Song
     name::String
     bpm::Float64
-    swing::Float64               # Lage der Off-Beat-Note: 0.5 = gerade, 2/3 = Triole, 0.75 = punktiert
-    swing_on::Int                # Swing-Basis: 0 = Auto, 8 = auf 8tel, 16 = auf 16tel
-    steps_per_beat::Int          # 4 = 16tel, 3 = 8tel-Triolen (Shuffle/Jazz), 6 = 16tel-Triolen, 2 = 8tel
+    swing::Float64               # position of the off-beat note: 0.5 = straight, 2/3 = triplet, 0.75 = dotted
+    swing_on::Int                # swing base: 0 = auto, 8 = on 8ths, 16 = on 16ths
+    steps_per_beat::Int          # 4 = 16ths, 3 = 8th triplets (shuffle/jazz), 6 = 16th triplets, 2 = 8ths
     patterns::Vector{Pattern}
-    chain::Vector{Int}           # Reihenfolge der Patterns im Song-Modus/Export
+    chain::Vector{Int}           # order of the patterns in song mode/export
     tracks::Vector{TrackParams}
     kit::String
     fx::String
     fxmix::Float64
     master::Float64
-    # Export / Üben
-    repeats::Int                 # Wie oft die Kette im Export wiederholt wird
-    countin::Int                 # Einzähler-Takte
-    click::Bool                  # Metronom-Klick in den Export mischen
-    mono::Bool                   # Ausgabe mono (Wiedergabe und Export)
-    swap_lr::Bool                # linken und rechten Kanal tauschen (Wiedergabe und Export)
+    # Export / practice
+    repeats::Int                 # how often the chain repeats in the export
+    countin::Int                 # count-in bars
+    click::Bool                  # mix the metronome click into the export
+    mono::Bool                   # mono output (playback and export)
+    swap_lr::Bool                # swap left and right channel (playback and export)
+    loop::Bool                   # export as seamless loop (no count-in, tail folded onto the start)
 end
 
-"Neutraler Swing-Wert je Raster: gerade bei 8tel/16tel, exakte Triole bei Triolen-Rastern."
+"Neutral swing value per grid: straight for 8ths/16ths, exact triplet for triplet grids."
 default_swing(steps_per_beat) = steps_per_beat in (3, 6) ? 2 / 3 : 0.5
 
 function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,
               patterns = [Pattern(16)], chain = [1], kit = "CrocellKit", fx = "Clean",
               fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false, mono = false,
-              swap_lr = false)
+              swap_lr = false, loop = false)
     swing_on in (0, 8, 16) || error("swing_on muss 0 (Auto), 8 oder 16 sein")
     swing = something(swing, default_swing(steps_per_beat))
     Song(name, bpm, swing, swing_on, steps_per_beat, patterns, chain,
-         [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono, swap_lr)
+         [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono, swap_lr, loop)
 end
 
 function Base.copy(s::Song)
     Song(s.name, s.bpm, s.swing, s.swing_on, s.steps_per_beat, copy.(s.patterns), copy(s.chain),
-         copy.(s.tracks), s.kit, s.fx, s.fxmix, s.master, s.repeats, s.countin, s.click, s.mono, s.swap_lr)
+         copy.(s.tracks), s.kit, s.fx, s.fxmix, s.master, s.repeats, s.countin, s.click, s.mono, s.swap_lr, s.loop)
 end
 
 beats_per_bar(s::Song, p::Pattern) = max(1, cld(p.steps, s.steps_per_beat))
 
 # ---------------------------------------------------------------------------
-# Textdarstellung:  "X...x...X.x.x..."
+# Text representation:  "X...x...X.x.x..."
 # ---------------------------------------------------------------------------
 
 function level_from_char(c::Char)
@@ -116,7 +117,7 @@ end
 
 row_string(p::Pattern, t::Int) = String([LEVEL_CHARS[p.grid[t, s]+1] for s in 1:p.steps])
 
-"Pattern aus `Dict(spur_id => \"x.x.\")`. Länge = längste Zeile (oder `steps`)."
+"Pattern from `Dict(track_id => \"x.x.\")`. Length = longest row (or `steps`)."
 function pattern_from_rows(rows::AbstractDict; steps::Union{Nothing,Int} = nothing)
     n = something(steps, maximum(length, values(rows); init = 0))
     n == 0 && (n = 16)
@@ -133,7 +134,7 @@ function pattern_from_rows(rows::AbstractDict; steps::Union{Nothing,Int} = nothi
     return p
 end
 
-"Lesbare Darstellung eines Patterns (z. B. für die REPL)."
+"Readable representation of a pattern (e.g. for the REPL)."
 function Base.show(io::IO, ::MIME"text/plain", p::Pattern)
     println(io, "Pattern ($(p.steps) Steps)")
     w = maximum(length ∘ last, TRACKS)
@@ -144,14 +145,14 @@ function Base.show(io::IO, ::MIME"text/plain", p::Pattern)
 end
 
 # ---------------------------------------------------------------------------
-# Speichern / Laden (TOML, von Hand editierbar)
+# Save / load (TOML, hand-editable)
 # ---------------------------------------------------------------------------
 
 function song_to_dict(s::Song)
     Dict{String,Any}(
         "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "swing_on" => s.swing_on, "swing_version" => 2, "steps_per_beat" => s.steps_per_beat,
         "chain" => s.chain, "kit" => s.kit, "fx" => s.fx, "fxmix" => s.fxmix, "master" => s.master,
-        "repeats" => s.repeats, "countin" => s.countin, "click" => s.click, "mono" => s.mono, "swap_lr" => s.swap_lr,
+        "repeats" => s.repeats, "countin" => s.countin, "click" => s.click, "mono" => s.mono, "swap_lr" => s.swap_lr, "loop" => s.loop,
         "pattern" => [Dict{String,Any}("steps" => p.steps,
                                        "rows" => Dict(TRACK_IDS[t] => row_string(p, t)
                                                       for t in 1:NTRACKS if any(!iszero, @view p.grid[t, 1:p.steps])))
@@ -160,7 +161,7 @@ function song_to_dict(s::Song)
     )
 end
 
-"Spur-Einstellungen; Effekt-Parameter nur, wenn sie vom Standard abweichen (Datei bleibt lesbar)."
+"Track settings; effect parameters only if they differ from the defaults (keeps the file readable)."
 function track_to_dict(tp::TrackParams)
     d = Dict{String,Any}("vol" => tp.vol, "pan" => tp.pan, "pitch" => tp.pitch, "mute" => tp.mute, "solo" => tp.solo)
     r(x) = round(Float64(x); digits = 3)
@@ -206,8 +207,9 @@ function song_from_dict(d::AbstractDict)
              chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "CrocellKit"), fx = get(d, "fx", "Clean"),
              fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = get(d, "repeats", 8),
              countin = get(d, "countin", 1), click = get(d, "click", false),
-             mono = get(d, "mono", false), swap_lr = get(d, "swap_lr", false))
-    # Bis v0.1: Swing wirkte nicht auf Triolen-Raster, gespeichert wurde dann 0.5 = exakte Triolen
+             mono = get(d, "mono", false), swap_lr = get(d, "swap_lr", false),
+             loop = get(d, "loop", false))
+    # Up to v0.1: swing had no effect on triplet grids, so 0.5 (= exact triplets) was saved
     if s.steps_per_beat in (3, 6) && s.swing == 0.5 && get(d, "swing_version", 1) < 2
         s.swing = 2 / 3
     end
@@ -229,7 +231,7 @@ end
 
 load_song(path::AbstractString) = song_from_dict(TOML.parsefile(path))
 
-"Kette aus Text wie \"1 1 1 2\" oder \"1x3 2\" (= 1 1 1 2)."
+"Chain from text like \"1 1 1 2\" or \"1x3 2\" (= 1 1 1 2)."
 function parse_chain(str::AbstractString, npat::Int)
     out = Int[]
     for tok in split(replace(str, ',' => ' '))

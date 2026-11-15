@@ -1,8 +1,8 @@
-# Blues-Shuffle, 4 × 12 Takte, Triolen-Raster, Kit BlackPearl (im Repo)
-# Form: Chorus 1 Hihat-Shuffle (12) | Chorus 2 mit Blues-Stopps (12) | Solo-Chorus Ride (12)
-#       | letzter Chorus mit Blues-Ende auf der 4 (12)
-# Zeigt: Shuffle-Triolen, Ghost Notes auf dem "a", Stop-Time, Triolen-Fill im Turnaround,
-#        Ride mit Hihat-Pedal, Spur-Einstellungen
+# Blues shuffle, 4 × 12 bars, triplet grid, kit BlackPearl (in the repo)
+# Form: chorus 1 hi-hat shuffle (12) | chorus 2 with blues stops (12) | solo chorus ride (12)
+#       | last chorus with blues ending on 4 (12)
+# Shows: shuffle triplets, ghost notes on the "a", stop-time, triplet fill in the turnaround,
+#        ride with hi-hat pedal, track settings
 bpm = 90.0
 chain = [1, 2, 2, 2, 2, 2, 2, 8, 2, 2, 2, 3,
          6, 6, 6, 6, 1, 2, 2, 8, 2, 2, 2, 3,
@@ -22,7 +22,7 @@ swing = 0.6666666666666666
 swing_on = 0
 swing_version = 2
 #            1+a2+a3+a4+a
-# 1: Shuffle mit Crash
+# 1: shuffle with crash
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -30,14 +30,14 @@ steps = 12
     HiHat = "..xx.xx.xx.x"
     Snare = "...X.....X.."
     Kick  = "X.....X....."
-# 2: Shuffle mit Ghost Notes auf dem "a"
+# 2: shuffle with ghost notes on the "a"
 [[pattern]]
 steps = 12
     [pattern.rows]
     HiHat = "x.xx.xx.xx.x"
     Snare = "..oX....oX.o"
     Kick  = "X.....X....."
-# 3: Turnaround-Fill, Triolen über Snare und Toms
+# 3: turnaround fill, triplets across snare and toms
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -46,7 +46,7 @@ steps = 12
     Tom      = ".........Xx."
     FloorTom = "...........X"
     Kick     = "X.....X....X"
-# 4: Solo, Ride-Shuffle, Hihat-Pedal auf 2 und 4
+# 4: solo, ride shuffle, hi-hat pedal on 2 and 4
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -54,7 +54,7 @@ steps = 12
     HHPedal = "...x.....x.."
     Snare   = "..oX....oX.."
     Kick    = "X.....X....."
-# 5: Solo mit Crash
+# 5: solo with crash
 [[pattern]]
 steps = 12
     [pattern.rows]
@@ -63,21 +63,21 @@ steps = 12
     HHPedal = "...x.....x.."
     Snare   = "..oX....oX.."
     Kick    = "X.....X....."
-# 6: Blues-Stopp, nur die Eins, das Hihat-Pedal zählt weiter
+# 6: blues stop, only beat 1, the hi-hat pedal keeps counting
 [[pattern]]
 steps = 12
     [pattern.rows]
     Crash   = "X..........."
     Kick    = "X..........."
     HHPedal = "...x.....x.."
-# 7: Blues-Ende, Triolen-Crescendo auf die 4
+# 7: blues ending, triplet crescendo onto 4
 [[pattern]]
 steps = 12
     [pattern.rows]
     Snare = "oooxxxXXX..."
     Crash = ".........X.."
     Kick  = ".........X.."
-# 8: Shuffle mit offener Hihat auf dem letzten "a"
+# 8: shuffle with open hi-hat on the last "a"
 [[pattern]]
 steps = 12
     [pattern.rows]

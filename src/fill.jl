@@ -1,21 +1,21 @@
-# Fill-Generator: ersetzt die letzten Schläge eines Patterns durch einen Fill.
+# Fill generator: replaces the last beats of a pattern with a fill.
 #
-# Jeder Stil liefert für die Fill-Strecke (n Steps, spb Steps pro Schlag) eine Liste
-# (Step in der Strecke, Spur-ID, Stufe). Alles andere in der Strecke wird gelöscht,
-# der Groove davor bleibt erhalten. Passt in jedes Raster (16tel, Triolen, 8tel).
+# For the fill span (n steps, spb steps per beat) each style returns a list of
+# (step within the span, track ID, level). Everything else in the span is cleared,
+# the groove before it is kept. Works with any grid (16ths, triplets, 8ths).
 
-const _O, _N, _A = 0x01, 0x02, 0x03      # Ghost, normal, Akzent
+const _O, _N, _A = 0x01, 0x02, 0x03      # ghost note, normal, accent
 
 beatstart(i, spb) = (i - 1) % spb == 0
 
-"Snare auf jedem Step, Akzent am Ende."
+"Snare on every step, accent at the end."
 function fill_wirbel(n, spb)
     hits = [(i, "Snare", i == n ? _A : beatstart(i, spb) ? _A : _N) for i in 1:n]
     push!(hits, (1, "Kick", _N))
     hits
 end
 
-"Snare → Tom → Floor Tom, gleichmäßig über die Strecke verteilt."
+"Snare → tom → floor tom, spread evenly across the span."
 function fill_abgang(n, spb)
     drums = ("Snare", "Tom", "FloorTom")
     hits = [(i, drums[cld(3i, n)], beatstart(i, spb) ? _A : _N) for i in 1:n]
@@ -23,7 +23,7 @@ function fill_abgang(n, spb)
     hits
 end
 
-"Erster Schlag Snare, danach Tom und Floor Tom im Wechsel, Bassdrum auf den Schlägen."
+"First beat snare, then alternating tom and floor tom, bass drum on the beats."
 function fill_wechsel(n, spb)
     hits = Tuple{Int,String,UInt8}[]
     for i in 1:n
@@ -34,7 +34,7 @@ function fill_wechsel(n, spb)
     hits
 end
 
-"Snare und Floor Tom unisono im 3er-Abstand (3-3-2-Gefühl), dazu Bassdrum."
+"Snare and floor tom in unison every 3 steps (3-3-2 feel), plus bass drum."
 function fill_akzente(n, _)
     hits = Tuple{Int,String,UInt8}[]
     for i in 1:3:n
@@ -43,7 +43,7 @@ function fill_akzente(n, _)
     hits
 end
 
-"Snare-Crescendo: Ghost Notes, dann normal, Akzente zum Schluss; Floor Tom auf dem letzten Step."
+"Snare crescendo: ghost notes, then normal, accents at the end; floor tom on the last step."
 function fill_crescendo(n, _)
     lv(i) = i <= n ÷ 3 ? _O : i <= 2n ÷ 3 ? _N : _A
     hits = [(i, "Snare", lv(i)) for i in 1:n]
@@ -51,12 +51,12 @@ function fill_crescendo(n, _)
     hits
 end
 
-"Ganzer Takt rund ums Set: Snare, Snare, Tom, Floor Tom (je Schlag), Bassdrum auf den Schlägen."
+"Full bar around the kit: snare, snare, tom, floor tom (one per beat), bass drum on the beats."
 function fill_rundlauf(n, spb)
     nb = cld(n, spb)
     hits = Tuple{Int,String,UInt8}[]
     for i in 1:n
-        b = cld(i, spb)                         # Schlag in der Strecke
+        b = cld(i, spb)                         # beat within the span
         d = b <= nb ÷ 2 ? "Snare" : b < nb ? "Tom" : "FloorTom"
         push!(hits, (i, d, beatstart(i, spb) ? _A : _N))
         beatstart(i, spb) && push!(hits, (i, "Kick", _N))
@@ -64,7 +64,7 @@ function fill_rundlauf(n, spb)
     hits
 end
 
-"Fill-Stile: (Name, Länge in Schlägen, Generator)."
+"Fill styles: (name, length in beats, generator)."
 const FILL_STYLES = [
     ("Snare-Wirbel",          1, fill_wirbel),
     ("Tom-Abgang",            1, fill_abgang),
@@ -78,8 +78,8 @@ const FILL_STYLES = [
 """
     make_fill(p, steps_per_beat, style = 1) -> Pattern
 
-Kopie von `p`, deren letzte Schläge durch den Fill `FILL_STYLES[style]` ersetzt sind
-(Stil wird zyklisch gewählt, also ist jede ganze Zahl erlaubt).
+Copy of `p` whose last beats are replaced by the fill `FILL_STYLES[style]`
+(the style is chosen cyclically, so any integer is allowed).
 """
 function make_fill(p::Pattern, spb::Int, style::Integer = 1)
     _, beats, gen = FILL_STYLES[mod1(style, length(FILL_STYLES))]

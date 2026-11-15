@@ -1,10 +1,10 @@
-# Rock-Song im 8tel-Feel, 38 Takte, Kit BlackPearl (im Repo), Raum-Hall
-# Form: Intro Floor Tom (4) | Strophe (8) | Pre-Chorus Four-on-the-Floor (4) | Chorus Ride + Push (8)
-#       | Bridge Half-Time mit Side Stick (4) | Stopp im 2/4-Takt (1) | Chorus (8) | Schlussschlag (1)
-# Zeigt: Akzente, Ghost Notes, Taktwechsel 4/4 → 2/4, 3er-Gruppen-Fill, Ride Bell, Anticipation,
-#        gestimmte Floor Tom, Spur-Lautstärken und Panorama,
-#        Spur-Effekte: Flanger auf offener Hihat (Pre-Chorus) und Crash („Jet“),
-#        Bassdrum mit EQ (Mitten raus, mehr Tiefe und Kick)
+# Rock song with an 8th feel, 38 bars, kit BlackPearl (in the repo), room reverb
+# Form: intro floor tom (4) | verse (8) | pre-chorus four-on-the-floor (4) | chorus ride + push (8)
+#       | bridge half-time with side stick (4) | stop in a 2/4 bar (1) | chorus (8) | final hit (1)
+# Shows: accents, ghost notes, time change 4/4 -> 2/4, 3-group fill, ride bell, anticipation,
+#        tuned floor tom, track volumes and panning,
+#        track effects: flanger on the open hi-hat (pre-chorus) and crash ("jet"),
+#        bass drum with EQ (mids cut, more low end and click)
 bpm = 100.0
 chain = [1, 1, 1, 2,  3, 4, 5, 6, 4, 4, 5, 6,  7, 7, 7, 8,  9, 10, 10, 11, 10, 10, 10, 6,
          12, 12, 12, 13,  14,  9, 10, 10, 11, 10, 10, 10, 13,  15]
@@ -22,20 +22,20 @@ swing = 0.5
 swing_on = 0
 swing_version = 2
 #                 1e+a2e+a3e+a4e+a
-# 1: Intro, Floor Tom in 8teln mit Akzenten auf den Vierteln
+# 1: intro, floor tom in 8ths with accents on the quarters
 [[pattern]]
 steps = 16
     [pattern.rows]
     FloorTom = "X.x.X.x.X.x.X.x."
     Kick     = "X.......X......."
-# 2: Intro-Fill, Snare-Crescendo
+# 2: intro fill, snare crescendo
 [[pattern]]
 steps = 16
     [pattern.rows]
     FloorTom = "X.x.X.x........."
     Snare    = "........o.o.xxXX"
     Kick     = "X.......X......X"
-# 3: Strophe mit Crash
+# 3: verse with crash
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -43,14 +43,14 @@ steps = 16
     HiHat = "..x.X.x.X.x.X.x."
     Snare = "....X..o....X..."
     Kick  = "X.......X.X....."
-# 4: Strophe, Hihat-Akzente auf den Vierteln, Ghost vor der 3
+# 4: verse, hi-hat accents on the quarters, ghost note before the 3
 [[pattern]]
 steps = 16
     [pattern.rows]
     HiHat = "X.x.X.x.X.x.X.x."
     Snare = "....X..o....X..."
     Kick  = "X.......X.X....."
-# 5: Strophe-Variation, Bassdrum auf der 1+, offene Hihat auf der 4+
+# 5: verse variation, bass drum on the 1+, open hi-hat on the 4+
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -58,7 +58,7 @@ steps = 16
     HHOpen = "..............x."
     Snare  = "....X..o....X..."
     Kick   = "X.x.....X.X..x.."
-# 6: kurzer Fill auf der 4
+# 6: short fill on the 4
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -66,7 +66,7 @@ steps = 16
     Snare    = "....X..o....Xxx."
     FloorTom = "...............X"
     Kick     = "X.......X.X....X"
-# 7: Pre-Chorus, Four-on-the-Floor mit offener Hihat auf den Offbeats
+# 7: pre-chorus, four-on-the-floor with open hi-hat on the offbeats
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -74,7 +74,7 @@ steps = 16
     HHPedal = "X...X...X...X..."
     Snare   = "....X.......X..."
     Kick    = "X...X...X...X..."
-# 8: Pre-Chorus-Fill (Paradiddle-Feel über Snare und Toms)
+# 8: pre-chorus fill (paradiddle feel across snare and toms)
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -83,7 +83,7 @@ steps = 16
     Tom      = "............xx.."
     FloorTom = "..............xX"
     Kick     = "X...X...X......X"
-# 9: Chorus mit Crash, Ride Bell auf den Vierteln
+# 9: chorus with crash, ride bell on the quarters
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -92,7 +92,7 @@ steps = 16
     Ride     = "..x...x...x...x."
     Snare    = "....X.......X..o"
     Kick     = "X.x....xX.X....."
-# 10: Chorus
+# 10: chorus
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -100,7 +100,7 @@ steps = 16
     Ride     = "..x...x...x...x."
     Snare    = "....X.......X..o"
     Kick     = "X.x....xX.X....."
-# 11: Chorus-Push: Crash + Snare vorgezogen auf die 4+
+# 11: chorus push: crash + snare anticipated on the 4+
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -109,7 +109,7 @@ steps = 16
     Crash    = "..............X."
     Snare    = "....X.......X.X."
     Kick     = "X.x....xX.X...X."
-# 12: Bridge Half-Time, 16tel-Hihat mit Dynamik, Side Stick auf der 3
+# 12: bridge half-time, 16th hi-hat with dynamics, side stick on the 3
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -117,7 +117,7 @@ steps = 16
     Rim   = "........X......."
     Snare = "..............o."
     Kick  = "X......x..x....."
-# 13: 3er-Gruppen-Fill über den Taktstrich (Snare – Tom – Bassdrum, linear)
+# 13: 3-group fill across the bar line (snare - tom - bass drum, linear)
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -125,14 +125,14 @@ steps = 16
     Tom      = ".x..x..x........"
     FloorTom = "..........x..x.."
     Kick     = "..x..x..x..x..x."
-# 14: Stopp im 2/4-Takt, nur Crash + Bassdrum, Hihat-Pedal zählt weiter
+# 14: stop in a 2/4 bar, only crash + bass drum, hi-hat pedal keeps counting
 [[pattern]]
 steps = 8
     [pattern.rows]
     Crash   = "X......."
     Kick    = "X......."
     HHPedal = "....x..."
-# 15: Schlussschlag
+# 15: final hit
 [[pattern]]
 steps = 16
     [pattern.rows]

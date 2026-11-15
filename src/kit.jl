@@ -1,10 +1,10 @@
-# Instrumente, Kits (WAV-Samples mit Velocity-Layern) und ein synthetisches Ersatz-Kit.
+# Instruments, kits (WAV samples with velocity layers) and a synthetic fallback kit.
 
 using Random: MersenneTwister
 import WAV
 import TOML
 
-"Spuren in fester Reihenfolge: (id, Anzeigename)."
+"Tracks in fixed order: (id, display name)."
 const TRACKS = [
     ("Kick",     "Kick"),
     ("Snare",    "Snare"),
@@ -23,7 +23,7 @@ const TRACK_IDS = first.(TRACKS)
 
 track_index(id::AbstractString) = findfirst(==(id), TRACK_IDS)
 
-"Eine Aufnahme: linker und rechter Kanal (bei Mono ist `r === l`)."
+"One recording: left and right channel (for mono, `r === l`)."
 struct Sample
     l::Vector{Float32}
     r::Vector{Float32}
@@ -33,30 +33,30 @@ isstereo(s::Sample) = s.l !== s.r
 Base.length(s::Sample) = length(s.l)
 
 """
-Ein Kit: pro Spur beliebig viele Velocity-Layer (leise → laut), pro Layer eine oder mehrere
-Aufnahmen (Round-Robin). Dazu Panorama, Pegel und Choke-Gruppe je Spur.
+A kit: any number of velocity layers per track (soft -> loud), one or more recordings per
+layer (round-robin). Plus pan, gain and choke group per track.
 """
 struct Kit
     name::String
-    layers::Vector{Vector{Vector{Sample}}}   # [spur][layer][round-robin]
+    layers::Vector{Vector{Vector{Sample}}}   # [track][layer][round-robin]
     pan::Vector{Float32}
     gain::Vector{Float32}
     choke::Vector{Int}
-    level_gain::NTuple{3,Float32}            # Zusatzpegel für Ghost/normal/Akzent
+    level_gain::NTuple{3,Float32}            # extra gain for ghost note/normal/accent
 end
-"Standard-Zusatzpegel: Dynamik über den Pegel, für Kits mit wenigen Layern."
+"Default extra gain: dynamics via level, for kits with few layers."
 const DEFAULT_LEVEL_GAIN = (0.5f0, 0.8f0, 1.0f0)
 Kit(name, layers, pan, gain, choke) = Kit(name, layers, pan, gain, choke, DEFAULT_LEVEL_GAIN)
 
 # ---------------------------------------------------------------------------
-# Synthese
+# Synthesis
 # ---------------------------------------------------------------------------
 
 _t(n) = (0:n-1) ./ SR
 _n(sec) = round(Int, sec * SR)
 
 function _metal(n, base; rng)
-    # sechs Rechteck-Oszillatoren mit inharmonischen Frequenzen (klassische Becken-Synthese)
+    # six square-wave oscillators at inharmonic frequencies (classic cymbal synthesis)
     freqs = (205.3, 304.4, 369.6, 522.7, 540.0, 800.0) .* base
     t = _t(n)
     x = zeros(n)
@@ -120,7 +120,7 @@ function synth_sound(id::AbstractString)
     error("Unbekanntes Instrument $id")
 end
 
-"Synthetisches Kit: ein Layer pro Spur (Dynamik nur über den Pegel)."
+"Synthetic kit: one layer per track (dynamics via level only)."
 function synth_kit()
     layers = [[[Sample(synth_sound(id))]] for id in TRACK_IDS]
     pan = Float32[0, -0.2, -0.2, -0.35, -0.35, -0.35, -0.1, 0.4, 0.35, 0.35, -0.4]
@@ -129,7 +129,7 @@ function synth_kit()
     return Kit("Synth", layers, pan, gain, choke)
 end
 
-"Klick für Einzähler/Metronom (hoch = Takt-Eins)."
+"Click for count-in/metronome (high = downbeat of the bar)."
 function click_sound(hi::Bool)
     n = _n(0.05); t = _t(n)
     f = hi ? 1800.0 : 1200.0
@@ -137,13 +137,13 @@ function click_sound(hi::Bool)
 end
 
 # ---------------------------------------------------------------------------
-# WAV-Kits
+# WAV kits
 # ---------------------------------------------------------------------------
 
-"Resampling auf `SR` (Sinc, siehe `resample_sinc`)."
+"Resample to `SR` (sinc, see `resample_sinc`)."
 resample(x::AbstractVector, fs::Real) = resample_sinc(x, fs, SR)
 
-"Lädt eine WAV-Datei als `Sample` (Mono oder Stereo, mehr Kanäle werden auf Stereo gemischt)."
+"Load a WAV file as a `Sample` (mono or stereo; more channels are mixed down to stereo)."
 function load_sample(path; stereo::Bool = true)
     y, fs = WAV.wavread(path; format = "double")
     nch = size(y, 2)
@@ -158,9 +158,9 @@ end
 load_wav_mono(path) = load_sample(path; stereo = false)
 
 """
-Legt den Anschlag eines Samples auf den Rasterpunkt: schneidet alles bis `pre` Sekunden vor
-dem ersten Überschreiten von `thresh` × Spitzenpegel ab und blendet diesen Rest weich ein.
-Wichtig z. B. beim Hi-Hat-Pedal, das ~15 ms leises Vorgeräusch hat, bevor das „Chick“ kommt.
+Align a sample's attack with the grid point: cut everything up to `pre` seconds before the
+level first exceeds `thresh` x peak, and fade in the remainder smoothly.
+Important e.g. for the hi-hat pedal, which has ~15 ms of quiet pre-noise before the "chick".
 """
 function trim_onset(s::Sample; thresh = 0.1, pre = 0.001)
     env = isstereo(s) ? max.(abs.(s.l), abs.(s.r)) : abs.(s.l)
@@ -177,14 +177,14 @@ end
 """
     load_kit(dir) -> Kit
 
-Lädt ein Kit aus `dir/kit.toml`. Pro Spur gibt es zwei Formate:
+Load a kit from `dir/kit.toml`. Each track supports two formats:
 
-- `file = "36-Pearl-22-Kick"`: Dateien `<file>-1.wav` … `<file>-N.wav` (leise → laut),
-  oder eine einzelne `<file>.wav` (siehe `kits/BlackPearl/kit.toml`).
-- `folder = "Kick"`: Ordner mit `<layer>-<rr>.wav`, z. B. `01-1.wav`, `01-2.wav`, `02-1.wav` …
-  (Layer leise → laut, mehrere Round-Robins pro Layer).
+- `file = "36-Pearl-22-Kick"`: files `<file>-1.wav` ... `<file>-N.wav` (soft -> loud),
+  or a single `<file>.wav` (see `kits/BlackPearl/kit.toml`).
+- `folder = "Kick"`: folder with `<layer>-<rr>.wav`, e.g. `01-1.wav`, `01-2.wav`, `02-1.wav` ...
+  (layers soft -> loud, several round-robins per layer).
 
-Fehlende Spuren werden mit synthetischen Klängen aufgefüllt.
+Missing tracks are filled with synthetic sounds.
 """
 function load_kit(dir::AbstractString; fallback::Kit = synth_kit())
     cfg = TOML.parsefile(joinpath(dir, "kit.toml"))
@@ -237,8 +237,8 @@ end
 const KIT_DIR = normpath(joinpath(@__DIR__, "..", "kits"))
 
 """
-Alle Kits: WAV-Kits aus `kits/` (alphabetisch), danach die Synth-Kits im 808- und 909-Stil.
-Das einfache Synth-Kit dient nur als Ersatz für fehlende Samples.
+All kits: WAV kits from `kits/` (alphabetical), followed by the 808- and 909-style synth kits.
+The basic synth kit only serves as a fallback for missing samples.
 """
 function available_kits(dir = KIT_DIR)
     syn = synth_kit()

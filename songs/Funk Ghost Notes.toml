@@ -1,8 +1,8 @@
-# Funk-Song mit Ghost Notes, 38 Takte, leichter 16tel-Swing (57 %)
-# Form: A 8tel-Hihat (8) | B 16tel-Hihat mit Offbeat-Akzenten (8) | Stopp (1) | A kurz (4)
-#       | Breakdown Side Stick (8) | B (8) | Schluss (1)
-# Zeigt: 16tel-Swing, drei Dynamikstufen auf Snare und Hihat, Paradiddle-Fill, Ghost-Crescendo,
-#        Breakdown mit Side Stick, Spur-Effekte: Snare-EQ für knackige Ghost Notes, Bassdrum mit mehr Tiefe
+# Funk song with ghost notes, 38 bars, light 16th swing (57 %)
+# Form: A 8th hi-hat (8) | B 16th hi-hat with offbeat accents (8) | stop (1) | A short (4)
+#       | breakdown side stick (8) | B (8) | ending (1)
+# Shows: 16th swing, three dynamic levels on snare and hi-hat, paradiddle fill, ghost note crescendo,
+#        breakdown with side stick, track effects: snare EQ for crisp ghost notes, kick with more low end
 bpm = 92.0
 chain = [1, 2, 3, 2, 2, 3, 2, 4,  6, 5, 7, 5, 5, 7, 5, 8,  11,  1, 2, 3, 4,
          9, 9, 10, 10, 9, 9, 10, 11,  6, 5, 7, 5, 5, 7, 5, 8,  12]
@@ -20,7 +20,7 @@ swing = 0.57
 swing_on = 16
 swing_version = 2
 #               1e+a2e+a3e+a4e+a
-# 1: A mit Crash
+# 1: A with crash
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -28,14 +28,14 @@ steps = 16
     HiHat = "..x.x.x.x.x.x.x."
     Snare = "....X..o.o..X..o"
     Kick  = "X.x.......X..x.."
-# 2: A, Grundgroove
+# 2: A, basic groove
 [[pattern]]
 steps = 16
     [pattern.rows]
     HiHat = "x.x.x.x.x.x.x.x."
     Snare = "....X..o.o..X..o"
     Kick  = "X.x.......X..x.."
-# 3: A-Variation, mehr Ghosts, offene Hihat auf der 4+
+# 3: A variation, more ghost notes, open hi-hat on the 4+
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -43,21 +43,21 @@ steps = 16
     HHOpen = "..............x."
     Snare  = ".o..X.oo.o.oX..o"
     Kick   = "X.x...x...X..x.."
-# 4: A-Fill, Ghost-Wirbel in den Akzent
+# 4: A fill, ghost note roll into the accent
 [[pattern]]
 steps = 16
     [pattern.rows]
     HiHat = "x.x.x.x.x.x....."
     Snare = "....X..o.o..oxxX"
     Kick  = "X.x.......X....."
-# 5: B, 16tel-Hihat mit Akzenten auf den Offbeats
+# 5: B, 16th hi-hat with accents on the offbeats
 [[pattern]]
 steps = 16
     [pattern.rows]
     HiHat = "xoXoxoXoxoXoxoXo"
     Snare = "....X..o.o..X..."
     Kick  = "X..x..x...X..x.."
-# 6: B mit Crash
+# 6: B with crash
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -65,7 +65,7 @@ steps = 16
     HiHat = "..XoxoXoxoXoxoXo"
     Snare = "....X..o.o..X..."
     Kick  = "X..x..x...X..x.."
-# 7: B-Variation, offene Hihat auf 2a und 4a
+# 7: B variation, open hi-hat on 2a and 4a
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -73,7 +73,7 @@ steps = 16
     HHOpen = ".......x.......x"
     Snare  = "....X..o.o..X..o"
     Kick   = "X..x..x...X..x.."
-# 8: Paradiddle-Fill (RLRR LRLL) über Tom und Snare
+# 8: paradiddle fill (RLRR LRLL) across tom and snare
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -82,14 +82,14 @@ steps = 16
     Tom      = "........X.xx...."
     FloorTom = ".............x.."
     Kick     = "X..x..x.X......."
-# 9: Breakdown, leise 16tel-Hihat, Side Stick
+# 9: breakdown, quiet 16th hi-hat, side stick
 [[pattern]]
 steps = 16
     [pattern.rows]
     HiHat = "xoxoxoxoxoxoxoxo"
     Rim   = "....x.......x..."
     Kick  = "X.........x....."
-# 10: Breakdown mit Snare-Ghosts zwischen den Side Sticks
+# 10: breakdown with snare ghost notes between the side sticks
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -97,14 +97,14 @@ steps = 16
     Rim   = "....x.......x..."
     Snare = ".o.o...o.o.o...o"
     Kick  = "X..x......x..x.."
-# 11: Stopp mit Ghost-Crescendo
+# 11: stop with ghost note crescendo
 [[pattern]]
 steps = 16
     [pattern.rows]
     Crash = "X..X............"
     Kick  = "X..X............"
     Snare = "...X....oooxxxXX"
-# 12: Schluss
+# 12: ending
 [[pattern]]
 steps = 16
     [pattern.rows]

@@ -1,4 +1,4 @@
-using Test, DrumMachine
+using Test, DrumMachine, WAV
 using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
 
 @testset "DrumMachine" begin
@@ -23,7 +23,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test length(PRESET_NAMES) == length(unique(PRESET_NAMES))
         ht = preset("Shuffle: Purdie Half-Time (16tel-Triolen)")
         @test ht.steps_per_beat == 6 && ht.patterns[1].steps == 24
-        @test sum(step_samples(ht, k) for k in 0:23) ≈ 4 * 60 / 80 * SR   # Swing wirkt nicht auf Triolen
+        @test sum(step_samples(ht, k) for k in 0:23) ≈ 4 * 60 / 80 * SR   # swing does not affect triplets
         @test preset("Blues: Shuffle (12 Takte)").patterns[1].steps == 12
         p = pattern_from_rows(Dict("Snare" => "..o.X..x"))
         @test p.steps == 8
@@ -38,27 +38,27 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             f = make_fill(g, spb, st)
             n = min(FILL_STYLES[st][2] * spb, g.steps)
             @test f.steps == g.steps
-            @test f.grid[:, 1:g.steps-n] == g.grid[:, 1:g.steps-n]     # Groove davor bleibt
+            @test f.grid[:, 1:g.steps-n] == g.grid[:, 1:g.steps-n]     # groove before it is kept
             @test any(!iszero, f.grid[:, g.steps-n+1:g.steps])
-            @test f.grid[4, g.steps-n+1:g.steps] == zeros(UInt8, n)     # HiHat pausiert im Fill
+            @test f.grid[4, g.steps-n+1:g.steps] == zeros(UInt8, n)     # hi-hat rests during the fill
         end
         @test make_fill(g, 4, 1).grid == make_fill(g, 4, length(FILL_STYLES) + 1).grid
-        @test row_string(make_fill(g, 4, 2), 7) == ".............x.."             # Tom-Abgang: Tom in der Mitte
+        @test row_string(make_fill(g, 4, 2), 7) == ".............x.."             # tom run-out: tom in the middle
         short = pattern_from_rows(Dict("Snare" => "X.X."))
-        @test make_fill(short, 4, length(FILL_STYLES)).steps == 4                 # Fill länger als Pattern
+        @test make_fill(short, 4, length(FILL_STYLES)).steps == 4                 # fill longer than pattern
     end
 
     @testset "Spur-Effekte" begin
         D = DrumMachine
-        q = D.design!(D.Biquad(), :low, 120, 6)                 # +6 dB Tiefen → 50-Hz-Sinus ~ doppelt so laut
+        q = D.design!(D.Biquad(), :low, 120, 6)                 # +6 dB lows -> 50 Hz sine ~ twice as loud
         y = [D.process(q, Float32(sinpi(2 * 50 * k / SR)), 0f0)[1] for k in 1:SR]
         @test 1.8 < maximum(abs, y[SR÷2:end]) < 2.1
-        q = D.design!(D.Biquad(), :high, 5000, 6)               # Höhen-Shelf lässt Bass unverändert
+        q = D.design!(D.Biquad(), :high, 5000, 6)               # high shelf leaves bass unchanged
         y = [D.process(q, Float32(sinpi(2 * 50 * k / SR)), 0f0)[1] for k in 1:SR]
         @test 0.97 < maximum(abs, y[SR÷2:end]) < 1.03
         s = preset("Rock: 8tel")
         y0 = render_song(s, bp; repeats = 1)
-        s2 = copy(s); s2.tracks[2].eq_midf = 2000                # nur Frequenz geändert: kein Effekt
+        s2 = copy(s); s2.tracks[2].eq_midf = 2000                # only frequency changed: no effect
         @test render_song(s2, bp; repeats = 1) == y0
         D.set_mod!(s2.tracks[4], "Flanger"); s2.tracks[4].mod_mix = 1
         s2.tracks[1].eq_low = 4.5; D.set_mod!(s2.tracks[2], "Chorus")
@@ -69,7 +69,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             save_song(path, s2)
             txt = read(path, String)
             @test occursin("mod = \"Flanger\"", txt) && occursin("eq_low = 4.5", txt)
-            @test count("eq_low", txt) == 1                       # nur Spuren mit Effekt
+            @test count("eq_low", txt) == 1                       # only tracks with an effect
             t = load_song(path).tracks
             @test t[4].mod == 3 && t[4].mod_mix == 1 && t[4].mod_fb ≈ 0.75
             @test t[2].mod == 2 && t[1].eq_low == 4.5 && t[3].mod == 1
@@ -79,7 +79,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
 
     @testset "L/R tauschen" begin
         s = preset("Rock: 8tel"); s.fx = "Clean"
-        s.tracks[4].pan = -1                                       # Hihat ganz links
+        s.tracks[4].pan = -1                                       # hi-hat hard left
         y = render_song(s, bp; repeats = 1)
         s.swap_lr = true
         z = render_song(s, bp; repeats = 1)
@@ -90,6 +90,32 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
+    @testset "Loop-Export" begin
+        D = DrumMachine
+        syn = only(filter(k -> k.name == "808 (Synth)", kits))     # one sample per level -> deterministic
+        s = preset("Rock: 8tel"); s.chain = [2]; s.fx = "Hall"; s.fxmix = 0.5; s.master = 0.3
+        L = render_song(s, syn; repeats = 1, loop = true)
+        @test size(L, 1) == round(Int, D.song_seconds(s; repeats = 1, countin = 0) * SR)
+        y = render_song(s, syn; repeats = 3, countin = 0)          # played through: middle bar = loop
+        n = size(L, 1)
+        @test maximum(abs, L .- y[n+1:2n, :]) < 1e-3
+        s.loop = true
+        @test D.song_seconds(s) ≈ D.song_seconds(s; countin = 0)   # count-in is dropped
+        mktempdir() do dir
+            p = export_wav(joinpath(dir, "loop.wav"), s, syn; repeats = 1)
+            b = read(p)
+            @test ltoh(reinterpret(UInt32, b[5:8])[1]) == length(b) - 8   # RIFF size is correct
+            @test findfirst(b"smpl", b) === nothing                 # plain WAV, TD-27 rejects extra metadata
+            w, fs = WAV.wavread(p)
+            @test D.td27_name_warning(joinpath(dir, "Rock 8tel Loop.wav")) == ""
+            @test occursin("16", D.td27_name_warning(joinpath(dir, "Funk Ghost Notes Loop.wav")))
+            @test occursin("_Click", D.td27_name_warning(joinpath(dir, "Groove_Click.wav")))
+            @test size(w, 1) == n && fs == SR                         # file stays readable
+            save_song(joinpath(dir, "s.toml"), s)
+            @test load_song(joinpath(dir, "s.toml")).loop
+        end
+    end
+
     @testset "Datei-Dialog" begin
         mktempdir() do bin
             fake = joinpath(bin, "zenity")
@@ -97,27 +123,27 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
                 write(fake, "#!/bin/sh\necho /x/y.toml\n"); chmod(fake, 0o755)
                 @test DrumMachine.pick_song_file() == "/x/y.toml"
                 write(fake, "#!/bin/sh\nexit 1\n")
-                @test DrumMachine.pick_song_file() == ""                  # Abbrechen
+                @test DrumMachine.pick_song_file() == ""                  # cancel
             end
         end
     end
 
     @testset "Timing" begin
         s = preset("Rock: 16tel"); s.bpm = 120
-        @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # 4 Viertel à 0,5 s
+        @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # 4 quarters at 0.5 s
         s.swing = 0.66
         @test step_samples(s, 0) > step_samples(s, 1)
-        @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # Swing ändert die Taktlänge nicht
-        # Auto: 8tel-Groove swingt auf 8tel, 16tel-Groove auf 16tel
+        @test sum(step_samples(s, k) for k in 0:15) ≈ 2SR      # swing does not change the bar length
+        # Auto: 8th groove swings on 8ths, 16th groove on 16ths
         p8 = pattern_from_rows(Dict("HiHat" => "x.x.x.x.x.x.x.x."))
         p16 = pattern_from_rows(Dict("HiHat" => "xxxxxxxxxxxxxxxx"))
         on8 = cumsum([step_samples(s, k, p8) for k in 0:15])
-        @test on8[2] / (on8[4] - on8[2]) ≈ 0.66 / 0.34          # "+" rutscht nach hinten
+        @test on8[2] / (on8[4] - on8[2]) ≈ 0.66 / 0.34          # "+" moves later
         @test step_samples(s, 0, p16) > step_samples(s, 1, p16)
         s.swing_on = 8
         @test step_samples(s, 0, p16) == step_samples(s, 1, p16)
         @test sum(step_samples(s, k, p16) for k in 0:15) ≈ 2SR
-        # Triolen-Raster: Standard = exakte Triolen, Swing verschiebt die dritte Triole
+        # triplet grid: default = exact triplets, swing shifts the third triplet
         t = Song(bpm = 120, steps_per_beat = 3)
         @test t.swing == 2 / 3
         @test step_samples(t, 0) ≈ step_samples(t, 1) ≈ step_samples(t, 2)
@@ -132,31 +158,31 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test size(y, 2) == 2
         @test size(y, 1) >= round(Int, song_seconds(s; repeats = 1, countin = 1) * SR) - 1
         @test maximum(abs, y) <= 1
-        # Erster Schlag liegt nach dem Einzähler
+        # first beat comes after the count-in
         bar = round(Int, song_seconds(s; repeats = 1, countin = 0) / length(s.chain) * SR)
-        @test maximum(abs, y[1:bar÷8, :]) > 0.01          # Einzähler-Klick hörbar
-        # Mute wirkt im Export
+        @test maximum(abs, y[1:bar÷8, :]) > 0.01          # count-in click audible
+        # mute applies to the export
         s2 = preset("Rock: 8tel"); foreach(t -> t.mute = true, s2.tracks)
         @test maximum(abs, render_song(s2, bp; repeats = 1, countin = 0)) < 1e-3
         mktempdir() do d
-            # Dateinamen nur ASCII (Roland TD-27 u. a.)
+            # file names ASCII only (Roland TD-27 etc.)
             @test ascii_filename("Übung: Größe ä ö ü ß – Café.wav") == "Uebung_ Groesse ae oe ue ss _ Cafe.wav"
             @test all(isascii, ascii_filename("Funk: What-Is-Hip-Stil (Tower of Power).wav"))
             f = export_wav(joinpath(d, "Grüße Ölfaß.wav"), s, bp; repeats = 1)
             @test basename(f) == "Gruesse Oelfass.wav" && isfile(f)
-            # Standard-WAV: RIFF/WAVE, fmt (16 Byte, PCM), data – sonst nichts
+            # standard WAV: RIFF/WAVE, fmt (16 bytes, PCM), data - nothing else
             b = read(f)
             @test b[1:4] == b"RIFF" && b[9:12] == b"WAVE" && b[13:16] == b"fmt "
             @test reinterpret(UInt32, b[17:20])[1] == 16
-            @test reinterpret(UInt16, b[21:24]) == [1, 2]                  # PCM, Stereo
+            @test reinterpret(UInt16, b[21:24]) == [1, 2]                  # PCM, stereo
             @test reinterpret(UInt32, b[25:28])[1] == 44100
-            @test reinterpret(UInt16, b[35:36])[1] == 16                   # Bit
+            @test reinterpret(UInt16, b[35:36])[1] == 16                   # bits
             @test b[37:40] == b"data" && 44 + reinterpret(UInt32, b[41:44])[1] == length(b)
             f = export_wav(joinpath(d, "a.wav"), s, bp; repeats = 1, mono = true)
             @test size(DrumMachine.WAV.wavread(f)[1], 2) == 1
             f = export_wav(joinpath(d, "b.wav"), s, bp; repeats = 1)
             @test size(DrumMachine.WAV.wavread(f)[1], 2) == 2
-            # Mono wirkt schon beim Rendern (= Live-Wiedergabe): beide Kanäle identisch
+            # mono already applies when rendering (= live playback): both channels identical
             sm = copy(s); sm.mono = true
             ym = render_song(sm, bp; repeats = 1)
             @test ym[:, 1] == ym[:, 2]
@@ -166,7 +192,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
     end
 
     @testset "Sample-Onsets" begin
-        # Kein Sample darf später als 2 ms nach Beginn anschlagen (sonst wackelt das Timing)
+        # no sample may start later than 2 ms after onset (otherwise timing wobbles)
         for layers in bp.layers, layer in layers, s in layer
             x = s.l
             pk = maximum(abs, x)
@@ -196,7 +222,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         for nl in 1:20, lv in 1:3
             @test !isempty(L(lv, nl)) && first(L(lv, nl)) >= 1 && last(L(lv, nl)) <= nl
         end
-        # nie zweimal hintereinander dieselbe Aufnahme, solange es mehr als eine gibt
+        # never the same recording twice in a row, as long as there is more than one
         mk() = DrumMachine.Sample(rand(Float32, 10))
         layers = [[mk(), mk()], [mk(), mk(), mk()], [mk()]]
         rng = DrumMachine.MersenneTwister(1)
@@ -206,7 +232,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test s !== prev
             prev = s
         end
-        # Export ist reproduzierbar (geseedeter Zufall)
+        # export is reproducible (seeded randomness)
         s = preset("Funk: Ghost Notes")
         @test render_song(s, bp; repeats = 2) == render_song(s, bp; repeats = 2)
     end
@@ -218,7 +244,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             s2 = load_song(f)
             @test s2.patterns[1].grid == s.patterns[1].grid
             @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8 && s2.mono
-            # Alte Datei (ohne swing_version) mit Triolen und 0.5 → exakte Triolen
+            # old file (no swing_version) with triplets and 0.5 -> exact triplets
             d = DrumMachine.song_to_dict(preset("Blues: Jump / Swing"))
             d["swing"] = 0.5; delete!(d, "swing_version")
             @test DrumMachine.song_from_dict(d).swing == 2 / 3

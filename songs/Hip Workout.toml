@@ -1,5 +1,5 @@
-# Song auf Basis von "Funk: What-Is-Hip-Stil (Tower of Power)", 32 Takte
-# Form: A (8) | Ride-Bridge (4) | A + Break (8) | Breakdown (4) | Schluss-A + Tom-Fill (8)
+# Song based on "Funk: What-Is-Hip-Stil (Tower of Power)", 32 bars
+# Form: A (8) | ride bridge (4) | A + break (8) | breakdown (4) | final A + tom fill (8)
 bpm = 124.0
 chain = [1, 2, 2, 3, 2, 2, 3, 4,  5, 6, 6, 10,  1, 2, 2, 3, 2, 3, 7, 8,  9, 9, 9, 10,  1, 2, 2, 3, 2, 3, 2, 11]
 click = false
@@ -18,7 +18,7 @@ swing_version = 2
 
 #               1e+a2e+a3e+a4e+a
 
-# 1: Groove mit Crash (Abschnittsanfang)
+# 1: groove with crash (start of section)
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -28,7 +28,7 @@ steps = 16
     Kick   = "X..x..x..x....x."
     Snare  = ".o..X..o.o..X..o"
 
-# 2: Groove
+# 2: groove
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -37,7 +37,7 @@ steps = 16
     Kick   = "X..x..x..x....x."
     Snare  = ".o..X..o.o..X..o"
 
-# 3: Groove-Variation
+# 3: groove variation
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -46,7 +46,7 @@ steps = 16
     Kick   = "X..x..x...X..x.."
     Snare  = ".o..X..o.o.oX.o."
 
-# 4: halber Groove + Fill Snare -> Tom -> Floor
+# 4: half groove + fill snare -> tom -> floor
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -56,7 +56,7 @@ steps = 16
     Tom      = "............xx.."
     FloorTom = "..............xX"
 
-# 5: Ride-Bridge mit Crash
+# 5: ride bridge with crash
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -67,7 +67,7 @@ steps = 16
     Kick     = "X.x....x..x..x.."
     Snare    = "....X..o.o..X..o"
 
-# 6: Ride-Bridge
+# 6: ride bridge
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -77,7 +77,7 @@ steps = 16
     Kick     = "X.x....x..x..x.."
     Snare    = "....X..o.o..X..o"
 
-# 7: Break, Unisono-Kicks auf 1 und 2a, dann Luft
+# 7: break, unison kicks on 1 and 2a, then space
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -86,7 +86,7 @@ steps = 16
     Snare   = "X.....X........."
     HHPedal = "........x...x..."
 
-# 8: Break, Kicks auf 1, 2a, 3+ und Auftakt-Fill
+# 8: break, kicks on 1, 2a, 3+ and pickup fill
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -96,7 +96,7 @@ steps = 16
     Tom      = "..............x."
     FloorTom = "...............X"
 
-# 9: Breakdown, Hihat + Rim
+# 9: breakdown, hi-hat + rim
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -104,7 +104,7 @@ steps = 16
     Rim   = "....x.......x..."
     Kick  = "X.........x....."
 
-# 10: linearer Fill (nie zwei Stimmen gleichzeitig)
+# 10: linear fill (never two voices at once)
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -114,7 +114,7 @@ steps = 16
     Tom      = "............x..."
     FloorTom = "...............X"
 
-# 11: Schluss-Fill über den ganzen Takt
+# 11: final fill across the whole bar
 [[pattern]]
 steps = 16
     [pattern.rows]

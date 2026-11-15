@@ -1,11 +1,11 @@
-# Groove-Bibliothek zum Üben. Jedes Preset ist eine Funktion, die einen frischen `Song` liefert.
+# Groove library for practice. Each preset is a function that returns a fresh `Song`.
 #
-# Rasterzeichen:  . = aus   o = Ghost   x = normal   X = Akzent
-# Spuren:         Kick Snare Rim HiHat HHOpen HHPedal Tom FloorTom Ride RideBell Crash
+# Grid symbols:   . = off   o = ghost   x = normal   X = accent
+# Tracks:         Kick Snare Rim HiHat HHOpen HHPedal Tom FloorTom Ride RideBell Crash
 #
-# 16tel-Raster (steps_per_beat = 4), Position im Takt:
+# 16th grid (steps_per_beat = 4), position in the bar:
 #   1 e + a 2 e + a 3 e + a 4 e + a
-#   1 2 3 4 5 6 7 8 9 ...          (Step-Nummer)
+#   1 2 3 4 5 6 7 8 9 ...          (step number)
 
 function P(; steps = nothing, kw...)
     rows = Dict(String(k) => v for (k, v) in kw)
@@ -14,7 +14,7 @@ function P(; steps = nothing, kw...)
     return pattern_from_rows(rows; steps)
 end
 
-"Kopie von `p` mit Crash auf der Eins (HiHat/Ride auf der Eins entfällt)."
+"Copy of `p` with a crash on the one (hi-hat/ride on the one is dropped)."
 function with_crash(p::Pattern)
     q = copy(p)
     for id in ("HiHat", "HHOpen", "Ride", "RideBell")
@@ -24,7 +24,7 @@ function with_crash(p::Pattern)
     return q
 end
 
-"Kette: Crash-Takt, (n-2)× Groove, Fill  →  Patterns [crash, groove, fill]."
+"Chain: crash bar, (n-2)× groove, fill  →  patterns [crash, groove, fill]."
 form(n) = vcat(1, fill(2, n - 2), 3)
 
 const PRESETS = Pair{String,Function}[
@@ -116,8 +116,8 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Funk: Oakland (Tower-of-Power-Stil)" => function ()
-        # Garibaldi-artig: 16tel-Hihat mit Akzenten auf den Vierteln, offene Hihat auf der 4+,
-        # Ghost Notes zwischen Bassdrum und Backbeat.
+        # Garibaldi-like: 16th hi-hat with accents on the quarters, open hi-hat on the 4+,
+        # ghost notes between bass drum and backbeat.
         g = P(HiHat  = "XoxoXoxoXoxoXo.o",
               HHOpen = "..............X.",
               Snare  = ".o..X.o..o..X.o.",
@@ -130,8 +130,8 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Funk: What-Is-Hip-Stil (Tower of Power)" => function ()
-        # Annäherung an den Garibaldi-Groove: schnelles 16tel-Funk-Tempo, synkopierte Bassdrum,
-        # Ghost Notes zwischen den Backbeats, offene Hihat auf der 4+ (Variation zusätzlich auf der 2+).
+        # Approximation of the Garibaldi groove: fast 16th funk tempo, syncopated bass drum,
+        # ghost notes between the backbeats, open hi-hat on the 4+ (variation also on the 2+).
         #             1 e + a 2 e + a 3 e + a 4 e + a
         a = P(HiHat  = "x.x.x.x.x.x.x...",
               HHOpen = "..............X.",
@@ -145,8 +145,8 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Funk: Garibaldi Linear (Oakland)" => function ()
-        # Linear im Tower-of-Power-Stil: auf jedem 16tel genau ein Instrument,
-        # offene Hihat auf der 4+ als Höhepunkt vor der Eins.
+        # Linear in Tower of Power style: exactly one instrument on every 16th,
+        # open hi-hat on the 4+ as the climax before the one.
         #             1 e + a 2 e + a 3 e + a 4 e + a
         g = P(Kick   = "X.....X.X..X...x",
               Snare  = "..o.X....o..X...",
@@ -156,8 +156,8 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Funk: Oakland Half-Time" => function ()
-        # Half-Time-Funk: Backbeat nur auf der 3, durchlaufende 16tel-Hihat mit Viertel-Akzenten,
-        # Ghost Notes und synkopierte Bassdrum.
+        # Half-time funk: backbeat only on the 3, steady 16th hi-hat with quarter-note accents,
+        # ghost notes and syncopated bass drum.
         g = P(HiHat = "XxxxXxxxXxxxXxx.",
               HHOpen = "...............X",
               Snare = ".o..o...X.o..o..",
@@ -166,7 +166,7 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Funk: Linear" => function ()
-        # Linear: nie zwei Instrumente gleichzeitig.
+        # Linear: never two instruments at the same time.
         g = P(Kick  = "X..x...x.x....x.",
               Snare = "....X.o....oX...",
               HiHat = ".xx..x..x.x..x.x")
@@ -174,7 +174,7 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Funk: 16tel Zwei-Hand-Hihat" => function ()
-        # Hihat mit beiden Händen, die Snare ersetzt die Hihat auf dem Backbeat.
+        # Hi-hat with both hands, the snare replaces the hi-hat on the backbeat.
         g = P(HiHat = "xoxo.oxoxoxo.oxo",
               Snare = "....X.......X...",
               Kick  = "X..X..X...X..X..")
@@ -231,8 +231,8 @@ const PRESETS = Pair{String,Function}[
     end,
 
     # ------------------------------------------------------------------ Shuffles
-    # Triolen-Raster: Swing-Regler verschiebt die dritte Triole (67 % = exakt, 75 % = punktiert).
-    # Gerade Raster: Swing-Regler verschiebt das „+“ (auf 8tel) bzw. „e“/„a“ (auf 16tel).
+    # Triplet grids: the swing control shifts the third triplet (67 % = exact, 75 % = dotted).
+    # Straight grids: the swing control shifts the "+" (on 8ths) or "e"/"a" (on 16ths).
 
     "Shuffle: Rock-Shuffle" => function ()
         g = P(HiHat = "X.xX.xX.xX.x",
@@ -256,7 +256,7 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Shuffle: Snare-Shuffle (Chicago)" => function ()
-        # Die Snare spielt den Shuffle durch (Ghosts + Backbeat), Ride auf den Vierteln.
+        # The snare plays the shuffle throughout (ghost notes + backbeat), ride on the quarters.
         g = P(Ride    = "x..x..x..x..",
               Snare   = "o.oX.oo.oX.o",
               HHPedal = "...x.....x..",
@@ -272,8 +272,8 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Shuffle: Purdie Half-Time (16tel-Triolen)" => function ()
-        # 16tel-Triolen (6 pro Schlag): Hihat-Shuffle, Ghost Notes auf den Mitteltriolen,
-        # Backbeat nur auf der 3.
+        # 16th triplets (6 per beat): hi-hat shuffle, ghost notes on the middle triplets,
+        # backbeat only on the 3.
         g = P(HiHat = "x.xx.xx.xx.xx.xx.xx.xx.x",
               Snare = ".o..o..o..o.X...o..o..o.",
               Kick  = "X..........x.........x..")
@@ -281,9 +281,9 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Shuffle: Rosanna-Stil (Porcaro/Purdie)" => function ()
-        # Porcaros Variante des Purdie-Shuffles: 16tel-Triolen, Hihat-Shuffle mit Akzent auf der 3,
-        # Ghost Notes auf den mittleren Triolen, Backbeat nur auf der 3,
-        # Bassdrum-Auftakte vor der 3 und vor der 1.
+        # Porcaro's take on the Purdie shuffle: 16th triplets, hi-hat shuffle with accent on the 3,
+        # ghost notes on the middle triplets, backbeat only on the 3,
+        # bass drum pickups before the 3 and before the 1.
         #            1 la li + la li 2 . . . . . 3 . . . . . 4 . . . . .
         g = P(HiHat = "x.xx.xx.xx.xX.xx.xx.xx.x",
               Snare = ".o..o..o..o.X...o..o..o.",
@@ -297,10 +297,10 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Shuffle: Rule-the-World-Stil (Tears for Fears, 12/8)" => function ()
-        # Grundgroove im Stil von „Everybody Wants to Rule the World“, 12/8:
-        # 8tel-Triolen, 4 punktierte Viertel pro Takt, punktierte Viertel = 112.
-        # Hihat auf jeder zweiten Triole (6 gegen 4), Kick und Snare zusammen auf 2 und 4.
-        # Pattern 1 = Grundgroove, Pattern 2 = Überleitung mit Snare-Doppel und offener Hihat.
+        # Basic groove in the style of "Everybody Wants to Rule the World", 12/8:
+        # 8th triplets, 4 dotted quarters per bar, dotted quarter = 112.
+        # Hi-hat on every second triplet (6 against 4), kick and snare together on 2 and 4.
+        # Pattern 1 = basic groove, pattern 2 = transition with snare double and open hi-hat.
         #             1 + a 2 + a 3 + a 4 + a
         g = P(HiHat  = ".x.x.x.x.x.x",
               Snare  = "...X.....X..",
@@ -328,7 +328,7 @@ const PRESETS = Pair{String,Function}[
     end,
 
     "Shuffle: 8tel-Swing im geraden Raster" => function ()
-        # 16tel-Raster, Swing 66 % auf 8tel: das „+“ rutscht auf die dritte Triole.
+        # 16th grid, swing 66 % on 8ths: the "+" slides onto the third triplet.
         g = P(HiHat = "x.x.x.x.x.x.x.x.",
               Snare = "....X.......X...",
               Kick  = "X.....x.X.......")
@@ -411,7 +411,7 @@ const PRESETS = Pair{String,Function}[
         Song(name = "R&B: Neo Soul", bpm = 72, swing = 0.62, patterns = [g])
     end,
 
-    # ------------------------------------------------------------------ Taktarten
+    # ------------------------------------------------------------------ Time signatures
     "Taktart: Walzer 3/4" => function ()
         g = P(Kick  = "X...........",
               Snare = "....x...x...",

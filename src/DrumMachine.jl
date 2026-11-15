@@ -1,10 +1,10 @@
 """
     DrumMachine
 
-Step-Sequencer zum Schlagzeug-Üben: Groove eintragen, vorhören, als WAV exportieren.
+Step sequencer for drum practice: enter a groove, preview it, export it as WAV.
 
     using DrumMachine
-    DrumMachine.run()                 # GUI starten
+    DrumMachine.run()                 # start the GUI
     song = preset("Rock: 8tel")
     export_wav("rock.wav", song, first(available_kits()))
 """

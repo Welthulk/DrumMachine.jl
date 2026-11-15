@@ -1,10 +1,10 @@
-# Baut das Kit "CrocellKit" aus dem Stereo-Mix des DrumGizmo-CrocellKit (CC BY 4.0).
+# Builds the kit "CrocellKit" from the stereo mix of the DrumGizmo CrocellKit (CC BY 4.0).
 #
-#   julia --project=. tools/build_crocell.jl                 # lädt herunter (561 MB) und baut
-#   julia --project=. tools/build_crocell.jl /pfad/CrocellKit_Stereo_MIX   # schon entpackt
+#   julia --project=. tools/build_crocell.jl                 # downloads (561 MB) and builds
+#   julia --project=. tools/build_crocell.jl /path/CrocellKit_Stereo_MIX   # already extracted
 #
-# Ergebnis: kits/CrocellKit/ (~70 MB, nicht im Git). Zum Entpacken des RAR-Archivs wird
-# `bsdtar` (libarchive) oder `unrar` benötigt. Auswahl/Kalibrierung: siehe tools/kitbuilder.jl.
+# Result: kits/CrocellKit/ (~70 MB, not in git). Extracting the RAR archive requires
+# `bsdtar` (libarchive) or `unrar`. Selection/calibration: see tools/kitbuilder.jl.
 
 include("kitbuilder.jl")
 import Downloads
@@ -12,9 +12,9 @@ import Downloads
 const URL = "https://drumgizmo.org/kits/CrocellKit/CrocellKit_Stereo_MIX.rar"
 const DEST = joinpath(@__DIR__, "..", "kits", "CrocellKit")
 
-# Spur => Instrument-Ordner im Mix
+# track => instrument folder(s) in the mix
 const MAP = [
-    "Kick"     => ["KDrumR", "KDrumL"],   # beide Beater der Doppelfußmaschine als Round-Robin
+    "Kick"     => ["KDrumR", "KDrumL"],   # both beaters of the double pedal as round-robin
     "Snare"    => ["Snare"],
     "Rim"      => ["SnareRim"],
     "HiHat"    => ["HihatClosed"],

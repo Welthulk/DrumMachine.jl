@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Startet die DrumMachine-GUI aus dem Projektverzeichnis, egal von wo das Skript aufgerufen wird.
-#   ./start_drum.sh            starten (mit build/drummachine.so, falls vorhanden)
-#   ./start_drum.sh --build    Sysimage für schnelleren Start bauen (einige Minuten)
+# Starts the DrumMachine GUI from the project directory, no matter where the script is called from.
+#   ./start_drum.sh            start (with build/drummachine.so, if present)
+#   ./start_drum.sh --build    build sysimage for faster startup (takes a few minutes)
 cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
 if [ "$1" = "--build" ]; then

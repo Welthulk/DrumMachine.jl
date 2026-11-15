@@ -1,7 +1,7 @@
-# Baut build/drummachine.so: GLMakie, PortAudio und WAV vorkompiliert → deutlich schnellerer Start.
-#   julia tools/build_sysimage.jl        (dauert einige Minuten, danach ./start_drum.sh)
-# DrumMachine selbst ist nicht im Image, Änderungen am Code wirken also weiterhin sofort.
-# Nach Paket-Updates (Manifest.toml geändert) neu bauen.
+# Builds build/drummachine.so: GLMakie, PortAudio and WAV precompiled -> much faster startup.
+#   julia tools/build_sysimage.jl        (takes a few minutes, then ./start_drum.sh)
+# DrumMachine itself is not in the image, so code changes still take effect immediately.
+# Rebuild after package updates (Manifest.toml changed).
 using Pkg
 root = normpath(joinpath(@__DIR__, ".."))
 Pkg.activate(; temp = true)

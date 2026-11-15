@@ -1,14 +1,14 @@
-# Kleine DSP-Bausteine: Offline-Filter für die Klangsynthese und
-# Echtzeit-Effekte (Reverb, Echo, Drive, Lo-Fi) für den Master-Bus,
-# EQ und Chorus/Flanger je Spur.
+# Small DSP building blocks: offline filters for sound synthesis and
+# real-time effects (reverb, echo, drive, lo-fi) for the master bus,
+# plus EQ and chorus/flanger per track.
 
-const SR = 44100          # Abtastrate [Hz]
+const SR = 44100          # sample rate [Hz]
 
 # ---------------------------------------------------------------------------
-# Offline-Filter (arbeiten in-place auf Vektoren, nur für die Synthese)
+# Offline filters (work in-place on vectors, synthesis only)
 # ---------------------------------------------------------------------------
 
-"Einpoliger Tiefpass, in-place."
+"One-pole lowpass, in-place."
 function lowpass!(x::AbstractVector{<:Real}, fc::Real)
     a = exp(-2π * fc / SR)
     y = 0.0
@@ -19,7 +19,7 @@ function lowpass!(x::AbstractVector{<:Real}, fc::Real)
     return x
 end
 
-"Einpoliger Hochpass (x - Tiefpass(x)), in-place."
+"One-pole highpass (x - lowpass(x)), in-place."
 function highpass!(x::AbstractVector{<:Real}, fc::Real)
     a = exp(-2π * fc / SR)
     y = 0.0
@@ -30,7 +30,7 @@ function highpass!(x::AbstractVector{<:Real}, fc::Real)
     return x
 end
 
-"RBJ-Biquad-Bandpass (konstante Spitzenverstärkung 0 dB), in-place."
+"RBJ biquad bandpass (constant 0 dB peak gain), in-place."
 function bandpass!(x::AbstractVector{<:Real}, f0::Real, Q::Real)
     w0 = 2π * f0 / SR
     α = sin(w0) / (2Q)
@@ -48,7 +48,7 @@ function bandpass!(x::AbstractVector{<:Real}, f0::Real, Q::Real)
     return x
 end
 
-"Bitcrusher + Sample-and-Hold-Downsampling, in-place."
+"Bitcrusher + sample-and-hold downsampling, in-place."
 function crush!(x::AbstractVector{<:Real}, bits::Int, down::Int)
     if down > 1
         @inbounds for i in eachindex(x)
@@ -65,7 +65,7 @@ function crush!(x::AbstractVector{<:Real}, bits::Int, down::Int)
     return x
 end
 
-"Normiert auf Spitzenwert `peak` und blendet die letzten `fade` Sekunden aus."
+"Normalizes to peak value `peak` and fades out the last `fade` seconds."
 function finish(x::AbstractVector{<:Real}; peak = 1.0, fade = 0.005)
     m = maximum(abs, x)
     y = Float32.(m > 0 ? x .* (peak / m) : x)
@@ -77,7 +77,7 @@ function finish(x::AbstractVector{<:Real}; peak = 1.0, fade = 0.005)
 end
 
 # ---------------------------------------------------------------------------
-# Echtzeit-Effekte (allokationsfrei pro Sample)
+# Real-time effects (allocation-free per sample)
 # ---------------------------------------------------------------------------
 
 mutable struct Comb
@@ -110,7 +110,7 @@ Allpass(n) = Allpass(zeros(Float32, n), 1)
     return b - x
 end
 
-"Freeverb-artiger Stereo-Hall (4 Kammfilter + 2 Allpässe je Kanal)."
+"Freeverb-style stereo reverb (4 comb filters + 2 allpasses per channel)."
 struct Reverb
     combL::Vector{Comb}
     combR::Vector{Comb}
@@ -144,14 +144,14 @@ function clear!(r::Reverb)
     return r
 end
 
-"Ping-Pong-Echo mit tempoabhängiger Verzögerung."
+"Ping-pong echo with tempo-dependent delay."
 mutable struct PingPong
     bufL::Vector{Float32}
     bufR::Vector{Float32}
     idx::Int
-    delay::Int            # in Samples
+    delay::Int            # in samples
     fb::Float32
-    lp::Float32           # Zustand Tiefpass im Feedback
+    lp::Float32           # lowpass state in the feedback path
 end
 PingPong() = PingPong(zeros(Float32, 2SR), zeros(Float32, 2SR), 1, SR ÷ 4, 0.45f0, 0f0)
 
@@ -161,7 +161,7 @@ PingPong() = PingPong(zeros(Float32, 2SR), zeros(Float32, 2SR), 1, SR ÷ 4, 0.45
     j < 1 && (j += n)
     dl = @inbounds p.bufL[j]
     dr = @inbounds p.bufR[j]
-    p.lp = 0.7f0 * p.lp + 0.3f0 * dr           # Echos werden dunkler
+    p.lp = 0.7f0 * p.lp + 0.3f0 * dr           # echoes get darker
     @inbounds p.bufL[p.idx] = (l + r) * 0.5f0 + p.lp * p.fb
     @inbounds p.bufR[p.idx] = dl * p.fb
     p.idx = p.idx == n ? 1 : p.idx + 1
@@ -172,7 +172,7 @@ clear!(p::PingPong) = (fill!(p.bufL, 0f0); fill!(p.bufR, 0f0); p.lp = 0f0; p)
 
 const FX_NAMES = ["Clean", "Room", "Hall", "Echo", "Drive", "Lo-Fi"]
 
-"Zustand des Master-Effekts. `kind` indiziert `FX_NAMES`, `mix` ∈ [0,1]."
+"State of the master effect. `kind` indexes `FX_NAMES`, `mix` ∈ [0,1]."
 mutable struct FXState
     kind::Int
     mix::Float32
@@ -204,7 +204,7 @@ end
         n = tanh(g)
         return tanh(g * l) / n, tanh(g * r) / n
     elseif k == 6
-        # Sample-and-Hold auf bis zu 1/8 Rate + Quantisierung
+        # sample-and-hold down to 1/8 rate + quantization
         down = 1 + round(Int, 7 * m)
         if fx.holdcnt <= 0
             fx.holdL = l; fx.holdR = r; fx.holdcnt = down
@@ -217,10 +217,10 @@ end
 end
 
 # ---------------------------------------------------------------------------
-# Spur-Effekte: 3-Band-EQ und Chorus/Flanger (je Spur, stereo, allokationsfrei)
+# Track effects: 3-band EQ and chorus/flanger (per track, stereo, allocation-free)
 # ---------------------------------------------------------------------------
 
-"Stereo-Biquad (Direktform I), Koeffizienten nach RBJ-Audio-EQ-Cookbook."
+"Stereo biquad (direct form I), coefficients from the RBJ Audio EQ Cookbook."
 mutable struct Biquad
     b0::Float64; b1::Float64; b2::Float64; a1::Float64; a2::Float64
     xl1::Float64; xl2::Float64; yl1::Float64; yl2::Float64
@@ -233,7 +233,7 @@ function set_coeffs!(q::Biquad, b0, b1, b2, a0, a1, a2)
     return q
 end
 
-"Kuhschwanz/Glocke: `kind` = :low, :peak oder :high; `gain` in dB."
+"Shelf/bell: `kind` = :low, :peak or :high; `gain` in dB."
 function design!(q::Biquad, kind::Symbol, f0::Real, gain::Real; Q::Real = 0.9)
     A = 10.0^(gain / 40)
     w = 2π * f0 / SR
@@ -241,7 +241,7 @@ function design!(q::Biquad, kind::Symbol, f0::Real, gain::Real; Q::Real = 0.9)
     if kind == :peak
         α = sn / (2Q)
         set_coeffs!(q, 1 + α * A, -2c, 1 - α * A, 1 + α / A, -2c, 1 - α / A)
-    else                                   # Shelf mit Steilheit S = 1
+    else                                   # shelf with slope S = 1
         α = sn / 2 * sqrt(2)
         k = 2sqrt(A) * α
         if kind == :low
@@ -265,7 +265,7 @@ end
     return Float32(yl), Float32(yr)
 end
 
-"Modulierte Verzögerung für Chorus (12–18 ms) und Flanger (0,8–5 ms, mit Feedback)."
+"Modulated delay for chorus (12-18 ms) and flanger (0.8-5 ms, with feedback)."
 mutable struct ModDelay
     bufL::Vector{Float32}
     bufR::Vector{Float32}
@@ -284,13 +284,13 @@ ModDelay() = ModDelay(zeros(Float32, 2048), zeros(Float32, 2048), 1, 0.0)
     @inbounds return buf[i] * (1f0 - f) + buf[j] * f
 end
 
-"`chorus=true`: Chorus, sonst Flanger. Ausgabe: (1 - mix/2)·trocken + mix/2·nass."
+"`chorus=true`: chorus, otherwise flanger. Output: (1 - mix/2)·dry + mix/2·wet."
 @inline function process(m::ModDelay, chorus::Bool, l::Float32, r::Float32,
                          mix::Float32, rate::Float32, depth::Float32, fb::Float32)
     m.phase += rate / SR
     m.phase >= 1 && (m.phase -= 1)
     if chorus
-        base = 0.012 * SR; sweep = depth * 0.006 * SR; off = 0.25     # L/R gegenphasig verschoben
+        base = 0.012 * SR; sweep = depth * 0.006 * SR; off = 0.25     # L/R phase-offset
     else
         base = 0.0008 * SR; sweep = depth * 0.0042 * SR; off = 0.08
     end
@@ -308,7 +308,7 @@ end
 const EQ_LOW_F = 120.0
 const EQ_HIGH_F = 5000.0
 
-"Effektzustand einer Spur. `key` merkt sich die EQ-Einstellung der aktuellen Koeffizienten."
+"Effect state of a track. `key` remembers the EQ setting of the current coefficients."
 mutable struct TrackFX
     low::Biquad
     mid::Biquad
@@ -335,13 +335,13 @@ end
 """
     resample_sinc(x, fs_in, fs_out; taps = 32) -> Vector{Float32}
 
-Bandbegrenztes Resampling mit Blackman-gefensterter Sinc-Interpolation (±`taps` Stützstellen).
-Vermeidet das Aliasing linearer Interpolation, das vor allem Becken verfärbt.
+Band-limited resampling with Blackman-windowed sinc interpolation (±`taps` taps).
+Avoids the aliasing of linear interpolation, which mainly colors cymbals.
 """
 function resample_sinc(x::AbstractVector{<:Real}, fs_in::Real, fs_out::Real; taps::Int = 32)
     round(Int, fs_in) == round(Int, fs_out) && return Float32.(x)
     r = fs_out / fs_in
-    fc = min(1.0, r) * 0.95                 # Grenzfrequenz relativ zur Eingangs-Nyquist
+    fc = min(1.0, r) * 0.95                 # cutoff relative to the input Nyquist
     n = length(x)
     m = floor(Int, n * r)
     y = Vector{Float32}(undef, m)

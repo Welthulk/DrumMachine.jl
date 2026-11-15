@@ -1,17 +1,17 @@
-# Audio-Engine: sample-genauer Sequencer + Voice-Mixer. Dieselbe `render!`-Funktion wird
-# für die Live-Wiedergabe (PortAudio) und den WAV-Export verwendet.
+# Audio engine: sample-accurate sequencer + voice mixer. The same `render!` function is
+# used for live playback (PortAudio) and WAV export.
 
 import PortAudio
 using Random: MersenneTwister, AbstractRNG
 
 const BLOCK = 512
 const NVOICES = 64
-const FADE_SAMPLES = round(Int, 0.008 * SR)     # Ausblendzeit beim Abwürgen (Hi-Hat-Choke)
+const FADE_SAMPLES = round(Int, 0.008 * SR)     # fade time when choking (hi-hat choke)
 
-# Velocity-Stufe (Ghost, normal, Akzent) -> Anteil der Kit-Layer (leise → laut)
+# Velocity level (ghost note, normal, accent) -> share of kit layers (soft → loud)
 const LEVEL_RANGE = ((0.0, 0.4), (0.4, 0.8), (0.8, 1.0))
 
-"Layer-Indizes (1…nl) für Velocity-Stufe `level`; bei 5 Layern: 1–2, 3–4, 5."
+"Layer indices (1…nl) for velocity level `level`; with 5 layers: 1–2, 3–4, 5."
 function level_layers(level::Int, nl::Int)
     f0, f1 = LEVEL_RANGE[level]
     lo = min(nl, floor(Int, f0 * nl) + 1)
@@ -21,14 +21,14 @@ end
 
 mutable struct Voice
     buf::Vector{Float32}
-    bufr::Vector{Float32}  # rechter Kanal (=== buf bei Mono-Samples)
+    bufr::Vector{Float32}  # right channel (=== buf for mono samples)
     pos::Float64
     rate::Float64
     gl::Float32
     gr::Float32
     track::Int
     choke::Int
-    fade::Int            # > 0: wird ausgeblendet (verbleibende Samples)
+    fade::Int            # > 0: fading out (remaining samples)
     active::Bool
 end
 Voice() = (b = Float32[]; Voice(b, b, 0.0, 1.0, 0f0, 0f0, 0, 0, 0, false))
@@ -37,32 +37,32 @@ mutable struct Engine
     song::Song
     kit::Kit
     voices::Vector{Voice}
-    last::Vector{Sample}             # zuletzt gespieltes Sample je Spur (keine direkte Wiederholung)
-    rng::MersenneTwister             # geseedet → Exporte sind reproduzierbar
+    last::Vector{Sample}             # last sample played per track (no immediate repeat)
+    rng::MersenneTwister             # seeded → exports are reproducible
     fx::FXState
-    trackfx::Vector{TrackFX}         # EQ/Chorus/Flanger je Spur
-    bus::Vector{Matrix{Float32}}     # Spur-Busse (nur für Spuren mit Effekt benutzt)
-    fxon::Vector{Bool}               # Spur läuft im aktuellen Block über ihren Bus
+    trackfx::Vector{TrackFX}         # EQ/chorus/flanger per track
+    bus::Vector{Matrix{Float32}}     # track buses (only used for tracks with effects)
+    fxon::Vector{Bool}               # track runs through its bus in the current block
     click_hi::Sample
     click_lo::Sample
     # Transport
     playing::Bool
     samplepos::Int
     next_step_at::Float64
-    step::Int                        # nächster Step (0-basiert)
-    seq::Vector{Int}                 # Takte: 0 = Einzähler, -1 = aktuelles Edit-Pattern, sonst Pattern-Index
+    step::Int                        # next step (0-based)
+    seq::Vector{Int}                 # bars: 0 = count-in, -1 = current edit pattern, else pattern index
     seqpos::Int
-    loop_from::Int                   # 0 = am Ende stoppen
-    pat::Int                         # spielendes Pattern (0 = Einzähler)
+    loop_from::Int                   # 0 = stop at the end
+    pat::Int                         # playing pattern (0 = count-in)
     edit_pat::Int
     songmode::Bool
     live_countin::Bool
     finished::Bool
-    # Anzeige (vom GUI gelesen)
+    # Display (read by the GUI)
     shown_step::Threads.Atomic{Int}
     shown_pat::Threads.Atomic{Int}
     shown_seqpos::Threads.Atomic{Int}
-    # Vorhören von Spuren (vom GUI befüllt)
+    # Track preview (filled by the GUI)
     pads::Channel{Tuple{Int,Int}}
     lock::ReentrantLock
     running::Bool
@@ -82,7 +82,7 @@ function Engine(song::Song, kit::Kit)
     return eng
 end
 
-"Übernimmt FX-Auswahl und Mix aus dem Song in den Effektzustand."
+"Applies the FX choice and mix from the song to the effect state."
 function apply_fx!(eng::Engine)
     k = findfirst(==(eng.song.fx), FX_NAMES)
     eng.fx.kind = something(k, 1)
@@ -96,7 +96,7 @@ end
 
 function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rate::Float64,
                       track::Int, choke::Int)
-    if choke > 0                      # gleiche Choke-Gruppe ausblenden
+    if choke > 0                      # fade out the same choke group
         for v in eng.voices
             if v.active && v.choke == choke && v.fade == 0
                 v.fade = FADE_SAMPLES
@@ -109,15 +109,15 @@ function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rat
             v = w; break
         end
     end
-    if v === nothing                  # ältestes Voice stehlen
+    if v === nothing                  # steal the oldest voice
         v = eng.voices[argmax(w.pos for w in eng.voices)]
     end
     p = clamp(pan, -1f0, 1f0)
     v.buf = smp.l; v.bufr = smp.r; v.pos = 0.0; v.rate = rate
-    if isstereo(smp)          # Stereo-Sample: Balance, Mitte = unverändert
+    if isstereo(smp)          # stereo sample: balance, center = unchanged
         v.gl = gain * min(1f0, 1f0 - p)
         v.gr = gain * min(1f0, 1f0 + p)
-    else                      # Mono-Sample: Equal-Power-Panorama
+    else                      # mono sample: equal-power panning
         θ = (p + 1f0) * Float32(π) / 4
         v.gl = gain * cos(θ)
         v.gr = gain * sin(θ)
@@ -126,7 +126,7 @@ function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rat
     return v
 end
 
-"Spielt Spur `t` mit Velocity-Stufe `level` (1–3). `seq=true` berücksichtigt Mute/Solo."
+"Plays track `t` at velocity level `level` (1–3). `seq=true` honors mute/solo."
 function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
     tp = eng.song.tracks[t]
     if seq
@@ -144,15 +144,15 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
 end
 
 """
-Wählt zufällig eine Aufnahme aus den Layern der Velocity-Stufe (alle Round-Robins),
-aber nicht dieselbe wie zuletzt – so klingen schnelle Wiederholungen natürlich.
+Randomly picks a recording from the layers of the velocity level (all round robins),
+but not the same one as last time – so fast repeats sound natural.
 """
 function pick_sample(rng::AbstractRNG, layers::Vector{Vector{Sample}}, level::Int, prev::Sample)
     r = level_layers(level, length(layers))
     n = sum(length(layers[l]) for l in r)
     k = rand(rng, 1:n)
     s = nth_sample(layers, r, k)
-    if s === prev && n > 1                 # keine direkte Wiederholung: nächste Aufnahme
+    if s === prev && n > 1                 # no immediate repeat: next recording
         s = nth_sample(layers, r, mod1(k + 1, n))
     end
     return s
@@ -206,7 +206,7 @@ end
 
 current_pattern(eng::Engine) = eng.pat == 0 ? countin_pattern(eng) : eng.song.patterns[eng.pat]
 
-"Erstes echtes Pattern der Sequenz, bestimmt die Länge des Einzählers."
+"First real pattern of the sequence; determines the length of the count-in."
 function countin_pattern(eng::Engine)
     for p in eng.seq
         p > 0 && return eng.song.patterns[p]
@@ -216,8 +216,8 @@ function countin_pattern(eng::Engine)
 end
 
 """
-Swing-Basis für Pattern `p`: 8 oder 16. Bei Auto (0) wird auf 16tel geswingt, sobald im
-Pattern Schläge auf „e“ oder „a“ liegen, sonst auf 8tel.
+Swing basis for pattern `p`: 8 or 16. With auto (0) it swings on 16ths as soon as the
+pattern has hits on 'e' or 'a', otherwise on 8ths.
 """
 function swing_unit(song::Song, p::Union{Pattern,Nothing})
     song.swing_on != 0 && return song.swing_on
@@ -226,28 +226,28 @@ function swing_unit(song::Song, p::Union{Pattern,Nothing})
 end
 
 """
-Dauer von Step `s` (0-basiert) in Samples, inkl. Swing. Die Taktlänge bleibt immer gleich.
+Duration of step `s` (0-based) in samples, incl. swing. The bar length always stays the same.
 
-Einheitliche Bedeutung von `song.swing`: Lage der Off-Beat-Note innerhalb ihrer Gruppe
-(50 % = Mitte/gerade, 67 % = Triole, 75 % = punktiert).
+Uniform meaning of `song.swing`: position of the off-beat note within its group
+(50 % = middle/straight, 67 % = triplet, 75 % = dotted).
 
-- 8tel-/16tel-Raster: Paare (8tel- bzw. 16tel-Paar); die erste Hälfte wird um `swing` gedehnt.
-- Triolen-Raster (3 bzw. 6 pro Schlag): Dreiergruppen; die dritte Triole liegt bei `swing`
-  der Gruppe, die mittlere genau dazwischen. Bei 2/3 ergeben sich exakte Triolen.
+- 8th/16th grid: pairs (8th or 16th pair); the first half is stretched by `swing`.
+- Triplet grid (3 or 6 per beat): groups of three; the third triplet sits at `swing`
+  of the group, the middle one exactly in between. At 2/3 this gives exact triplets.
 """
 function step_samples(song::Song, s::Int, p::Union{Pattern,Nothing} = nothing)
     spb = song.steps_per_beat
     base = 60.0 / song.bpm / spb * SR
     sw = clamp(song.swing, 0.5, 0.8)
     if spb in (3, 6)
-        g = 3base                                          # Dauer einer Dreiergruppe
+        g = 3base                                          # duration of a group of three
         return s % 3 == 2 ? (1 - sw) * g : sw * g / 2
     end
     (sw == 0.5 || !(spb in (2, 4))) && return base
     if spb == 2 || swing_unit(song, p) == 16
-        return 2base * (iseven(s) ? sw : 1 - sw)          # Paare aus einzelnen Steps
+        return 2base * (iseven(s) ? sw : 1 - sw)          # pairs of single steps
     end
-    return 2base * (s % 4 < 2 ? sw : 1 - sw)               # 16tel-Raster, Swing auf 8tel
+    return 2base * (s % 4 < 2 ? sw : 1 - sw)               # 16th grid, swing on 8ths
 end
 
 function resolve_pat(eng::Engine, p::Int)
@@ -300,7 +300,7 @@ function do_step!(eng::Engine)
     return
 end
 
-"Startet die Wiedergabe mit Sequenz `seq` (siehe Feld-Doku) ab sofort."
+"Starts playback of sequence `seq` (see field docs) right away."
 function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
     eng.seq = seq
     eng.loop_from = loop_from
@@ -313,7 +313,7 @@ function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
     return eng
 end
 
-"Live: Pattern-Modus (aktuelles Edit-Pattern in Schleife) oder Song-Modus (Kette in Schleife)."
+"Live: pattern mode (current edit pattern looped) or song mode (chain looped)."
 function play!(eng::Engine)
     lock(eng.lock) do
         ci = eng.live_countin ? fill(0, eng.song.countin) : Int[]
@@ -332,7 +332,7 @@ function stop!(eng::Engine)
     end
 end
 
-"Rendert einen Block (frames × 2) – sample-genau, Steps können mitten im Block liegen."
+"Renders one block (frames × 2) – sample-accurate, steps may fall mid-block."
 function render!(eng::Engine, out::Matrix{Float32})
     fill!(out, 0f0)
     while isready(eng.pads)
@@ -340,7 +340,7 @@ function render!(eng::Engine, out::Matrix{Float32})
         t == 0 ? click!(eng, true) : trigger!(eng, t, lv; seq = false)
     end
     N = size(out, 1)
-    for t in 1:NTRACKS                       # Spur-Effekte: Busse vorbereiten
+    for t in 1:NTRACKS                       # track effects: prepare buses
         tp = eng.song.tracks[t]
         eng.fxon[t] = has_trackfx(tp)
         eng.fxon[t] || continue
@@ -371,9 +371,9 @@ function render!(eng::Engine, out::Matrix{Float32})
     fx = eng.fx
     @inbounds for k in 1:N
         l, r = process(fx, out[k, 1], out[k, 2])
-        if eng.song.mono                    # Summe L+R auf beide Kanäle (Pegel ~ wie Stereo-Mitte)
+        if eng.song.mono                    # sum L+R on both channels (level ~ like stereo center)
             l = r = (l + r) * 0.7071f0
-        elseif eng.song.swap_lr             # Kanäle tauschen (z. B. Schlagzeuger- statt Publikumsperspektive)
+        elseif eng.song.swap_lr             # swap channels (e.g. drummer's instead of audience perspective)
             l, r = r, l
         end
         out[k, 1] = tanh(l * m)
@@ -382,7 +382,7 @@ function render!(eng::Engine, out::Matrix{Float32})
     return out
 end
 
-"Spur-Bus durch EQ und Modulation schicken und auf die Summe `out` addieren."
+"Send the track bus through EQ and modulation and add it to the sum `out`."
 function process_track!(fx::TrackFX, tp::TrackParams, bus::Matrix{Float32}, out::Matrix{Float32}, N::Int)
     eq = has_eq(tp)
     md = tp.mod
@@ -405,23 +405,23 @@ function process_track!(fx::TrackFX, tp::TrackParams, bus::Matrix{Float32}, out:
 end
 
 # ---------------------------------------------------------------------------
-# Live-Audio
+# Live audio
 # ---------------------------------------------------------------------------
 
 """
     start_audio!(eng; device = nothing, latency = 0.15)
 
-Öffnet das Audiogerät und startet den Audio-Thread. `latency` (Sekunden) ist der Puffer zur
-Soundkarte: Großzügig gewählt, damit Pausen der Garbage Collection (Julia hält dabei alle
-Threads kurz an, GLMakie erzeugt beim Zeichnen viel Müll) nicht zu Aussetzern führen.
-Für ein Übungstool ist die Verzögerung beim Start unkritisch.
+Opens the audio device and starts the audio thread. `latency` (seconds) is the buffer to the
+sound card: chosen generously so that garbage collection pauses (Julia briefly halts all
+threads, GLMakie creates a lot of garbage while drawing) don't cause dropouts.
+For a practice tool the delay at startup is not critical.
 """
 function start_audio!(eng::Engine; device = nothing, latency::Real = 0.15)
     eng.running && return eng
     if Threads.nthreads() < 2
         @warn "Julia läuft mit nur einem Thread – Audio kann stottern. Starte mit `julia -t auto`."
     end
-    # Aufwärmen: render!-Pfade vorab kompilieren, damit der JIT nicht in die Wiedergabe fällt
+    # Warm-up: precompile the render! paths so the JIT doesn't hit during playback
     warm = Engine(copy(eng.song), eng.kit)
     start_seq!(warm, [1], 1)
     wbuf = zeros(Float32, BLOCK, 2)
@@ -462,12 +462,17 @@ end
 # ---------------------------------------------------------------------------
 
 """
-    render_song(song, kit; repeats, countin, click, tail=2.0) -> Matrix{Float32}
+    render_song(song, kit; repeats, countin, click, loop, tail) -> Matrix{Float32}
 
-Rendert Einzähler + `repeats` × Kette offline als Stereo-Matrix (Samples × 2).
+Renders count-in + `repeats` × chain offline as a stereo matrix (samples × 2).
+
+`loop = true`: seamless loop. No count-in, the length matches the chain exactly, and the
+decay after the last bar (cymbals, reverb) is added to the beginning – so the file sounds
+as if played through when looped endlessly, with no gap and no cut-off reverb.
 """
 function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin::Int = song.countin,
-                     click::Bool = song.click, tail::Real = 2.0)
+                     click::Bool = song.click, loop::Bool = song.loop, tail::Real = loop ? 4.0 : 2.0)
+    loop && (countin = 0)
     s = copy(song)
     s.click = click
     eng = Engine(s, kit)
@@ -480,13 +485,21 @@ function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin:
         render!(eng, buf)
         push!(blocks, copy(buf))
     end
-    songlen = round(Int, eng.next_step_at)      # Ende des letzten Steps
+    songlen = round(Int, eng.next_step_at)      # end of the last step
     for _ in 1:ceil(Int, tail * SR / BLOCK)
         render!(eng, buf)
         push!(blocks, copy(buf))
     end
     y = reduce(vcat, blocks)
-    # Ausklingen nach Songende kürzen, sobald es leiser als -70 dB ist
+    if loop
+        n = clamp(songlen, 1, size(y, 1))
+        out = y[1:n, :]
+        @inbounds for k in n+1:size(y, 1), c in 1:2      # fold the decay cyclically onto the beginning
+            out[mod1(k - n, n), c] += y[k, c]
+        end
+        return out
+    end
+    # Trim the decay after the song end once it is quieter than -70 dB
     last = findlast(>(10^(-70 / 20)), vec(maximum(abs, y; dims = 2)))
     n = clamp(max(songlen, something(last, 0)), 1, size(y, 1))
     return y[1:n, :]
@@ -497,9 +510,9 @@ const TRANSLIT = Dict('ä' => "ae", 'ö' => "oe", 'ü' => "ue", 'Ä' => "Ae", '�
 """
     ascii_filename(name) -> String
 
-Dateiname nur aus ASCII-Zeichen, wie ihn z. B. Drum-Module (Roland TD-27) verlangen:
-Umlaute werden ausgeschrieben (ä → ae, ß → ss), Akzente entfernt (é → e), alle übrigen
-Zeichen außer Buchstaben, Ziffern, Leerzeichen und `. _ - ( )` werden zu `_`.
+File name of ASCII characters only, as required e.g. by drum modules (Roland TD-27):
+umlauts are spelled out (ä → ae, ß → ss), accents removed (é → e), all other
+characters except letters, digits, spaces and `. _ - ( )` become `_`.
 """
 function ascii_filename(name::AbstractString)
     s = join(get(TRANSLIT, c, string(c)) for c in name)
@@ -512,17 +525,17 @@ end
 """
     export_wav(path, song, kit; mono = song.mono, bits = 16, kw...) -> path
 
-Schreibt den gerenderten Song als Standard-WAV (RIFF, PCM, 44,1 kHz, 16 Bit wie Audio-CD):
-Stereo oder, bei `mono = true`, einkanalig. Der Dateiname wird mit [`ascii_filename`](@ref)
-in reines ASCII umgewandelt; zurückgegeben wird der tatsächlich geschriebene Pfad.
-Weitere Schlüsselwörter wie bei [`render_song`](@ref).
+Writes the rendered song as a standard WAV (RIFF, PCM, 44.1 kHz, 16 bit like an audio CD):
+stereo or, with `mono = true`, single-channel. The file name is converted to pure ASCII
+with [`ascii_filename`](@ref); the path actually written is returned.
+Other keywords as for [`render_song`](@ref).
 """
 function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = song.mono, bits::Int = 16, kw...)
     path = joinpath(dirname(path), ascii_filename(basename(path)))
     s = copy(song)
     s.mono = mono
     y = render_song(s, kit; kw...)
-    mono && (y = y[:, 1:1])                # beide Kanäle sind identisch
+    mono && (y = y[:, 1:1])                # both channels are identical
     mkpath(dirname(abspath(path)))
     bits in (16, 24) || error("bits muss 16 oder 24 sein")
     q = 2^(bits - 1) - 1
@@ -532,8 +545,23 @@ function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = son
     return path
 end
 
-"Länge des Exports in Sekunden (ohne Ausklingen)."
-function song_seconds(song::Song; repeats::Int = song.repeats, countin::Int = song.countin)
+
+"""
+    td27_name_warning(path) -> String
+
+Hint for the Roland TD-27 song player: it shows only 16 characters of a file name correctly, and a
+name ending in `_Click` is taken as the click track of another song. Returns `""` if all is fine.
+"""
+function td27_name_warning(path::AbstractString)
+    base = splitext(basename(path))[1]
+    msgs = String[]
+    length(base) > 16 && push!(msgs, "Name hat $(length(base)) Zeichen, das TD-27 zeigt nur 16")
+    endswith(lowercase(base), "_click") && push!(msgs, "Name endet auf _Click – das TD-27 hält die Datei für eine Klick-Spur")
+    return join(msgs, "; ")
+end
+
+"Export length in seconds (without decay; with loop, without count-in)."
+function song_seconds(song::Song; repeats::Int = song.repeats, countin::Int = song.loop ? 0 : song.countin)
     bar(p) = sum(step_samples(song, s, p) for s in 0:p.steps-1) / SR
     first = song.patterns[song.chain[1]]
     return countin * bar(first) + max(repeats, 1) * sum(bar(song.patterns[i]) for i in song.chain)

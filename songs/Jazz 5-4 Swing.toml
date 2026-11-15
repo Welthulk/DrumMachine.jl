@@ -1,11 +1,11 @@
-# Jazz-Swing im 5/4-Takt (3+2), 35 Takte, Kit BlackPearl (im Repo)
-# Raster: 8tel-Triolen, 15 Steps pro Takt, Viertel = 160
-# Swing 64 %: etwas gerader als exakte Triolen, wie bei schnellem Jazz üblich
-# Form: Intro Ride (2) | A (8) | B Hihat + Cross-Stick (4) | A (4)
-#       | Trading: 3 Takte Time, 1 Takt Drum-Solo (8) | A (8) | Schluss (1)
-# Zeigt: ungerade Taktart, Ride-Pattern „Spang-a-lang“ mit Hihat-Pedal auf 2 und 4,
-#        gefederte Bassdrum (Ghost auf allen Vierteln), Snare-Comping auf dem „a“,
-#        lineares Triolen-Solo, Ride mit EQ und Panorama
+# Jazz swing in 5/4 (3+2), 35 bars, kit BlackPearl (in the repo)
+# Grid: 8th triplets, 15 steps per bar, quarter = 160
+# Swing 64 %: a bit straighter than exact triplets, as usual in fast jazz
+# Form: intro ride (2) | A (8) | B hi-hat + Cross-Stick (4) | A (4)
+#       | trading: 3 bars time, 1 bar drum solo (8) | A (8) | ending (1)
+# Shows: odd meter, ride pattern "spang-a-lang" with hi-hat pedal on 2 and 4,
+#        feathered bass drum (ghost notes on all quarters), snare comping on the "a",
+#        linear triplet solo, ride with EQ and panning
 bpm = 160.0
 chain = [8, 8,  1, 2, 3, 2, 2, 3, 2, 5,  4, 4, 4, 5,  1, 2, 3, 5,
          2, 2, 2, 6, 2, 3, 2, 6,  1, 2, 3, 2, 2, 3, 2, 5,  7]
@@ -23,7 +23,7 @@ swing = 0.64
 swing_on = 0
 swing_version = 2
 #            1+a2+a3+a4+a5+a
-# 1: A mit Crash auf der Eins
+# 1: A with crash on the one
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -32,7 +32,7 @@ steps = 15
     HHPedal = "...x.....x....."
     Snare   = "........o..x..."
     Kick    = "X..o..o..o..o.."
-# 2: A, Grundgroove: Ride, Hihat-Pedal auf 2 und 4, gefederte Bassdrum, Comping
+# 2: A, basic groove: ride, hi-hat pedal on 2 and 4, feathered bass drum, comping
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -40,7 +40,7 @@ steps = 15
     HHPedal = "...x.....x....."
     Snare   = "........o..x..."
     Kick    = "o..o..o..o..o.."
-# 3: A-Variation, anderes Comping, „Bomb“ der Bassdrum auf dem „a“ der 4
+# 3: A variation, different comping, bass drum "bomb" on the "a" of 4
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -48,7 +48,7 @@ steps = 15
     HHPedal = "...x.....x....."
     Snare   = "..o.....x.....o"
     Kick    = "o..o..o..o.Xo.."
-# 4: B, geschlossene Hihat statt Ride, Cross-Stick auf der 4
+# 4: B, closed hi-hat instead of ride, Cross-Stick on 4
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -56,7 +56,7 @@ steps = 15
     Rim   = ".........x....."
     Snare = ".....o........o"
     Kick  = "o..o..o..o..o.."
-# 5: Fill, Triolen über Snare und Toms auf 4 und 5
+# 5: fill, triplets across snare and toms on 4 and 5
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -66,7 +66,7 @@ steps = 15
     Tom      = "............xx."
     FloorTom = "..............X"
     Kick     = "o..o..o.......X"
-# 6: Solo-Takt (Trading): lineare Triolen Snare – Tom – Bassdrum, Crash auf der 5a
+# 6: solo bar (trading): linear triplets snare - tom - bass drum, crash on the 5a
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -75,7 +75,7 @@ steps = 15
     FloorTom = ".......x..x...."
     Kick     = "..x..x..x..x..X"
     Crash    = "..............X"
-# 7: Schluss
+# 7: ending
 [[pattern]]
 steps = 15
     [pattern.rows]
@@ -83,7 +83,7 @@ steps = 15
     Ride  = "X.............."
     Snare = "X.............."
     Kick  = "X.............."
-# 8: Intro, nur Ride und Hihat-Pedal
+# 8: intro, only ride and hi-hat pedal
 [[pattern]]
 steps = 15
     [pattern.rows]
