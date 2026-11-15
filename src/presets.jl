@@ -232,6 +232,25 @@ const PRESETS = Pair{String,Function}[
         Song(name = "Funk: 16tel Zwei-Hand-Hihat", bpm = 100, patterns = [g])
     end,
 
+    "Funk: Amen-Break (Winstons-Stil)" => function ()
+        # The four-bar drum break from "Amen, Brother" (G. C. Coleman): 8th ride throughout,
+        # ghost notes on the 2a and 3e. Bars 1-2 identical; bar 3 delays the snare on the 4 to
+        # the 4+; bar 4 drops the kick on the one, doubles it on the 1+ with a snare pickup on
+        # the 1e, crash instead of ride on the 3+.
+        #             1 e + a 2 e + a 3 e + a 4 e + a
+        a = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o..X..o",
+              Kick  = "X.X.......XX....")
+        b = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o....X.",
+              Kick  = "X.X.......X.....")
+        c = P(Ride  = "x.x.x.x.x...x.x.",
+              Crash = "..........X.....",
+              Snare = ".x..X..o.o....X.",
+              Kick  = "..XX......X.....")
+        Song(name = "Funk: Amen-Break (Winstons-Stil)", bpm = 136, patterns = [a, b, c], chain = [1, 1, 2, 3])
+    end,
+
     # ------------------------------------------------------------------ Blues
     "Blues: Shuffle (12 Takte)" => function ()
         g = P(HiHat = "x.xx.xx.xx.x",
