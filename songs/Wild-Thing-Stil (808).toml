@@ -1,0 +1,103 @@
+# The classic "Wild Thing" beat (Troggs / Runaways cover) on the 808 kit, 65 bars
+# Grooves after the song, own arrangement (not a transcription). Grid: 8ths, quarter = 140
+# Form: intro (4) | verse 1 (8) | chorus (8) | break (4) | verse 2 (8) | chorus (8) | break (4) | instrumental (8) | chorus (8) | outro (4) | ending (1)
+bpm = 140.0
+chain = [1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3, 4, 5, 5, 5, 5, 6, 6, 6, 7, 8, 9, 9, 10, 2, 3, 3, 3, 3, 3, 3, 4, 5, 5, 5, 5, 6, 6, 6, 7, 8, 9, 9, 10, 2, 3, 3, 4, 2, 3, 7, 7, 5, 5, 5, 5, 6, 6, 6, 7, 1, 1, 1, 4, 11]
+click = false
+countin = 1
+fx = "Room"
+fxmix = 0.15
+kit = "808 (Synth)"
+master = 0.8
+mono = false
+name = "Wild-Thing-Stil (808)"
+repeats = 1
+steps_per_beat = 2
+swing = 0.5
+swing_on = 0
+swing_version = 2
+#            1+2+3+4+
+# 1: intro: the signature figure, kick 1, 2+, 3, 4+
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Snare = "..X...X."
+    Kick  = "X..XX..X"
+#            1+2+3+4+
+# 2: verse with crash on the one
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Crash = "X......."
+    HiHat = ".xxxxxxx"
+    Snare = "..X...X."
+    Kick  = "XX.XXX.X"
+#            1+2+3+4+
+# 3: verse: 8th hi-hat, kick 1, 1+, 2+, 3, 3+, 4+
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    HiHat = "xxxxxxxx"
+    Snare = "..X...X."
+    Kick  = "XX.XXX.X"
+#            1+2+3+4+
+# 4: fill: snare on 3, 3+, 4, toms on the 4+
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    HiHat    = "xxxx...."
+    Snare    = "..X.XXX."
+    Tom      = ".......x"
+    FloorTom = ".......X"
+    Kick     = "XX.XX..."
+#            1+2+3+4+
+# 5: chorus ("Wild thing"): no cymbals, kick in pairs
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Snare = "..X...X."
+    Kick  = "XX..XX.."
+#            1+2+3+4+
+# 6: chorus, second half: hi-hat on the quarters
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    HiHat = "x.x.x.x."
+    Snare = "..X...X."
+    Kick  = "XX..XX.."
+#            1+2+3+4+
+# 7: build-up: open hi-hat on 1, 2, 3, snare quarters, kick 8ths
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    HHOpen = "X.X.X..."
+    Snare  = "X.X.X.X."
+    Kick   = "XXXXXXXX"
+#            1+2+3+4+
+# 8: break with crash: kick on the quarters
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Crash = "X......."
+    Kick  = "X.X.X.X."
+#            1+2+3+4+
+# 9: break: kick on the quarters
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Kick = "X.X.X.X."
+#            1+2+3+4+
+# 10: break, last bar: snare on the 4, kick pushes on the 4+
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Snare = "......X."
+    Kick  = "X.X.X..X"
+#            1+2+3+4+
+# 11: ending: last hit
+[[pattern]]
+steps = 8
+    [pattern.rows]
+    Crash = "X......."
+    Snare = "X......."
+    Kick  = "X......."
