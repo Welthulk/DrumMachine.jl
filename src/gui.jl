@@ -120,6 +120,8 @@ DATEI
   Bearbeiten            an: „Speichern“ überschreibt die geladene Datei ohne Rückfrage
   Preset / Song laden   Groove-Bibliothek bzw. eigene Songs
   Datei öffnen …        Song (.toml) aus einem beliebigen Verzeichnis laden
+  JSON-Import …         Kompositionen aus Browser-Drum-Machines (Drum-JSON) als Songs übernehmen,
+                        mehrere Dateien auf einmal; Strg+V importiert aus der Zwischenablage
 
 EXPORT
   Wiederholungen        wie oft die Kette hintereinander geschrieben wird
@@ -171,6 +173,8 @@ FILE
   Edit                  on: “Save” overwrites the loaded file without asking
   Load preset / song    groove library or your own songs
   Open file …           load a song (.toml) from any folder
+  JSON import …         take over compositions from browser drum machines (Drum-JSON) as songs,
+                        several files at once; Ctrl+V imports from the clipboard
 
 EXPORT
   Repeats               how many times the chain is written
@@ -181,6 +185,71 @@ EXPORT
                         on the TD-27: SONG → [F2] SETUP → Loop Type = LOOP
   Export WAV            songs/<name>.wav, 44.1 kHz, 16 bit
 """
+
+"Text of the info window (German / English)."
+function info_text(lang::Symbol = LANG[])
+    v = "DrumMachine.jl  " * app_version()
+    lang == :en ? """
+$v
+Step sequencer for drum practice: enter grooves, preview them, export WAVs.
+With metronome, WAV editor and Drum-JSON import.
+
+Code: MIT license          $(REPO_URL)
+
+KITS
+  BlackPearl         AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
+  CrocellKit         DrumGizmo, stereo mix by Henry Järvinen            CC BY 4.0
+  VirtuosityDrums    Versilian Studios / Karoryfer                      CC0
+  808 / 909          synthesized
+
+GREETINGS
+  Greetings to OneMotion (onemotion.com/drum-machine), a fine drum machine
+  in the browser. Compositions saved there (JSON) can be taken over here
+  with "JSON import".
+  DrumMachine.jl is an independent project and not affiliated with OneMotion.
+
+  Thanks to the Julia and Makie communities
+  (GLMakie, PortAudio.jl, WAV.jl, JSON.jl).
+""" : """
+$v
+Step-Sequencer zum Schlagzeug-Üben: Grooves eintragen, vorhören, als WAV exportieren.
+Mit Metronom, WAV-Editor und Drum-JSON-Import.
+
+Code: MIT-Lizenz           $(REPO_URL)
+
+KITS
+  BlackPearl         AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
+  CrocellKit         DrumGizmo, Stereo-Mix von Henry Järvinen           CC BY 4.0
+  VirtuosityDrums    Versilian Studios / Karoryfer                      CC0
+  808 / 909          synthetisiert
+
+GRÜSSE
+  Ein Gruß an OneMotion (onemotion.com/drum-machine), eine feine Drum-Machine
+  im Browser. Dort gespeicherte Kompositionen (JSON) lassen sich hier über
+  „JSON-Import“ übernehmen.
+  DrumMachine.jl ist ein unabhängiges Projekt und nicht mit OneMotion verbunden.
+
+  Dank an die Julia- und Makie-Gemeinschaft
+  (GLMakie, PortAudio.jl, WAV.jl, JSON.jl).
+"""
+end
+
+"Opens the info window (version, licenses, greetings)."
+function show_info()
+    fig = with_theme(DM_THEME) do
+        f = Figure(size = (820, 560), figure_padding = 16)
+        panel!(f[1, 1])
+        Label(f[1, 1], info_text(); font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
+              halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
+              tellwidth = false, tellheight = false)
+        gh = Button(f[2, 1], label = "GitHub ↗", halign = :left, tellwidth = false)
+        on(_ -> open_url(REPO_URL), gh.clicks)
+        f
+    end
+    screen = display(GLMakie.Screen(; title = L("DrumMachine – Info")), fig)
+    set_icon!(screen)
+    return screen
+end
 
 "Figure with the quick help, switchable between German and English."
 help_figure(lang::Symbol = LANG[]) = with_theme(DM_THEME) do
@@ -285,6 +354,46 @@ function pick_file(startdir::AbstractString; title::AbstractString, ext::Abstrac
     return strip(String(take!(out)))
 end
 
+"""
+    pick_files(startdir; title, exts, kind) -> Vector{String} or nothing
+
+File dialog for several files with one of the extensions `exts`. Empty on cancel, `nothing` if
+no dialog program is installed.
+"""
+function pick_files(startdir::AbstractString; title::AbstractString, exts, kind::AbstractString)
+    dir = isdir(startdir) ? startdir : homedir()
+    pat = join(("*.$e" for e in exts), " ")
+    cmd = if Sys.which("zenity") !== nothing
+        Cmd(["zenity", "--file-selection", "--multiple", "--separator=\n", "--title=$title",
+             "--filename=$(dir)/", "--file-filter=$kind ($pat) | $pat", "--file-filter=$(L("Alle Dateien")) | *"])
+    elseif Sys.which("kdialog") !== nothing
+        Cmd(["kdialog", "--title", title, "--multiple", "--separate-output", "--getopenfilename", dir,
+             "$pat|$kind ($pat)"])
+    else
+        return nothing
+    end
+    out = IOBuffer()
+    p = Base.run(pipeline(ignorestatus(cmd); stdout = out, stderr = devnull))
+    success(p) || return String[]
+    return filter(!isempty, strip.(split(String(take!(out)), r"\n|\\n")))
+end
+
+"Text in the clipboard (GLFW of the window, else wl-paste / xclip), \"\" if not available."
+function clipboard_text(screen)
+    try
+        screen === nothing || return GLMakie.GLFW.GetClipboardString(screen.glscreen)
+    catch
+    end
+    for cmd in (`wl-paste --no-newline`, `xclip -selection clipboard -o`)
+        Sys.which(cmd.exec[1]) === nothing && continue
+        try
+            return read(pipeline(cmd; stderr = devnull), String)
+        catch
+        end
+    end
+    return ""
+end
+
 "File dialog for loading a song (.toml)."
 pick_song_file(startdir::AbstractString = song_dir()) =
     pick_file(startdir; title = L("Song laden"), ext = "toml", kind = "Songs")
@@ -321,6 +430,7 @@ function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Boo
     session = new_session()
     fig, eng, tick! = build_gui(song; audio, session)
     screen = display(fig)
+    session.screen[] = screen
     set_icon!(screen)
     cur_tick = Ref{Function}(tick!)
     # switching the language rebuilds the window with the same engine (song and playback stay)
@@ -374,7 +484,7 @@ State that outlives a rebuild of the main window (language switch): last WAV exp
 editor window and the rebuild callback set by `run`.
 """
 new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = Ref{Any}(nothing),
-                 metro_win = Ref{Any}(nothing),
+                 metro_win = Ref{Any}(nothing), screen = Ref{Any}(nothing),
                  kitmsg = Channel{String}(64),            # messages of the background kit download
                  kits_changed = Threads.Atomic{Bool}(false))
 
@@ -402,9 +512,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     metbtn = Button(hdr_r[1, 3], label = L("Metronom"), height = 34, fontsize = 13)
     wavbtn = Button(hdr_r[1, 4], label = L("WAV-Editor"), height = 34, fontsize = 13)
     docsbtn = Button(hdr_r[1, 5], label = "Docs", height = 34, fontsize = 13)
-    helpbtn = Button(hdr_r[1, 6], label = "?", width = 34, height = 34, cornerradius = 17,
+    infobtn = Button(hdr_r[1, 6], label = "Info", height = 34, fontsize = 13)
+    helpbtn = Button(hdr_r[1, 7], label = "?", width = 34, height = 34, cornerradius = 17,
                      fontsize = 17, font = :bold)
-    langbtns = [Button(hdr_r[1, 6+k], label = uppercase(String(l)), width = 40, height = 34, fontsize = 13,
+    langbtns = [Button(hdr_r[1, 7+k], label = uppercase(String(l)), width = 40, height = 34, fontsize = 13,
                        buttoncolor = LANG[] == l ? C_ACTIVE : C_BTN, labelcolor = LANG[] == l ? C_BG : C_TEXT)
                 for (k, l) in enumerate(LANGS)]
     for (b, l) in zip(langbtns, LANGS)
@@ -412,7 +523,12 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             LANG[] == l && return
             set_lang!(l; persist = true)
             rb = session.rebuild[]
-            rb === nothing ? (status[] = L("Sprache wird beim nächsten Öffnen übernommen.")) : (@async rb())
+            if rb === nothing
+                status[] = L("Sprache wird beim nächsten Öffnen übernommen.")
+            else
+                status[] = L("Sprache wird umgestellt …")
+                @async (sleep(0.05); rb())              # let the message show first
+            end
         end
     end
 
@@ -579,6 +695,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     load_menu = Menu(lbox[1, 3], options = vcat(["—"], list_songs()), default = nothing, prompt = L("Eigenen Song laden …"),
                      width = 260)
     filebtn = Button(lbox[1, 4], label = L("Datei öffnen …"))
+    impbtn = Button(lbox[1, 5], label = L("JSON-Import …"))
     # re-read the song list when the menu opens (files may be added outside the program)
     on(load_menu.is_open) do open
         open || return
@@ -612,6 +729,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     colsize!(fig.layout, 1, Relative(1))      # full width, everything left-aligned
     on(_ -> show_help(), helpbtn.clicks)
     on(_ -> show_docs(), docsbtn.clicks)
+    on(_ -> show_info(), infobtn.clicks)
     # WAV editor: one window; opening it again loads the last export into the open window
     last_export = session.last_export
     wave_win = session.wave_win
@@ -736,8 +854,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!(); refresh_fx!()
     end
 
-    safe(name) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")   # i18n-ok: regex
-    song_path(name) = joinpath(song_dir(), safe(name) * ".toml")
+    song_path(name) = joinpath(song_dir(), safe_song_name(name) * ".toml")
     # first free name: `base`, `base 2`, `base 3`, …
     function unique_name(base)
         name = base; k = 2
@@ -1107,6 +1224,54 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
     end
 
+    # Drum-JSON import: several files at once, each saved as a song; the first one is loaded
+    function show_import!(res, src)
+        isempty(res) && return
+        path, song, _ = res[1]
+        set_song!(load_song(path)); set_edit!(path)
+        load_menu.options[] = vcat(["—"], list_songs())
+        notes = unique(vcat((r[3] for r in res)...))
+        names = join((r[2].name for r in res), ", ")
+        status[] = L("JSON-Import ({1}): {2} – gespeichert in {3}", src, names, dirname(path)) *
+                   (isempty(notes) ? "" : "  ·  " * join(notes, " · "))
+    end
+    on(impbtn.clicks) do _
+        dialog_open[] && return
+        dialog_open[] = true
+        status[] = L("Datei-Dialog geöffnet …")
+        @async try
+            paths = pick_files(last_dir[]; title = L("Drum-JSON importieren"), exts = ("json", "txt"),
+                               kind = "Drum-JSON")
+            if paths === nothing
+                status[] = L("Kein Datei-Dialog gefunden – bitte zenity oder kdialog installieren.")
+            elseif isempty(paths)
+                status[] = L("Import abgebrochen.")
+            else
+                last_dir[] = dirname(paths[1])
+                show_import!(import_drum_json_files(paths), length(paths) == 1 ? basename(paths[1]) :
+                             L("{1} Dateien", length(paths)))
+            end
+        catch e
+            status[] = L("Import fehlgeschlagen: {1}", sprint(showerror, e))
+        finally
+            dialog_open[] = false
+        end
+    end
+    function paste_import!()
+        txt = clipboard_text(session.screen[])
+        if !is_drum_json(txt)
+            status[] = L("Zwischenablage enthält keine Drum-JSON-Komposition.")
+            return
+        end
+        try
+            song, notes = import_drum_json(txt)
+            path = save_song(free_song_path(song_dir(), song), song)
+            show_import!([(path, song, notes)], L("Zwischenablage"))
+        catch e
+            status[] = L("Import fehlgeschlagen: {1}", sprint(showerror, e))
+        end
+    end
+
     # Export
     on(rep_tb.stored_string) do str
         str === nothing && return
@@ -1154,6 +1319,9 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb, bpm_tb)) && return
         if ev.key == Keyboard.space
             toggle_play()
+        elseif ev.key == Keyboard.v && (Keyboard.left_control in events(fig).keyboardstate ||
+                                        Keyboard.right_control in events(fig).keyboardstate)
+            paste_import!()
         end
     end
 

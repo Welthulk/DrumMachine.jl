@@ -50,4 +50,6 @@ add_translations!(Dict{String,String}(
     "Claves" => "Claves",
     "Sticks" => "Sticks",
     "Kit: Side Stick" => "Kit: side stick",
+    "Kit: Ride" => "Kit: ride",
+    "Kit: Hi-Hat" => "Kit: hi-hat",
 ))

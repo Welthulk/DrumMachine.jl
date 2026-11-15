@@ -87,6 +87,11 @@ More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are a
   12/8 with accent groups, subdivisions (8ths, triplets, 16ths, swing, dotted …), accents (one,
   none, 2 and 4, offbeats), seven click sounds, gap training (play n bars, mute m bars) and a
   tempo trainer (+x BPM every n bars)
+- *JSON-Import* (Drum-JSON): take over compositions from browser drum machines in JSON format,
+  several files at once or Ctrl+V from the clipboard; each is saved as a song
+- Play/stop and metronome react with the audio buffer, 0.08 s by default. If it crackles, set e.g.
+  `audio_latency = 0.15` in `~/.config/DrumMachine/settings.toml`
+- *Info* button: version, licenses, greetings
 - *Docs* button: the documentation inside the app
 
 ## Kits

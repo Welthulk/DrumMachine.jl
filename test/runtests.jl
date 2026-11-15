@@ -474,6 +474,47 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test D.metro_apply_settings!(D.Metronome(), Dict("bpm" => "x", "meter" => "13/7")).bpm == 100
     end
 
+    @testset "Drum-JSON-Import" begin
+        D = DrumMachine
+        s, notes = import_drum_json(joinpath(@__DIR__, "drum_json_example.json"))
+        @test s.name == "drum_json_example" && s.bpm == 96 && s.steps_per_beat == 4 && s.swing == 0.5
+        @test s.chain == [1, 2] && all(p -> p.steps == 16, s.patterns) && s.kit == "CrocellKit" && s.fx == "Room"
+        @test D.row_string(s.patterns[1], D.track_index("Kick"))[1:16] == "x.......x.x....."
+        @test D.row_string(s.patterns[2], D.track_index("HiHat"))[1:16] == "x.x.x.x.x.x.x..."
+        @test D.row_string(s.patterns[2], D.track_index("HHOpen"))[1:16] == "..............x."   # variant 1
+        @test D.row_string(s.patterns[2], D.track_index("Crash"))[1:16] == "x..............." && isempty(notes)
+        tr(snd; vol = Dict(), var = Dict(), kw...) = Dict{String,Any}("sound" => snd, "slot_volume" => vol,
+                                                                      "slot_variant" => var, (String(k) => v for (k, v) in kw)...)
+        js(tracks; kw...) = D.JSON.json(Dict{String,Any}("name" => "Test",
+            "tempo" => 120, "beat_div" => 4, "beats_per_bar" => 4, "bars" => 1, "tracks" => tracks, (String(k) => v for (k, v) in kw)...))
+        s, notes = import_drum_json(js([
+            tr("x_hihat"; vol = Dict("0" => 1, "2" => 0.6, "4" => 0.3), var = Dict("4" => 1)),
+            tr("x_snare"; vol = Dict("4" => 1), var = Dict("4" => 1)),
+            tr("x_ride"; vol = Dict("8" => 1), var = Dict("8" => 1)),
+            tr("x_tom_hi"; vol = Dict("12" => 1)), tr("x_tom_med"; vol = Dict("13" => 1)),
+            tr("x_tom_lo"; vol = Dict("14" => 1)), tr("x_kick"; vol = Dict("0" => 1), repeat = 4),
+            tr("x_conga"; vol = Dict("1" => 1))]; shuffle = 0.67))
+        g = s.patterns[1].grid; ti = D.track_index
+        @test g[ti("HiHat"), [1, 3]] == [0x03, 0x02] && g[ti("HHOpen"), 5] == 0x01      # dynamics, open
+        @test g[ti("Rim"), 5] == 0x02 && g[ti("RideBell"), 9] == 0x02                    # variants
+        @test g[ti("Tom"), [13, 14]] == [0x02, 0x02] && g[ti("FloorTom"), 15] == 0x02
+        @test findall(!iszero, g[ti("Kick"), 1:16]) == [1, 5, 9, 13]                      # repeat
+        @test s.name == "Test" && s.swing ≈ 0.67 && s.swing_on == 16
+        @test any(contains("conga"), notes) && any(contains("Tom"), notes)
+        s, _ = import_drum_json(js([tr("x_kick"; vol = Dict("0" => 1, "3" => 1))]; beat_div = 1, beats_per_bar = 4))
+        @test s.steps_per_beat == 2 && D.row_string(s.patterns[1], 1)[1:8] == "x.....x."
+        s, notes = import_drum_json(js([tr("x_kick"; vol = Dict("31" => 1))]; beat_div = 8))
+        @test s.bpm == 240 && s.patterns[1].steps == 32 && s.patterns[1].grid[1, 32] == 0x02 && !isempty(notes)
+        @test D.is_drum_json(js([tr("x_kick"; vol = Dict("0" => 1))])) && !D.is_drum_json("{}")
+        @test_throws Exception import_drum_json("{\"a\": 1}")
+        mktempdir() do dir
+            src = joinpath(@__DIR__, "drum_json_example.json")
+            res = D.import_drum_json_files([src, src]; dir)
+            @test basename.(first.(res)) == ["drum_json_example.toml", "drum_json_example 2.toml"]
+            @test load_song(res[2][1]).chain == [1, 2]
+        end
+    end
+
     @testset "Beispiel-Songs" begin
         for f in filter(endswith(".toml"), readdir(DrumMachine.SONG_DIR; join = true))
             s = load_song(f)

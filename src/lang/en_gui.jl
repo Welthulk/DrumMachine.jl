@@ -133,4 +133,24 @@ add_translations!(Dict{String,String}(
     # documentation viewer (src/docs_view.jl)
     "Keine Dokumentation gefunden in {1}" => "No documentation found in {1}",
     "Auf GitHub lesen ↗" => "Read on GitHub ↗",
+    # Drum-JSON import
+    "JSON-Import …" => "JSON import …",
+    "Drum-JSON importieren" => "Import Drum-JSON",
+    "JSON-Import ({1}): {2} – gespeichert in {3}" => "JSON import ({1}): {2} – saved in {3}",
+    "Import abgebrochen." => "Import cancelled.",
+    "{1} Dateien" => "{1} files",
+    "Import fehlgeschlagen: {1}" => "Import failed: {1}",
+    "Zwischenablage enthält keine Drum-JSON-Komposition." => "The clipboard holds no Drum-JSON composition.",
+    "Zwischenablage" => "clipboard",
+    "Keine Drum-JSON-Datei (Feld „tracks“ fehlt)" => "Not a Drum-JSON file (field \"tracks\" missing)",
+    "Raster mit {1} Schlägen pro Viertel wird nicht unterstützt" => "A grid with {1} slots per beat is not supported",
+    "32tel-Raster: als 16tel bei doppeltem Tempo übernommen" => "32nd grid: taken over as 16ths at double tempo",
+    "Unbekannter Klang „{1}“ übersprungen" => "Unknown sound \"{1}\" skipped",
+    "Flams/Delays von „{1}“ nicht übernommen" => "Flams/delays of \"{1}\" not taken over",
+    "Verschiebung von „{1}“ nicht übernommen" => "Shift of \"{1}\" not taken over",
+    "{1} zusammengelegt auf {2}" => "{1} merged into {2}",
+    "{1} verschiedene Takte – im Programm sind nur 16 Patterns bearbeitbar" =>
+        "{1} different bars – only 16 patterns can be edited in the program",
+    "DrumMachine – Info" => "DrumMachine – Info",
+    "Sprache wird umgestellt …" => "Switching language …",
 ))

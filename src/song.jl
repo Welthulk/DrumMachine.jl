@@ -229,6 +229,9 @@ function save_song(path::AbstractString, s::Song)
     return path
 end
 
+"File name (without .toml) for a song name: letters, digits, - and spaces, the rest becomes _."
+safe_song_name(name::AbstractString) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")   # i18n-ok: regex
+
 load_song(path::AbstractString) = song_from_dict(TOML.parsefile(path))
 
 "Chain from text like \"1 1 1 2\" or \"1x3 2\" (= 1 1 1 2)."

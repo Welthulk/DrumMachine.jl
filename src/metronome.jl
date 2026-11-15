@@ -27,7 +27,17 @@ const SUBDIV_OPTS = [
 "Which pulses sound. The subdivision only applies to the first two."
 const ACCENT_OPTS = ["Akzent auf der 1", "Ohne Akzent", "Nur 2 und 4", "Nur Offbeats (+)", "Nur die 1"]   # i18n-ok: translated where displayed
 
-const SOUND_OPTS = ["Klick", "Beep", "Woodblock", "Cowbell", "Claves", "Sticks", "Kit: Side Stick"]
+const SOUND_OPTS = ["Klick", "Beep", "Woodblock", "Cowbell", "Claves", "Sticks", "Kit: Side Stick",
+                    "Kit: Ride", "Kit: Hi-Hat"]
+
+"Kit sounds: (track for the accent, track for beat and subdivision)."
+const KIT_CLICKS = Dict(7 => ("Rim", "Rim"), 8 => ("RideBell", "Ride"), 9 => ("HiHat", "HiHat"))
+
+"Loudest, middle and softest layer of `id` in `kit` (first round-robin each)."
+function kit_layers(kit::Kit, id::AbstractString)
+    ls = kit.layers[track_index(id)]
+    return first(ls[end]), first(ls[cld(length(ls), 2)]), first(ls[1])
+end
 
 "Click sounds for `style` (index into `SOUND_OPTS`): (accent, beat, subdivision)."
 function metro_sounds(style::Int, kit::Union{Kit,Nothing} = nothing)
@@ -57,10 +67,10 @@ function metro_sounds(style::Int, kit::Union{Kit,Nothing} = nothing)
         st(f) = (n = _n(0.05); t = _t(n);
                  bandpass!(noise(n, 11), f, 1.5) .* exp.(-t ./ 0.006) .+ 0.5 .* tone(f * 0.6, 0.01, 0.05))
         return mk(st(4200.0)), mk(st(3000.0)), mk(st(3000.0))
-    elseif style == 7 && kit !== nothing                 # side stick of the current kit
-        ls = kit.layers[track_index("Rim")]
-        loud = first(ls[end]); mid = first(ls[cld(length(ls), 2)]); soft = first(ls[1])
-        return loud, mid, soft
+    elseif haskey(KIT_CLICKS, style) && kit !== nothing  # instruments of the current kit
+        acc, beat = KIT_CLICKS[style]
+        _, mid, soft = kit_layers(kit, beat)
+        return first(kit_layers(kit, acc)), mid, soft
     end
     return click_sound(true), click_sound(false), click_sound(false)    # classic click
 end
@@ -108,7 +118,7 @@ mutable struct Metronome
 end
 
 Metronome() = Metronome(false, 100.0, 4, 1, 1, 1, 0.8f0, 0.5f0, 0, 0, 0, 4, 160, metro_sounds(1),
-                        Tuple{Float64,Int}[], 1, 0.0, 4.0, 0, false, [MVoice() for _ in 1:8], 0.0,
+                        Tuple{Float64,Int}[], 1, 0.0, 4.0, 0, false, [MVoice() for _ in 1:16], 0.0,
                         Threads.Atomic{Float64}(0.0), Threads.Atomic{Int}(-1))
 
 "Pulse length (quarters), number of pulses and accent groups of the current meter."

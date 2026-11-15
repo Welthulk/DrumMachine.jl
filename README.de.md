@@ -76,6 +76,15 @@ Schleife. Am Roland TD-27: SONG → [F2] SETUP → Loop Type = LOOP.
 **Song-Dateien:** einfache TOML-Dateien, auch von Hand editierbar. Alle Felder inklusive Master- und
 Spur-Effekten beschreibt [docs/song-format.md](docs/song-format.md) (englisch).
 
+**Drum-JSON-Import:** Knopf *JSON-Import …* in der Zeile LADEN (mehrere Dateien auf einmal) oder
+Strg+V für JSON aus der Zwischenablage. Übernimmt Kompositionen aus Browser-Drum-Machines im
+JSON-Format und speichert jede als Song. Toms 1 und 2 landen auf *Tom*, Tom 3 auf *Floor Tom*.
+
+**Reaktionszeit:** Play/Stop und Metronom reagieren mit dem Audio-Puffer, voreingestellt 0,08 s.
+Knackt es, in `~/.config/DrumMachine/settings.toml` z. B. `audio_latency = 0.15` eintragen.
+
+**Info:** Knopf *Info* in der Kopfzeile: Version, Lizenzen, Grüße.
+
 **Metronom:** Knopf *Metronom* in der Kopfzeile. 30–400 BPM per Regler, Eingabe oder Tap,
 Taktarten bis 12/8 mit Akzentgruppen, Unterteilung (Achtel, Triolen, 16tel, Swing, punktiert …),
 Betonung (Akzent auf der 1, ohne, nur 2 und 4, nur Offbeats), sieben Klänge, Lücken-Training

@@ -479,15 +479,20 @@ end
 # Live audio
 # ---------------------------------------------------------------------------
 
+"Audio buffer in seconds: `audio_latency` in the settings file (0.02–0.5), default 0.08."
+function audio_latency()
+    v = get(load_settings(), "audio_latency", 0.08)
+    return v isa Real ? clamp(Float64(v), 0.02, 0.5) : 0.08
+end
+
 """
-    start_audio!(eng; device = nothing, latency = 0.15)
+    start_audio!(eng; device = nothing, latency = audio_latency())
 
 Opens the audio device and starts the audio thread. `latency` (seconds) is the buffer to the
-sound card: chosen generously so that garbage collection pauses (Julia briefly halts all
-threads, GLMakie creates a lot of garbage while drawing) don't cause dropouts.
-For a practice tool the delay at startup is not critical.
+sound card: it is the delay of play/stop and metronome start, but too small a buffer lets garbage
+collection pauses (Julia briefly halts all threads) cause dropouts.
 """
-function start_audio!(eng::Engine; device = nothing, latency::Real = 0.15)
+function start_audio!(eng::Engine; device = nothing, latency::Real = audio_latency())
     eng.running && return eng
     if Threads.nthreads() < 2
         @warn L("Julia läuft mit nur einem Thread – Audio kann stottern. Starte mit `julia -t auto`.")

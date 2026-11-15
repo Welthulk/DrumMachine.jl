@@ -213,7 +213,15 @@ function metronome_figure(eng::Engine)
 
     # ---------------------------------------------------------------- display update
     last = Ref((-2, -2, false, false))
+    kitref = Ref{Any}(eng.kit)
     function tick!()
+        if eng.kit !== kitref[]                      # kit changed in the main window
+            kitref[] = eng.kit
+            if haskey(KIT_CLICKS, m.sound)
+                snd = metro_sounds(m.sound, eng.kit)
+                setm!(() -> (m.sounds = snd))
+            end
+        end
         v = round(Int, m.bpm)                        # tempo trainer changes the tempo
         bpm_sl.value[] == v || set_close_to!(bpm_sl, v)
         plen, np, _ = metro_meter(m)

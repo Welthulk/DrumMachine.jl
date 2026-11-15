@@ -18,7 +18,8 @@ using PrecompileTools: @setup_workload, @compile_workload
         end
         kit_entries()
         try
-            build_gui(song; audio = false)
+            _, eng, _ = build_gui(song; audio = false)
+            build_gui(song; audio = false, eng)                 # rebuild on language switch
             with_theme(() -> metronome_figure(Engine(song, kit)), DM_THEME)
         catch e
             @debug "precompile: build_gui failed" exception = e

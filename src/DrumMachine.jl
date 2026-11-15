@@ -27,6 +27,7 @@ include("wavedit.jl")
 include("aac.jl")
 include("metronome.jl")
 include("engine.jl")
+include("drumjson.jl")
 include("gui.jl")
 include("docs_view.jl")
 include("wavedit_gui.jl")
@@ -37,7 +38,7 @@ export Song, Pattern, TrackParams, Kit, Engine,
        preset, PRESET_NAMES, pattern_from_rows, row_string, parse_chain,
        save_song, load_song, load_kit, synth_kit, available_kits, kit_entries, get_kit,
        render_song, export_wav, ascii_filename, song_seconds,
-       make_fill, FILL_STYLES,
+       make_fill, FILL_STYLES, import_drum_json,
        Wave, load_wave, save_wave
 
 end
