@@ -111,7 +111,7 @@ PATTERNS & KETTE
 
 WAV-EDITOR, METRONOM & DOCS
   WAV-Editor            exportierte WAVs schneiden, Fades, Effekte, Einzähler (eigenes Fenster)
-  Docs                  Dokumentation: Song-Dateiformat, WAV-Editor
+  Docs                  Dokumentation: Song-Dateiformat, WAV-Editor, Metronom
   Metronom              Klick mit Taktart, Unterteilung, Betonung, Klang, Lücken- und Tempo-Trainer
 
 DATEI
@@ -164,7 +164,7 @@ PATTERNS & CHAIN
 
 WAV EDITOR, METRONOME & DOCS
   WAV Editor            cut exported WAVs, fades, effects, count-in (own window)
-  Docs                  documentation: song file format, WAV editor
+  Docs                  documentation: song file format, WAV editor, metronome
   Metronome             click with time signature, subdivision, accents, sound, gap and tempo trainer
 
 FILE

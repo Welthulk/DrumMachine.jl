@@ -89,7 +89,7 @@ Knackt es, in `~/.config/DrumMachine/settings.toml` z. B. `audio_latency = 0.15`
 Taktarten bis 12/8 mit Akzentgruppen, Unterteilung (Achtel, Triolen, 16tel, Swing, punktiert …),
 Betonung (Akzent auf der 1, ohne, nur 2 und 4, nur Offbeats), sieben Klänge, Lücken-Training
 (n Takte spielen, m Takte stumm) und Tempo-Trainer (+x BPM alle n Takte). Die Einstellungen
-werden gespeichert.
+werden gespeichert. Anleitung: [docs/metronome.md](docs/metronome.md) (englisch) oder Knopf *Docs*.
 
 **WAV-Editor:** Knopf *WAV-Editor* in der Kopfzeile. Exportierte WAVs schneiden, trimmen, Fades,
 Normalisieren, Gain, Effekte und EQ, Einzähler voranstellen, BPM erkennen, mit Rückgängig. Unter
