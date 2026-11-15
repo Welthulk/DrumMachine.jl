@@ -373,6 +373,8 @@ function render!(eng::Engine, out::Matrix{Float32})
         l, r = process(fx, out[k, 1], out[k, 2])
         if eng.song.mono                    # Summe L+R auf beide Kanäle (Pegel ~ wie Stereo-Mitte)
             l = r = (l + r) * 0.7071f0
+        elseif eng.song.swap_lr             # Kanäle tauschen (z. B. Schlagzeuger- statt Publikumsperspektive)
+            l, r = r, l
         end
         out[k, 1] = tanh(l * m)
         out[k, 2] = tanh(r * m)

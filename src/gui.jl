@@ -68,7 +68,7 @@ RASTER & SWING
   Auto / 8tel / 16tel   worauf im geraden Raster geswingt wird
 
 PATTERNS & KETTE
-  1 … 8                 Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
+  1 … 16                Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
   + Fill                neues Pattern: Groove mit Fill am Ende, nochmal klicken = anderer Fill
   Steps                 Länge des Patterns (z. B. 12 für 3/4, 20 für 5/4)
   Kette                 Reihenfolge für Song-Modus und Export, z. B. „1x3 2“ = 1 1 1 2
@@ -83,12 +83,13 @@ EXPORT
   Wiederholungen        wie oft die Kette hintereinander geschrieben wird
   Einzähler, Klick      Takte vorweg bzw. Metronom auf jedem Schlag
   Stereo | Mono         wirkt auf Wiedergabe und WAV
+  L ⇄ R                 linken und rechten Kanal tauschen (Wiedergabe und WAV)
   WAV exportieren       songs/<Name>.wav, 44,1 kHz, 16 Bit
 """
 
 "Figure mit der Kurzhilfe."
 help_figure() = with_theme(DM_THEME) do
-    f = Figure(size = (760, 625), figure_padding = 16)
+    f = Figure(size = (760, 645), figure_padding = 16)
     panel!(f[1, 1])
     Label(f[1, 1], HELP_TEXT; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
           halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
@@ -103,7 +104,7 @@ const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),
                      ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2)]
 const SWING_OPTS = [("Auto", 0), ("auf 8tel", 8), ("auf 16tel", 16)]
 const STEP_OPTS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 28, 30, 32]
-const MAXPATTERNS = 8
+const MAXPATTERNS = 16
 
 "Zählsilben für die Kopfzeile: 1 e + a / 1 + a / 1 la li + la li / 1 +."
 function count_labels(steps::Int, spb::Int)
@@ -235,12 +236,14 @@ function _build_gui(song::Song; audio::Bool = true)
     pbox = fig[3, 1] = GridLayout(tellwidth = false, halign = :left, alignmode = Outside(14))
     pbar = pbox[1, 1] = GridLayout(halign = :left)
     Label(pbar[1, 1], "PATTERN", font = :bold, color = C_TEXT2, width = 70, halign = :left)
-    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 40) for i in 1:MAXPATTERNS]
+    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 36) for i in 1:MAXPATTERNS]
     addcopy = Button(pbar[1, MAXPATTERNS+2], label = "+ Kopie")
     addempty = Button(pbar[1, MAXPATTERNS+3], label = "+ Leer")
     fillbtn = Button(pbar[1, MAXPATTERNS+4], label = "+ Fill")
     delbtn = Button(pbar[1, MAXPATTERNS+5], label = "Löschen")
     clrbtn = Button(pbar[1, MAXPATTERNS+6], label = "Leeren")
+    colgap!(pbar, 6)
+    colgap!(pbar, MAXPATTERNS + 1, 16)       # Abstand zwischen Pattern-Nummern und Aktionen
     pbar2 = pbox[2, 1] = GridLayout(halign = :left)
     Label(pbar2[1, 1], "Steps", halign = :left, color = C_TEXT2, width = 70)
     steps_menu = Menu(pbar2[1, 2], options = string.(STEP_OPTS), width = 60)
@@ -354,6 +357,12 @@ function _build_gui(song::Song; audio::Bool = true)
     load_menu = Menu(lbox[1, 3], options = vcat(["—"], list_songs()), default = nothing, prompt = "Eigenen Song laden …",
                      width = 260)
     filebtn = Button(lbox[1, 4], label = "Datei öffnen …")
+    # Song-Liste beim Aufklappen neu einlesen (Dateien können außerhalb des Programms dazukommen)
+    on(load_menu.is_open) do open
+        open || return
+        opts = vcat(["—"], list_songs())
+        opts == load_menu.options[] || (load_menu.options[] = opts)
+    end
     bot2 = fbox[3, 1] = GridLayout(halign = :left)
     Label(bot2[1, 1], "EXPORT", font = :bold, color = C_TEXT2, width = 70, halign = :left)
     Label(bot2[1, 2], "Wiederholungen", halign = :right, color = C_TEXT2)
@@ -366,10 +375,12 @@ function _build_gui(song::Song; audio::Bool = true)
     Label(bot2[1, 8], "   Stereo", halign = :right, color = C_TEXT2)
     mono_toggle = Toggle(bot2[1, 9], active = song.mono)
     Label(bot2[1, 10], "Mono", halign = :left, color = C_TEXT2)
-    expbtn = Button(bot2[1, 11], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = C_BG,
+    Label(bot2[1, 11], "   L ⇄ R", halign = :right, color = C_TEXT2)
+    swap_toggle = Toggle(bot2[1, 12], active = song.swap_lr)
+    expbtn = Button(bot2[1, 13], label = "WAV exportieren", buttoncolor = C_ACTIVE, labelcolor = C_BG,
                     buttoncolor_hover = C_LEVEL_H[2], labelcolor_hover = C_BG, labelcolor_active = C_BG,
                     font = :bold)
-    explab = Label(bot2[1, 12], "", color = C_TEXT2)
+    explab = Label(bot2[1, 14], "", color = C_TEXT2)
     rowgap!(fbox, 10)
 
     Label(fig[6, 1], status, halign = :left, tellwidth = false, color = C_TEXT2, fontsize = 13)
@@ -468,6 +479,7 @@ function _build_gui(song::Song; audio::Bool = true)
         # und zeigt danach den falschen Zustand an.
         set_toggle!(click_toggle, s.click)
         set_toggle!(mono_toggle, s.mono)
+        set_toggle!(swap_toggle, s.swap_lr)
         k = findfirst(==(s.kit), kitnames)
         k !== nothing && (kit_menu.i_selected[] = k)
         refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!(); refresh_fx!()
@@ -738,7 +750,8 @@ function _build_gui(song::Song; audio::Bool = true)
         s = Song(name = unique_name("Neuer Groove"), bpm = old.bpm, steps_per_beat = spb,
                  swing = old.swing, swing_on = old.swing_on,
                  patterns = [Pattern(spb in (2, 4) ? 16 : 4spb)], kit = old.kit,
-                 repeats = old.repeats, countin = old.countin, click = old.click, mono = old.mono)
+                 repeats = old.repeats, countin = old.countin, click = old.click, mono = old.mono,
+                 swap_lr = old.swap_lr)
         set_song!(s)
         status[] = "Neuer Groove \"$(s.name)\" angelegt (BPM, Swing, Raster und Kit übernommen)."
     end
@@ -793,6 +806,10 @@ function _build_gui(song::Song; audio::Bool = true)
         eng.song.countin = parse(Int, sel); refresh_export_info!()
     end
     on(v -> (eng.song.click = v), click_toggle.active)
+    on(swap_toggle.active) do v
+        eng.song.swap_lr = v
+        status[] = v ? "Links/Rechts getauscht (Wiedergabe und Export)." : "Links/Rechts normal."
+    end
     on(mono_toggle.active) do v
         eng.song.mono = v
         status[] = v ? "Mono: Wiedergabe und Export einkanalig." : "Stereo: Wiedergabe und Export zweikanalig."

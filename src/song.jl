@@ -15,8 +15,8 @@ Base.copy(p::Pattern) = Pattern(p.steps, copy(p.grid))
 
 # Modulationseffekte je Spur und ihre Standardwerte (Rate in Hz, Tiefe 0…1, Feedback 0…0,9)
 const MOD_NAMES = ["Aus", "Chorus", "Flanger"]
-const MOD_DEFAULTS = Dict("Chorus" => (rate = 0.8, depth = 0.5, fb = 0.0),
-                          "Flanger" => (rate = 0.25, depth = 0.7, fb = 0.6))
+const MOD_DEFAULTS = Dict("Chorus" => (mix = 0.8, rate = 0.8, depth = 0.8, fb = 0.0),
+                          "Flanger" => (mix = 1.0, rate = 0.3, depth = 0.9, fb = 0.75))
 const EQ_MIDF_DEFAULT = 800.0
 
 mutable struct TrackParams
@@ -56,7 +56,7 @@ function set_mod!(t::TrackParams, name::AbstractString)
     t.mod = k
     if haskey(MOD_DEFAULTS, name)
         d = MOD_DEFAULTS[name]
-        t.mod_rate = d.rate; t.mod_depth = d.depth; t.mod_fb = d.fb
+        t.mod_mix = d.mix; t.mod_rate = d.rate; t.mod_depth = d.depth; t.mod_fb = d.fb
     end
     return t
 end
@@ -79,6 +79,7 @@ mutable struct Song
     countin::Int                 # Einzähler-Takte
     click::Bool                  # Metronom-Klick in den Export mischen
     mono::Bool                   # Ausgabe mono (Wiedergabe und Export)
+    swap_lr::Bool                # linken und rechten Kanal tauschen (Wiedergabe und Export)
 end
 
 "Neutraler Swing-Wert je Raster: gerade bei 8tel/16tel, exakte Triole bei Triolen-Rastern."
@@ -86,16 +87,17 @@ default_swing(steps_per_beat) = steps_per_beat in (3, 6) ? 2 / 3 : 0.5
 
 function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,
               patterns = [Pattern(16)], chain = [1], kit = "CrocellKit", fx = "Clean",
-              fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false, mono = false)
+              fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false, mono = false,
+              swap_lr = false)
     swing_on in (0, 8, 16) || error("swing_on muss 0 (Auto), 8 oder 16 sein")
     swing = something(swing, default_swing(steps_per_beat))
     Song(name, bpm, swing, swing_on, steps_per_beat, patterns, chain,
-         [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono)
+         [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono, swap_lr)
 end
 
 function Base.copy(s::Song)
     Song(s.name, s.bpm, s.swing, s.swing_on, s.steps_per_beat, copy.(s.patterns), copy(s.chain),
-         copy.(s.tracks), s.kit, s.fx, s.fxmix, s.master, s.repeats, s.countin, s.click, s.mono)
+         copy.(s.tracks), s.kit, s.fx, s.fxmix, s.master, s.repeats, s.countin, s.click, s.mono, s.swap_lr)
 end
 
 beats_per_bar(s::Song, p::Pattern) = max(1, cld(p.steps, s.steps_per_beat))
@@ -149,7 +151,7 @@ function song_to_dict(s::Song)
     Dict{String,Any}(
         "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "swing_on" => s.swing_on, "swing_version" => 2, "steps_per_beat" => s.steps_per_beat,
         "chain" => s.chain, "kit" => s.kit, "fx" => s.fx, "fxmix" => s.fxmix, "master" => s.master,
-        "repeats" => s.repeats, "countin" => s.countin, "click" => s.click, "mono" => s.mono,
+        "repeats" => s.repeats, "countin" => s.countin, "click" => s.click, "mono" => s.mono, "swap_lr" => s.swap_lr,
         "pattern" => [Dict{String,Any}("steps" => p.steps,
                                        "rows" => Dict(TRACK_IDS[t] => row_string(p, t)
                                                       for t in 1:NTRACKS if any(!iszero, @view p.grid[t, 1:p.steps])))
@@ -204,7 +206,7 @@ function song_from_dict(d::AbstractDict)
              chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "CrocellKit"), fx = get(d, "fx", "Clean"),
              fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = get(d, "repeats", 8),
              countin = get(d, "countin", 1), click = get(d, "click", false),
-             mono = get(d, "mono", false))
+             mono = get(d, "mono", false), swap_lr = get(d, "swap_lr", false))
     # Bis v0.1: Swing wirkte nicht auf Triolen-Raster, gespeichert wurde dann 0.5 = exakte Triolen
     if s.steps_per_beat in (3, 6) && s.swing == 0.5 && get(d, "swing_version", 1) < 2
         s.swing = 2 / 3

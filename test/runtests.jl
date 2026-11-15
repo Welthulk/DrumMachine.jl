@@ -71,9 +71,22 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test occursin("mod = \"Flanger\"", txt) && occursin("eq_low = 4.5", txt)
             @test count("eq_low", txt) == 1                       # nur Spuren mit Effekt
             t = load_song(path).tracks
-            @test t[4].mod == 3 && t[4].mod_mix == 1 && t[4].mod_fb ≈ 0.6
+            @test t[4].mod == 3 && t[4].mod_mix == 1 && t[4].mod_fb ≈ 0.75
             @test t[2].mod == 2 && t[1].eq_low == 4.5 && t[3].mod == 1
             @test render_song(load_song(path), bp; repeats = 1) ≈ y1
+        end
+    end
+
+    @testset "L/R tauschen" begin
+        s = preset("Rock: 8tel"); s.fx = "Clean"
+        s.tracks[4].pan = -1                                       # Hihat ganz links
+        y = render_song(s, bp; repeats = 1)
+        s.swap_lr = true
+        z = render_song(s, bp; repeats = 1)
+        @test z[:, 1] == y[:, 2] && z[:, 2] == y[:, 1]
+        mktempdir() do dir
+            save_song(joinpath(dir, "s.toml"), s)
+            @test load_song(joinpath(dir, "s.toml")).swap_lr
         end
     end
 

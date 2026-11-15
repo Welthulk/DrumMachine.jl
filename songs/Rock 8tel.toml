@@ -3,7 +3,8 @@
 #       | Bridge Half-Time mit Side Stick (4) | Stopp im 2/4-Takt (1) | Chorus (8) | Schlussschlag (1)
 # Zeigt: Akzente, Ghost Notes, Taktwechsel 4/4 → 2/4, 3er-Gruppen-Fill, Ride Bell, Anticipation,
 #        gestimmte Floor Tom, Spur-Lautstärken und Panorama,
-#        Spur-Effekte: Flanger auf der offenen Hihat (Pre-Chorus), Bassdrum mit EQ (Mitten raus, mehr Kick)
+#        Spur-Effekte: Flanger auf offener Hihat (Pre-Chorus) und Crash („Jet“),
+#        Bassdrum mit EQ (Mitten raus, mehr Tiefe und Kick)
 bpm = 100.0
 chain = [1, 1, 1, 2,  3, 4, 5, 6, 4, 4, 5, 6,  7, 7, 7, 8,  9, 10, 10, 11, 10, 10, 10, 6,
          12, 12, 12, 13,  14,  9, 10, 10, 11, 10, 10, 10, 13,  15]
@@ -143,6 +144,11 @@ steps = 16
 [track.Crash]
 vol = 0.85
 pan = -0.2
+mod = "Flanger"
+mod_mix = 1.0
+mod_rate = 0.15
+mod_depth = 1.0
+mod_feedback = 0.8
 
 [track.FloorTom]
 pitch = -1.0
@@ -156,13 +162,13 @@ vol = 1.1
 
 [track.HHOpen]
 mod = "Flanger"
-mod_mix = 0.7
-mod_rate = 0.25
-mod_depth = 0.8
-mod_feedback = 0.6
+mod_mix = 1.0
+mod_rate = 0.3
+mod_depth = 0.9
+mod_feedback = 0.75
 
 [track.Kick]
-eq_low = 3.0
-eq_mid = -4.0
+eq_low = 5.0
+eq_mid = -6.0
 eq_mid_freq = 400.0
-eq_high = 3.0
+eq_high = 5.0

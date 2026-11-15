@@ -4,6 +4,28 @@ Step-Sequencer in Julia zum Schlagzeug-Üben: Groove eintragen, vorhören, als W
 
 ![Screenshot](docs/screenshot.png)
 
+## Installation
+
+Getestet unter Linux mit Julia 1.13. Gebraucht werden ein Grafiktreiber mit OpenGL (für GLMakie)
+und eine Soundkarte. PortAudio bringt Julia selbst mit.
+
+1. **Julia installieren**, am einfachsten mit [juliaup](https://github.com/JuliaLang/juliaup):
+
+   ```bash
+   curl -fsSL https://install.julialang.org | sh
+   ```
+
+2. **Repo holen und Pakete installieren** (dauert beim ersten Mal einige Minuten):
+
+   ```bash
+   git clone https://github.com/Welthulk/DrumMachine.jl.git
+   cd DrumMachine.jl
+   julia --project=. -e 'using Pkg; Pkg.instantiate()'
+   ```
+
+3. **Optional:** Für *Datei öffnen …* braucht es `zenity` (GNOME) oder `kdialog` (KDE),
+   z. B. `sudo apt install zenity`.
+
 ## Start
 
 ```bash
@@ -11,11 +33,15 @@ Step-Sequencer in Julia zum Schlagzeug-Üben: Groove eintragen, vorhören, als W
 # oder: julia -t auto --project=. run.jl
 ```
 
+Wichtig: aus einem normalen Terminal starten. In Umgebungen ohne OpenGL (z. B. VS Code als
+Flatpak) öffnet sich kein Fenster.
+
 Schneller Start: einmalig `./start_drum.sh --build` ausführen (dauert einige Minuten). Das baut
 `build/drummachine.so` mit vorkompiliertem GLMakie, danach nutzt `./start_drum.sh` das Image
 automatisch. Nach Paket-Updates neu bauen, das Skript weist darauf hin.
 
-Die Bedienung erklärt der **?**-Button im Programm. Über 40 Grooves (Rock, Funk, Shuffle, Blues, Jazz, Latin, ungerade Taktarten) liegen unter *Preset laden*.
+Die Bedienung erklärt der **?**-Button im Programm. Über 40 Grooves (Rock, Funk, Shuffle, Blues, Jazz, Latin, ungerade Taktarten) liegen unter *Preset laden*,
+ausgearbeitete Beispiel-Songs mit Form, Fills und Spur-Effekten unter `songs/` (*Eigenen Song laden*).
 
 ## Kits
 

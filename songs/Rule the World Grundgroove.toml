@@ -3,7 +3,8 @@
 # Form: Intro Hihat + Side Stick (4) | Strophe (8) | Chorus Ride Bell (8) | Strophe (8)
 #       | Chorus mit 6/8-Takt am Ende (8) | Schluss (1)
 # Zeigt: Triolen-Raster, Taktwechsel 12/8 → 6/8, Triolen-Fill über die Toms, Hall-Effekt,
-#        Spur-Effekte: Chorus auf Hihat und Side Stick (80er-Schimmer), Snare mit EQ aufgehellt
+#        Spur-Effekte: Chorus auf Hihat und Side Stick (80er-Schimmer), Flanger auf dem Crash,
+#        Snare mit EQ aufgehellt
 bpm = 112.0
 chain = [1, 1, 2, 2,  3, 4, 4, 6, 4, 5, 4, 6,  8, 7, 7, 9, 8, 7, 7, 9,
          3, 4, 5, 6, 4, 5, 4, 9,  8, 7, 7, 9, 8, 7, 7, 10,  11]
@@ -107,10 +108,10 @@ steps = 12
 
 [track.Snare]
 vol = 1.1
-eq_low = 2.0
-eq_mid = -2.0
+eq_low = 3.0
+eq_mid = -4.0
 eq_mid_freq = 500.0
-eq_high = 4.0
+eq_high = 6.0
 
 [track.RideBell]
 vol = 0.9
@@ -118,14 +119,21 @@ pan = 0.2
 
 [track.HiHat]
 mod = "Chorus"
-mod_mix = 0.6
-mod_rate = 0.6
-mod_depth = 0.6
-mod_feedback = 0.0
+mod_mix = 1.0
+mod_rate = 0.5
+mod_depth = 1.0
+mod_feedback = 0.3
 
 [track.Rim]
 mod = "Chorus"
-mod_mix = 0.5
+mod_mix = 1.0
 mod_rate = 0.8
-mod_depth = 0.5
-mod_feedback = 0.0
+mod_depth = 0.9
+mod_feedback = 0.3
+
+[track.Crash]
+mod = "Flanger"
+mod_mix = 1.0
+mod_rate = 0.2
+mod_depth = 1.0
+mod_feedback = 0.7

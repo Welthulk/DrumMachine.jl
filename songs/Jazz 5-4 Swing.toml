@@ -93,10 +93,9 @@ steps = 15
 [track.Ride]
 vol = 0.95
 pan = 0.25
-eq_high = 2.5
-eq_mid = -2.0
+eq_high = 4.0
+eq_mid = -3.0
 eq_mid_freq = 630.0
-eq_low = 0.0
 
 [track.Kick]
 vol = 0.8
