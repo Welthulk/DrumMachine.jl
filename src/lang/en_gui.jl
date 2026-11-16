@@ -161,4 +161,5 @@ add_translations!(Dict{String,String}(
         "{1} different bars – only 16 patterns can be edited in the program",
     "DrumMachine – Info" => "DrumMachine – Info",
     "Sprache wird umgestellt …" => "Switching language …",
+    "Gain für Kit {1}: {2} dB" => "Gain for kit {1}: {2} dB",
 ))

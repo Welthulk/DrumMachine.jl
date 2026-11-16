@@ -62,10 +62,12 @@ nach einem Neubau. Direkt bauen: `./start_drum.sh --build`.
 **Sprache:** Deutsch oder Englisch über *DE* / *EN* in der Kopfzeile. Voreingestellt ist die
 Systemsprache, die Wahl wird in `~/.config/DrumMachine/settings.toml` gespeichert.
 
-**Kits beim ersten Start:** CrocellKit (561 MB) und VirtuosityDrums (1,2 GB) sind zu groß fürs
-Repo. Beim ersten Start werden sie automatisch im Hintergrund geladen und gebaut, der Fortschritt
-steht in der Statuszeile. BlackPearl und die Synth-Kits gehen sofort, die neuen Kits erscheinen
-im Kit-Menü, sobald sie fertig sind. Ablage: `~/.local/share/DrumMachine/kits`, die Downloads in
+**Kits beim ersten Start:** Nur BlackPearl liegt im Repo. Die übrigen Kits (zusammen etwa
+2,2 GB) werden beim ersten Start automatisch im Hintergrund geladen und gebaut, der Fortschritt
+steht in der Statuszeile. BlackPearl und die Synth-Kits gehen sofort, die anderen erscheinen
+im Kit-Menü, sobald sie fertig sind. DRSKit, MuldjordKit und Aasimonster (je 2,4–2,8 GB) werden
+erst geladen, wenn man sie im Kit-Menü wählt („(laden, …)“). Der Regler *Gain* neben dem
+Kit-Menü stellt den Pegel des Kits ein und wird pro Kit gespeichert. Ablage: `~/.local/share/DrumMachine/kits`, die Downloads in
 `~/.cache/DrumMachine` (danach löschbar). Abschalten mit `auto_kits = false` in der
 Einstellungsdatei oder der Umgebungsvariable `DRUMMACHINE_NO_KIT_DOWNLOAD`.
 
@@ -114,9 +116,12 @@ ausgearbeitete Beispiel-Songs mit Form, Fills und Spur-Effekten unter `songs/` (
 | BlackPearl | [AVL Drumkits](http://www.bandshed.net/avldrumkits/), im Repo | CC BY-SA 3.0 |
 | CrocellKit | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits%3Acrocellkit), Stereo-Mix von Henry Järvinen | CC BY 4.0 |
 | VirtuosityDrums | [Versilian Studios / Karoryfer](https://github.com/sfzinstruments/virtuosity_drums) | CC0 |
+| RedZeppelin, BlondeBop, BlondeBopHotRods, BuskmansHoliday (Percussion) | [AVL Drumkits](http://www.bandshed.net/avldrumkits/) | CC BY-SA 3.0 |
+| ShittyKit, Sommerhack (Alltagsgegenstände) | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), Stereo-Mix von DrumMachine.jl | CC BY 4.0 |
+| DRSKit, MuldjordKit, Aasimonster | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), Stereo-Mix von DrumMachine.jl, auf Wunsch | CC BY 4.0 |
 | 808 / 909 (Synth) | synthetisiert | – |
 
-Manueller Neubau: `julia --project=. tools/build_crocell.jl` bzw. `tools/build_virtuosity.jl`.
+Kits einzeln bauen: `julia --project=. tools/build_kit.jl` (Liste) bzw. `tools/build_kit.jl DRSKit` (oder `all`).
 
 ## Lizenz
 

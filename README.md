@@ -103,27 +103,33 @@ More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are a
 | BlackPearl | [AVL Drumkits](http://www.bandshed.net/avldrumkits/), included | CC BY-SA 3.0 |
 | CrocellKit | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits%3Acrocellkit), stereo mix by Henry Järvinen | CC BY 4.0 |
 | VirtuosityDrums | [Versilian Studios / Karoryfer](https://github.com/sfzinstruments/virtuosity_drums) | CC0 |
+| RedZeppelin, BlondeBop, BlondeBopHotRods, BuskmansHoliday (percussion) | [AVL Drumkits](http://www.bandshed.net/avldrumkits/) | CC BY-SA 3.0 |
+| ShittyKit, Sommerhack (everyday objects) | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), stereo mix by DrumMachine.jl | CC BY 4.0 |
+| DRSKit, MuldjordKit, Aasimonster | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), stereo mix by DrumMachine.jl, on demand | CC BY 4.0 |
 | 808 / 909 (Synth) | synthesized | – |
 
-CrocellKit and VirtuosityDrums are too large for the repo. **On first start they are downloaded
-and built automatically in the background** (561 MB and 1.2 GB downloads, progress in the status
-line); BlackPearl and the synth kits work right away, and the new kits appear in the kit menu as
-soon as they are ready. Built kits go to `~/.local/share/DrumMachine/kits`, the downloads to
-`~/.cache/DrumMachine` (can be deleted afterwards).
+Only BlackPearl is in the repo. **On first start the other kits are downloaded and built
+automatically in the background** (about 2.2 GB in total, progress in the status line);
+BlackPearl and the synth kits work right away, the others appear in the kit menu as soon as they
+are ready. DRSKit, MuldjordKit and Aasimonster (2.4–2.8 GB each) are only downloaded when chosen
+in the kit menu ("(download, …)"). Built kits go to `~/.local/share/DrumMachine/kits`, the
+downloads to `~/.cache/DrumMachine` (can be deleted afterwards).
+
+The *Gain* slider next to the kit menu sets the level of the current kit; it is stored per kit.
 
 To switch the automatic download off, set `auto_kits = false` in
 `~/.config/DrumMachine/settings.toml` or the environment variable `DRUMMACHINE_NO_KIT_DOWNLOAD`.
 Manual (re)build:
 
 ```bash
-julia --project=. tools/build_crocell.jl
-julia --project=. tools/build_virtuosity.jl
+julia --project=. tools/build_kit.jl            # list of kits
+julia --project=. tools/build_kit.jl DRSKit     # build one (or: all)
 ```
 
 ## Settings
 
 `~/.config/DrumMachine/settings.toml` stores the language chosen in the header
-(`language = "en"` or `"de"`) and `auto_kits` (see above).
+(`language = "en"` or `"de"`), `auto_kits` (see above) and the gain per kit (`[kit_gain]`).
 
 ## License
 

@@ -208,6 +208,10 @@ KITS
   BlackPearl         AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
   CrocellKit         DrumGizmo, stereo mix by Henry Järvinen            CC BY 4.0
   VirtuosityDrums    Versilian Studios / Karoryfer                      CC0
+  RedZeppelin, BlondeBop, BlondeBopHotRods, BuskmansHoliday
+                     AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
+  DRSKit, MuldjordKit, Aasimonster, ShittyKit, Sommerhack
+                     DrumGizmo (drumgizmo.org), stereo mix by us        CC BY 4.0
   808 / 909          synthesized
 
 GREETINGS
@@ -229,6 +233,10 @@ KITS
   BlackPearl         AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
   CrocellKit         DrumGizmo, Stereo-Mix von Henry Järvinen           CC BY 4.0
   VirtuosityDrums    Versilian Studios / Karoryfer                      CC0
+  RedZeppelin, BlondeBop, BlondeBopHotRods, BuskmansHoliday
+                     AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
+  DRSKit, MuldjordKit, Aasimonster, ShittyKit, Sommerhack
+                     DrumGizmo (drumgizmo.org), Stereo-Mix von uns      CC BY 4.0
   808 / 909          synthetisiert
 
 GRÜSSE
@@ -261,7 +269,7 @@ end
 
 "Figure with the quick help, switchable between German and English."
 help_figure(lang::Symbol = LANG[]) = with_theme(DM_THEME) do
-    f = Figure(size = (820, 860), figure_padding = 16)
+    f = Figure(size = (920, 990), figure_padding = 16)     # longest line ~100 chars, 54 lines
     bar = f[1, 1] = GridLayout(halign = :left, tellwidth = false)
     de = Button(bar[1, 1], label = "Deutsch", width = 90)
     en = Button(bar[1, 2], label = "English", width = 90)
@@ -504,6 +512,8 @@ new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = 
 function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new_session())
     kits = kit_entries()                                  # samples are loaded on selection
     kitnames = [k.name for k in kits]
+    dlkits = on_demand_kits()                             # large kits, downloaded when chosen
+    kit_options() = vcat(kitnames, [L("{1} (laden, {2})", k[1], k[2]) for k in dlkits])
     kitidx = something(findfirst(==(song.kit), kitnames), 1)
     if eng === nothing
         eng = Engine(song, get_kit(kits[kitidx]))
@@ -574,13 +584,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     raster_opts = Ls(first.(RASTER_OPTS))
     raster_menu = Menu(top2[1, 2], options = raster_opts, width = 225)
     Label(top2[1, 3], "Kit", halign = :right, color = C_TEXT2)
-    kit_menu = Menu(top2[1, 4], options = kitnames, default = kitnames[kitidx], width = 150)
-    Label(top2[1, 5], "FX", halign = :right, color = C_TEXT2)
-    fx_menu = Menu(top2[1, 6], options = FX_NAMES, default = song.fx, width = 90)
-    Label(top2[1, 7], L("Anteil"), halign = :right, color = C_TEXT2)
-    fx_sl = Slider(top2[1, 8], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
-    Label(top2[1, 9], "Master", halign = :right, color = C_TEXT2)
-    mst_sl = Slider(top2[1, 10], range = 0:0.01:1.5, startvalue = song.master, width = 100)
+    kit_menu = Menu(top2[1, 4], options = kit_options(), default = kitnames[kitidx], width = 150)
+    Label(top2[1, 5], "Gain", halign = :right, color = C_TEXT2)
+    kg_sl = Slider(top2[1, 6], range = 0:0.01:2, startvalue = eng.kitgain, width = 80)
+    Label(top2[1, 7], "FX", halign = :right, color = C_TEXT2)
+    fx_menu = Menu(top2[1, 8], options = FX_NAMES, default = song.fx, width = 90)
+    Label(top2[1, 9], L("Anteil"), halign = :right, color = C_TEXT2)
+    fx_sl = Slider(top2[1, 10], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
+    Label(top2[1, 11], "Master", halign = :right, color = C_TEXT2)
+    mst_sl = Slider(top2[1, 12], range = 0:0.01:1.5, startvalue = song.master, width = 100)
     rowgap!(tbox, 10)
 
     # ---------------------------------------------------------------- Patterns
@@ -881,7 +893,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         set_toggle!(loop_toggle, s.loop)
         k = findfirst(==(s.kit), kitnames)
         k !== nothing && (kit_menu.i_selected[] = k)
-        refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!(); refresh_fx!()
+        refresh_tracks!(); refresh_grid!(); refresh_patbtns!(); refresh_export_info!(); refresh_fx!(); show_kitgain!()
     end
 
     song_path(name) = joinpath(song_dir(), safe_song_name(name) * ".toml")
@@ -908,11 +920,13 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         was && stop!(eng)
         k = findfirst(==(s.kit), kitnames)
         kit = k === nothing ? eng.kit : get_kit(kits[k])   # load outside the audio lock
+        kg = kit_gain(kit.name)
         lock(eng.lock) do
             eng.song = s
             eng.edit_pat = 1
             s.kit = kit.name
             eng.kit = kit
+            eng.kitgain = kg
             apply_fx!(eng)
         end
         refresh_all!()
@@ -982,11 +996,40 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(kit_menu.selection) do sel
         sel === nothing && return
         k = findfirst(==(sel), kitnames)
+        if k === nothing                                  # "Name (download, size)": build in background
+            d = findfirst(==(sel), kit_options()) - length(kitnames)
+            name = dlkits[d][1]
+            post(msg) = (isready(session.kitmsg) && length(session.kitmsg.data) > 32) || put!(session.kitmsg, msg)
+            name in KITS_BUILDING ? (status[] = L("Kit {1} wird schon geladen.", name)) :
+                fetch_kit!(name, post, _ -> (session.kits_changed[] = true))
+            cur = findfirst(==(eng.song.kit), kitnames)   # keep playing with the current kit
+            cur !== nothing && (kit_menu.i_selected[] = cur)
+            return
+        end
         kit = get_kit(kits[k])                            # load outside the audio lock
+        kg = kit_gain(kit.name)
         lock(eng.lock) do
             eng.kit = kit
+            eng.kitgain = kg
         end
         eng.song.kit = sel
+        show_kitgain!()
+    end
+    # kit gain: takes effect at once, stored per kit (in the settings) once the slider rests
+    kg_sync = Ref(false)                                  # true while the slider follows a kit change
+    kg_edit = Ref(0)
+    function show_kitgain!()
+        kg_sync[] = true
+        set_close_to!(kg_sl, eng.kitgain)
+        kg_sync[] = false
+    end
+    on(kg_sl.value) do v
+        kg_sync[] && return
+        eng.kitgain = Float32(v)
+        n = kg_edit[] += 1
+        name = eng.song.kit
+        status[] = L("Gain für Kit {1}: {2} dB", name, v > 0 ? round(20log10(v), digits = 1) : "-∞")
+        @async (sleep(0.6); kg_edit[] == n && set_kit_gain!(name, v))
     end
     on(fx_menu.selection) do sel
         sel === nothing && return
@@ -1375,8 +1418,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
         if session.kits_changed[]
             session.kits_changed[] = false
-            kits = kit_entries(); kitnames = [k.name for k in kits]
-            kit_menu.options[] = kitnames
+            kits = kit_entries(); kitnames = [k.name for k in kits]; dlkits = on_demand_kits()
+            kit_menu.options[] = kit_options()
             k = findfirst(==(eng.song.kit), kitnames)
             k !== nothing && (kit_menu.i_selected[] = k)
         end

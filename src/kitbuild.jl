@@ -57,17 +57,20 @@ interrupted build never leaves a half-finished kit behind.
 """
 function build_kit(dest, name, sources; header::AbstractString, license::AbstractString,
                    choke = ("HiHat", "HHOpen", "HHPedal"), log = println)
-    mkpath(dirname(normpath(dest)))
-    tmp = normpath(dest) * ".building"
-    isdir(tmp) && rm(tmp; recursive = true)
-    mkpath(tmp)
+    tmp = build_tmp(dest)
     refs = Dict{String,Float64}()
     for (k, (id, loaders)) in enumerate(sources)
         log(L("{1}: Instrument {2}/{3} ({4})", name, k, length(sources), id))
-        peaks = [attack_peak(ld()...) for ld in loaders]
+        stats = map(loaders) do ld
+            y, fs = ld()
+            (attack_peak(y, fs), maximum(abs, y))
+        end
+        peaks = first.(stats)
         db = 20 .* log10.(peaks ./ maximum(peaks))
+        # loudest recording to -0.5 dBFS: no clipping of multi-mic mixes, quiet recordings use the
+        # full 16-bit range; the gain in kit.toml compensates
+        scale = 0.95 / maximum(last.(stats))
         mkpath(joinpath(tmp, id))
-        normal = Float64[]
         for b in 1:length(BIN_EDGES)-1
             lo, hi = BIN_EDGES[b], BIN_EDGES[b+1]
             idx = [i for i in eachindex(db) if lo <= db[i] < hi]
@@ -76,32 +79,54 @@ function build_kit(dest, name, sources; header::AbstractString, license::Abstrac
             pick = length(idx) <= MAX_RR ? idx : idx[round.(Int, range(1, length(idx), length = MAX_RR))]
             for (rr, i) in enumerate(unique(pick))
                 y, fs = loaders[i]()
-                out = prepare_sample(y, fs, MAXLEN[id])
+                out = prepare_sample(y, fs, MAXLEN[id]) .* Float32(scale)
                 pcm = round.(Int16, clamp.(out, -1, 1) .* 32767)
                 WAV.wavwrite(pcm, joinpath(tmp, id, "$b-$rr.wav"); Fs = SR, nbits = 16,
                              compression = WAV.WAVE_FORMAT_PCM)
-                b in (3, 4) && push!(normal, attack_peak(out, SR))
             end
         end
-        refs[id] = sort(normal)[cld(length(normal), 2)]
+        refs[id] = normal_level(joinpath(tmp, id), 0.0)
     end
+    write_kit_toml(tmp, name, header, [(id, 0.0, refs[id], id in choke) for (id, _) in sources])
+    write(joinpath(tmp, "LICENSE.txt"), license)
+    finish_build(tmp, dest, name; log)
+end
+
+"""
+Writes `dir/kit.toml` for a kit in folder format. `tracks`: `(id, pan, ref, choke)` with `ref` the
+level of a normal hit (`normal_level`); the gain sets it to the snare target plus the balance in `BALANCE_DB`.
+"""
+function write_kit_toml(dir, name, header, tracks)
     io = IOBuffer()
     println(io, header)
     println(io, "name = \"$name\"")
     println(io, "# The samples carry their own dynamics, so hardly any extra level difference")
     println(io, "level_gain = [0.9, 1.0, 1.0]\n")
     println(io, "[tracks]")
-    for (id, _) in sources
-        g = SNARE_NORMAL_PEAK / refs[id] * 10^(BALANCE_DB[id] / 20)
-        ch = id in choke ? ", choke = 1" : ""
-        println(io, rpad("$id ", 10), "= { folder = \"$id\", pan = 0.0, gain = $(round(g, digits = 2))$ch }")
+    for (id, pan, ref, choke) in tracks
+        g = SNARE_NORMAL_PEAK / ref * 10^(BALANCE_DB[id] / 20)
+        ch = choke ? ", choke = 1" : ""
+        println(io, rpad("$id ", 10), "= { folder = \"$id\", pan = $(round(pan, digits = 2)), ",
+                "gain = $(round(g, digits = 2))$ch }")
     end
-    write(joinpath(tmp, "kit.toml"), String(take!(io)))
-    write(joinpath(tmp, "LICENSE.txt"), license)
+    write(joinpath(dir, "kit.toml"), String(take!(io)))
+end
+
+"Moves the finished kit from `tmp` to `dest` (replacing an older build)."
+function finish_build(tmp, dest, name; log = println)
     isdir(dest) && rm(dest; recursive = true)
     mv(tmp, dest)
     log(L("{1} fertig: {2}", name, normpath(dest)))
     return dest
+end
+
+"Fresh temporary build folder next to `dest`."
+function build_tmp(dest)
+    mkpath(dirname(normpath(dest)))
+    tmp = normpath(dest) * ".building"
+    isdir(tmp) && rm(tmp; recursive = true)
+    mkpath(tmp)
+    return tmp
 end
 
 "Downloads `url` to `file` (skipped if present), reporting progress about every 5 %."
@@ -293,14 +318,393 @@ function build_virtuosity(; src = nothing, dest = joinpath(user_kit_dir(), "Virt
 end
 
 # ---------------------------------------------------------------------------
+# AVL Drumkits (Glen MacArthur, bandshed.net), CC BY-SA 3.0
+# The original WAVs are copied unchanged (renamed into track folders); pan comes from the SFZ.
+# ---------------------------------------------------------------------------
+
+const AVL_BASE = "https://www.bandshed.net/sounds/AVLDrumkits_SFZ/"
+const AVL_LICENSE = """
+    Samples: Glen MacArthur, AVL Drumkits – http://www.bandshed.net/avldrumkits/
+    License: Creative Commons Attribution-ShareAlike 3.0 (CC BY-SA 3.0)
+             https://creativecommons.org/licenses/by-sa/3.0/
+    """
+
+"""
+AVL kits: folder/display name, archive, track => file prefixes (several = round-robin, e.g. left
+and right hand), tracks in the hi-hat choke group, description.
+"""
+const AVL_KITS = [
+    (name = "RedZeppelin", zip = "RED_ZEPPELIN_2023_repack.zip",
+     desc = "Ludwig kit with 26\" kick, Zildjian cymbals – big, open rock sound",
+     map = ["Kick" => ["36-Ludwig-26-Kick"], "Snare" => ["38-Ludwig-14-Snare"],
+            "Rim" => ["37-Ludwig-14-SideStick"], "HiHat" => ["42-Sabian-13-HatClosed"],
+            "HHOpen" => ["46-Sabian-13-HatSemi"], "HHPedal" => ["44-Sabian-13-HatPedal"],
+            "Tom" => ["45-Ludwig-14-Tom"], "FloorTom" => ["41-Ludwig-16-FloorTom"],
+            "Ride" => ["51-Zildjian-24-Ride"], "RideBell" => ["53-Zildjian-24-RideBell"],
+            "Crash" => ["49-Zildjian-20-Crash"]],
+     choke = ("HiHat", "HHOpen", "HHPedal")),
+    (name = "BlondeBop", zip = "BLONDE_BOP_SFZ.zip",
+     desc = "TAMA bebop kit (18\" kick, 13\" snare) with sticks – jazz",
+     map = ["Kick" => ["36-TAMA-18-Kick"], "Snare" => ["38-TAMA-13-Snare"],
+            "Rim" => ["37-TAMA-13-SideStick"], "HiHat" => ["42-Zildjian-13-HatClosed"],
+            "HHOpen" => ["46-Zildjian-13-HatSemi"], "HHPedal" => ["44-Zildjian-13-HatPedal"],
+            "Tom" => ["45-TAMA-10-Tom"], "FloorTom" => ["41-TAMA-14-FloorTom"],
+            "Ride" => ["51-SabianAAX-20-RideTip"], "RideBell" => ["53-SabianAAX-20-RideBell"],
+            "Crash" => ["49-Paiste2002-16-Crash"]],
+     choke = ("HiHat", "HHOpen", "HHPedal")),
+    (name = "BlondeBopHotRods", zip = "BLONDE_BOP_HR_SFZ.zip",
+     desc = "the same TAMA bebop kit played with Hot Rods – quiet, soft attack",
+     map = ["Kick" => ["36-TAMA-18-Kick-HR"], "Snare" => ["38-TAMA-13-SnareCenter-HR"],
+            "Rim" => ["37-TAMA-13-SnareSidestick-HR"], "HiHat" => ["42-Zildjian-13-HatClosed-HR"],
+            "HHOpen" => ["46-Zildjian-12-HatSemi-HR"], "HHPedal" => ["44-Zildjian-13-HatPedal-HR"],
+            "Tom" => ["45-TAMA-10-TomCenter-HR"], "FloorTom" => ["41-TAMA-14-FloorTomCenter-HR"],
+            "Ride" => ["51-SabianAAX-20-RideTip-HR"], "RideBell" => ["53-SabianAAX-20-RideBell-HR"],
+            "Crash" => ["49-Paiste2002-16-Crash-HR"]],
+     choke = ("HiHat", "HHOpen", "HHPedal")),
+    # percussion set: cajon instead of kick/snare, congas as toms, shaker/tambourine as hi-hat,
+    # foot tambourine as hi-hat pedal, cowbell as ride
+    (name = "BuskmansHoliday", zip = "BUSKMANS_HOLIDAY_SFZ.zip",
+     desc = "percussion: cajon, congas, shaker, tambourines, claves, cowbell, cymbal",
+     map = ["Kick" => ["36-Meinl-Cajon-Thump"],
+            "Snare" => ["40-Meinl-Cajon-Slap-RH", "38-Meinl-Cajon-Slap-LH"],
+            "Rim" => ["48-Claves"], "HiHat" => ["42-GonBops-Triple-Shaker"],
+            "HHOpen" => ["44-Shake-Tambourine"], "HHPedal" => ["46-GP-Bump-Tambourine"],
+            "Tom" => ["47-Meinl-Conga-Small-RH", "45-Meinl-Conga-Small-LH"],
+            "FloorTom" => ["43-Meinl-Conga-Large-RH", "41-Meinl-Conga-Large-LH"],
+            "Ride" => ["51-LP-Cowbell"], "RideBell" => ["50-Paiste-2002-16-CymbalBell"],
+            "Crash" => ["49-Paiste-2002-16-Cymbal"]],
+     choke = ()),
+]
+
+"Pan per sample prefix from an SFZ file (`pan` of the group or region, -100…100 -> -1…1)."
+function sfz_pans(sfz)
+    pans = Dict{String,Float64}()
+    gpan = 0.0
+    for line in eachline(sfz)
+        line = strip(replace(line, r"//.*$" => ""))
+        p = match(r"\bpan=(-?[\d.]+)", line)
+        if startswith(line, "<group>")
+            gpan = p === nothing ? 0.0 : parse(Float64, p[1]) / 100
+        elseif startswith(line, "<region>")
+            s = match(r"\bsample=(\S+?\.wav)", line)
+            s === nothing && continue
+            prefix = replace(basename(s[1]), r"-\d+\.wav$" => "")
+            pans[prefix] = p === nothing ? gpan : parse(Float64, p[1]) / 100
+        end
+    end
+    return pans
+end
+
+"Peak of a sample as the engine plays it at `pan` (stereo: balance, mono: equal-power law)."
+function played_peak(s::Sample, pan)
+    p = clamp(pan, -1, 1)
+    isstereo(s) && return max(min(1, 1 - p) * maximum(abs, s.l), min(1, 1 + p) * maximum(abs, s.r))
+    θ = (p + 1) * π / 4
+    return max(cos(θ), sin(θ)) * maximum(abs, s.l)
+end
+
+"""
+Level of a normal hit of a track folder: median `played_peak` of the normal layers, loaded as
+at runtime (onset trimmed). The whole sample counts, so pre-noise (hi-hat pedal) or a late swell
+(open hi-hat with rods) does not distort the balance.
+"""
+function normal_level(folder, pan)
+    layers = load_folder_layers(folder)
+    pk = sort([played_peak(s, pan) for l in level_layers(2, length(layers)) for s in layers[l]])
+    return pk[cld(length(pk), 2)]
+end
+
+"""
+    build_avl(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.name), log = println)
+
+Downloads (about 20 MB) and installs one of the `AVL_KITS`. `src`: already extracted SFZ folder.
+"""
+function build_avl(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.name), log = println)
+    if src === nothing
+        cache = cache_dir()
+        src = joinpath(cache, replace(spec.zip, r"\.zip$" => ""))
+        if !isdir(src)
+            zip = fetch_file(AVL_BASE * spec.zip, joinpath(cache, spec.zip), spec.name; log)
+            log(L("{1} wird entpackt …", spec.name))
+            extract(zip, cache; fallback = :unzip)
+        end
+    end
+    sfz = only(f for f in readdir(src; join = true) if endswith(lowercase(f), ".sfz"))
+    pans = sfz_pans(sfz)
+    tmp = build_tmp(dest)
+    tracks = map(spec.map) do (id, prefixes)
+        mkpath(joinpath(tmp, id))
+        for (rr, p) in enumerate(prefixes)
+            l = 0
+            while isfile(joinpath(src, "$p-$(l + 1).wav"))
+                l += 1
+                cp(joinpath(src, "$p-$l.wav"), joinpath(tmp, id, "$l-$rr.wav"))
+            end
+            l == 0 && error(L("Keine Dateien für {1}/{2}", spec.name, p))
+        end
+        pan = sum(get(pans, p, 0.0) for p in prefixes) / length(prefixes)
+        (id, pan, normal_level(joinpath(tmp, id), pan), id in spec.choke)
+    end
+    write_kit_toml(tmp, spec.name, "# Built by DrumMachine.jl (build_avl) – AVL Drumkits \"$(spec.name)\" by Glen MacArthur",
+                   tracks)
+    write(joinpath(tmp, "LICENSE.txt"), """
+        AVL Drumkits – "$(spec.name)": $(spec.desc)
+        $AVL_LICENSE
+        Source: $(AVL_BASE)$(spec.zip)
+
+        Changes by DrumMachine.jl: none to the audio. A selection of the original WAV files, renamed
+        into one folder per track (<layer>-<round-robin>.wav); kit.toml written for DrumMachine.jl.
+        """)
+    finish_build(tmp, dest, spec.name; log)
+end
+
+# ---------------------------------------------------------------------------
+# DrumGizmo kits (multi-mic recordings): the mics are mixed down to stereo here.
+# ---------------------------------------------------------------------------
+
+"Attributes of an XML tag as a Dict."
+xml_attrs(s) = Dict(m[1] => m[2] for m in eachmatch(r"([\w:-]+)\s*=\s*\"([^\"]*)\"", s))
+
+"""
+    dg_instruments(kitxml) -> Dict(name => (file, channelmap))
+
+Instruments of a DrumGizmo drumkit file: instrument file (absolute) and the channel map
+(instrument channel => kit channel).
+"""
+function dg_instruments(kitxml)
+    xml = read(kitxml, String)
+    out = Dict{String,Tuple{String,Dict{String,String}}}()
+    for m in eachmatch(r"<instrument\b([^>]*?)(/>|>(.*?)</instrument>)"s, xml)
+        a = xml_attrs(m[1])
+        haskey(a, "file") || continue
+        cmap = Dict{String,String}()
+        m[3] === nothing || for c in eachmatch(r"<channelmap\b([^>]*)>", m[3])
+            ca = xml_attrs(c[1])
+            cmap[ca["in"]] = ca["out"]
+        end
+        out[a["name"]] = (normpath(joinpath(dirname(kitxml), a["file"])), cmap)
+    end
+    return out
+end
+
+"""
+    dg_samples(instfile, cmap) -> Vector{Vector{Tuple{String,String,Int}}}
+
+Recordings of a DrumGizmo instrument: per recording a list of (kit channel, wav file, channel
+in that file).
+"""
+function dg_samples(instfile, cmap)
+    xml = read(instfile, String)
+    map(eachmatch(r"<sample\b[^>]*>(.*?)</sample>"s, xml)) do m
+        map(eachmatch(r"<audiofile\b([^>]*)>", m[1])) do af
+            a = xml_attrs(af[1])
+            ch = get(cmap, a["channel"], a["channel"])
+            (ch, normpath(joinpath(dirname(instfile), a["file"])), parse(Int, get(a, "filechannel", "1")))
+        end
+    end
+end
+
+"""
+    dg_mix(audiofiles, mix; polarity) -> (stereo matrix, fs)
+
+Mixes one recording to stereo. `mix`: kit channel => (gain, pan) (pan -1 left … +1 right, from the
+drummer's view); channels not in `mix` are dropped (trigger channels). `polarity`: pairs
+`a => b`; channel `a` is inverted if it is out of phase with `b` (snare bottom vs. top mic).
+"""
+function dg_mix(afs, mix; polarity = Pair{String,String}[])
+    files = Dict{String,Tuple{Matrix{Float64},Float64}}()
+    rd(f) = get!(() -> (r = WAV.wavread(f; format = "double"); (r[1], Float64(r[2]))), files, f)
+    chans = Dict{String,Vector{Float64}}()
+    fs = 0.0
+    for (ch, f, fc) in afs
+        haskey(mix, ch) || continue
+        y, fs = rd(f)
+        chans[ch] = y[:, fc]
+    end
+    isempty(chans) && error(L("Keine Aufnahme für {1}", join(first.(afs), ", ")))
+    for (a, b) in polarity
+        (haskey(chans, a) && haskey(chans, b)) || continue
+        n = min(length(chans[a]), length(chans[b]), round(Int, 0.05fs))
+        sum(view(chans[a], 1:n) .* view(chans[b], 1:n)) < 0 && (chans[a] = -chans[a])
+    end
+    n = maximum(length, values(chans))
+    out = zeros(n, 2)
+    for (ch, x) in chans
+        g, p = mix[ch]
+        out[1:length(x), 1] .+= (g * min(1.0, 1 - p)) .* x
+        out[1:length(x), 2] .+= (g * min(1.0, 1 + p)) .* x
+    end
+    return out, fs
+end
+
+# Mixes: channel => (gain, pan). Overheads carry the stereo picture, close mics add punch,
+# room mics a little space. Drummer's view: hi-hat left, floor tom right.
+const DG_DRS_MIX = Dict(
+    "OHL" => (1.0, -0.8), "OHR" => (1.0, 0.8), "AmbL" => (0.4, -0.7), "AmbR" => (0.4, 0.7),
+    "Kdrum_back" => (0.7, 0.0), "Kdrum_front" => (0.4, 0.0), "Snare_top" => (0.7, -0.1),
+    "Snare_bottom" => (0.2, -0.1), "Hihat" => (0.25, -0.5), "Ride" => (0.25, 0.5),
+    "Tom1" => (0.6, -0.1), "Tom2" => (0.6, 0.3), "Tom3" => (0.6, 0.45))
+const DG_MULDJORD_MIX = Dict(
+    "OHL" => (1.0, -0.8), "OHR" => (1.0, 0.8), "AmbL" => (0.4, -0.7), "AmbR" => (0.4, 0.7),
+    "KdrumL" => (0.6, -0.05), "KdrumR" => (0.6, 0.05), "Snare_top" => (0.7, -0.1),
+    "Snare_bottom" => (0.2, -0.1), "Hihat" => (0.25, -0.5), "RideL" => (0.2, -0.6),
+    "RideR" => (0.25, 0.6), "Tom1" => (0.6, -0.2), "Tom2" => (0.6, 0.0), "Tom3" => (0.6, 0.3),
+    "Tom4" => (0.6, 0.45))
+const DG_AASI_MIX = Dict(
+    "OHL" => (1.0, -0.8), "OHR" => (1.0, 0.8), "AmbL" => (0.4, -0.7), "AmbR" => (0.4, 0.7),
+    "KdrumL" => (0.6, -0.05), "KdrumR" => (0.6, 0.05), "Snare_top" => (0.7, -0.1),
+    "Snare_bottom" => (0.2, -0.1), "Hihat" => (0.25, -0.5), "Ride" => (0.25, 0.5),
+    "Tom1" => (0.6, -0.2), "Tom2" => (0.6, 0.0), "Tom3" => (0.6, 0.3), "Tom4" => (0.6, 0.45))
+# ShittyKit: the room pair is an unprocessed M/S couple whose mid/side order is unknown, so it is
+# used in mono (no phase problems either way).
+const DG_SHITTY_MIX = Dict(
+    "OH-L" => (1.0, -0.8), "OH-R" => (1.0, 0.8), "Room-L" => (0.3, 0.0), "Room-R" => (0.3, 0.0),
+    "kick" => (0.7, 0.0), "snare" => (0.7, -0.1), "Tom" => (0.6, -0.1), "Floor" => (0.6, 0.4))
+const DG_STEREO_MIX = Dict("L" => (1.0, -0.6), "R" => (1.0, 0.6))
+
+const DG_SNARE_POLARITY = ["Snare_bottom" => "Snare_top"]
+const DG_URL = "https://drumgizmo.org/kits/"
+const DG_LICENSE = """
+    License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+             https://creativecommons.org/licenses/by/4.0/
+    """
+
+"""
+DrumGizmo kits: name, archive URL, folder inside the archive, drumkit file, track => instruments
+(several = round-robin), mix, credit. Tracks without a fitting instrument use the nearest one
+(noted in the comments).
+"""
+const DG_KITS = [
+    (name = "DRSKit", url = DG_URL * "DRSKit/DRSKit2_1.zip", root = "DRSKit", xml = "DRSKit_full.xml",
+     map = ["Kick" => ["Kdrum_with_contact"], "Snare" => ["Snare"], "Rim" => ["Snare_rim"],
+            "HiHat" => ["Hihat_closed"], "HHOpen" => ["Hihat_open"], "HHPedal" => ["Hihat_foot"],
+            "Tom" => ["Tom1"], "FloorTom" => ["Tom3"], "Ride" => ["Ride_tip"],
+            "RideBell" => ["Ride_shank_bell"], "Crash" => ["Crash_left_shank"]],
+     mix = DG_DRS_MIX, polarity = DG_SNARE_POLARITY,
+     credit = """
+        DRSKit 2.1 (DrumGizmo) – handmade kit by Jes Eiler, DRSDrums (drsdrums.dk), Paiste cymbals.
+        Setup, miking, sampling: Deva & Lars Muldjord; edited by Lars Muldjord (drumgizmo.org).
+        """),
+    (name = "MuldjordKit", url = DG_URL * "MuldjordKit/MuldjordKit3.zip", root = "MuldjordKit3",
+     xml = "MuldjordKit3.xml",
+     # no hi-hat pedal recordings: the closed hi-hat stands in; side stick = "SnareRest"
+     map = ["Kick" => ["KdrumL", "KdrumR"], "Snare" => ["Snare"], "Rim" => ["SnareRest"],
+            "HiHat" => ["HihatClosed"], "HHOpen" => ["HihatOpen"], "HHPedal" => ["HihatClosed"],
+            "Tom" => ["Tom1"], "FloorTom" => ["Tom4"], "Ride" => ["RideR"],
+            "RideBell" => ["RideRBell"], "Crash" => ["CrashL"]],
+     mix = DG_MULDJORD_MIX, polarity = DG_SNARE_POLARITY,
+     credit = """
+        MuldjordKit 3 (DrumGizmo) – Tama Superstar kit, recorded 2010 by Lars Muldjord
+        for the Sepulchrum debut album; prepared for DrumGizmo by Lars Muldjord (drumgizmo.org).
+        """),
+    (name = "Aasimonster", url = DG_URL * "Aasimonster/aasimonster2_1.zip", root = "aasimonster2",
+     xml = "aasimonster.xml",
+     # side stick = rim shot (no cross-stick recordings); pedal = "hihat_closed3" as in the kit's midimap
+     map = ["Kick" => ["kick_l", "kick_r"], "Snare" => ["snare_on_center"], "Rim" => ["snare_rim_shot"],
+            "HiHat" => ["hihat_closed1"], "HHOpen" => ["hihat_open"], "HHPedal" => ["hihat_closed3"],
+            "Tom" => ["tom_1"], "FloorTom" => ["tom_4"], "Ride" => ["ride"],
+            "RideBell" => ["ride_bell2"], "Crash" => ["crash1"]],
+     mix = DG_AASI_MIX, polarity = DG_SNARE_POLARITY,
+     credit = """
+        The Aasimonster 2.1 (DrumGizmo) – death metal kit used for the record "Rise of the Rotten"
+        by DIE (executionroom.com); converted to the 2.0 format by Chaot4 (drumgizmo.org).
+        """),
+    (name = "ShittyKit", url = DG_URL * "ShittyKit/ShittyKit1_2.zip", root = "ShittyKit",
+     xml = "ShittyKit.xml",
+     map = ["Kick" => ["kick"], "Snare" => ["snare-Dyn-RH", "snare-Dyn-LH"], "Rim" => ["snare-RmClk"],
+            "HiHat" => ["HH-closed"], "HHOpen" => ["HH-open"], "HHPedal" => ["HH-pdl"],
+            "Tom" => ["Tom-RH", "Tom-LH"], "FloorTom" => ["Floor-RH", "Floor-LH"], "Ride" => ["ride"],
+            "RideBell" => ["ride-bell"], "Crash" => ["Crash1"]],
+     mix = DG_SHITTY_MIX, polarity = Pair{String,String}[],
+     credit = """
+        ShittyKit 1.2 (DrumGizmo) by Herr Doktor Sardonicus (sardonicus@free.fr) – Stagg Gia kit
+        (18" kick, 14x5 snare, 12" tom, 14" floor tom), 8 channels. The original archive with the
+        unchanged WAV and XML files is available at the source below.
+        """),
+    # fun kit of everyday objects; there are no cymbals, so cup/glass/clap stand in
+    (name = "Sommerhack", url = "http://www.drumgizmo.org/kits/sommerhack-kit.zip", root = "sommerhack-kit",
+     xml = "sommerhack-kit.xml",
+     map = ["Kick" => ["log"], "Snare" => ["clap"], "Rim" => ["snap"], "HiHat" => ["cup"],
+            "HHOpen" => ["glass"], "HHPedal" => ["camera"], "Tom" => ["chair"], "FloorTom" => ["log"],
+            "Ride" => ["cup"], "RideBell" => ["glass"], "Crash" => ["clap"]],
+     mix = DG_STEREO_MIX, polarity = Pair{String,String}[],
+     credit = """
+        Sommerhack 2016 kit (DrumGizmo) – everyday objects (log, clap, cup, glass, chair, camera …)
+        recorded at the Sommerhack 2016 hacker camp in Denmark with two SM57.
+        """),
+]
+
+"""
+    build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.name), log = println)
+
+Downloads one of the `DG_KITS`, extracts only the instruments needed and mixes the mics to stereo.
+`src`: an already extracted kit folder (the one containing the drumkit XML). A downloaded archive
+larger than 1 GB is deleted after a successful build.
+"""
+function build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.name), log = println)
+    given = src !== nothing
+    cache = cache_dir()
+    given || (src = joinpath(cache, spec.root))
+    archive = joinpath(cache, basename(spec.url))
+    function unpack(patterns)
+        given && error(L("Dateien fehlen in {1}", src))
+        fetch_file(spec.url, archive, spec.name; log)
+        log(L("{1} wird entpackt …", spec.name))
+        extract(archive, cache, patterns; fallback = :unzip)
+    end
+    isfile(joinpath(src, spec.xml)) || unpack(["$(spec.root)/*.xml"])   # kit and instrument files
+    insts = dg_instruments(joinpath(src, spec.xml))
+    recs = map(spec.map) do (id, names)
+        id => [afs for nm in names
+                   for afs in (haskey(insts, nm) ? dg_samples(insts[nm]...) :
+                               error(L("Instrument {1} fehlt in {2}", nm, spec.xml)))]
+    end
+    # only the recordings of the instruments used
+    wavs = unique(f for (_, rs) in recs for afs in rs for (_, f, _) in afs)
+    missing_wavs = filter(!isfile, wavs)
+    isempty(missing_wavs) || unpack(relpath.(missing_wavs, cache))
+    sources = [id => Function[() -> dg_mix(afs, spec.mix; polarity = spec.polarity) for afs in rs]
+               for (id, rs) in recs]
+    build_kit(dest, spec.name, sources; log,
+        header = "# Built by DrumMachine.jl (build_drumgizmo) – $(spec.name) (DrumGizmo), stereo mix by DrumMachine.jl",
+        license = """
+        $(spec.credit)
+        Source: $(spec.url)
+        $DG_LICENSE
+        Changes by DrumMachine.jl: stereo mix of the microphone channels, selection of single
+        recordings, resampling to 44.1 kHz, trimming/fading, conversion to 16 bit, level matching.
+        """)
+    if !given && isfile(archive) && filesize(archive) > 1_000_000_000
+        rm(archive; force = true)
+        rm(src; recursive = true, force = true)
+    end
+    return dest
+end
+
+# ---------------------------------------------------------------------------
 # Automatic download on first start
 # ---------------------------------------------------------------------------
 
-"Kits that can be downloaded and built: (name, size label, build function)."
-const DOWNLOADABLE_KITS = [("CrocellKit", "561 MB", build_crocell), ("VirtuosityDrums", "1,2 GB", build_virtuosity)]
+"""
+Kits that can be downloaded and built: (name, size label, build function, auto). Kits with
+`auto = true` are fetched automatically in the background; the large ones only when chosen in
+the kit menu.
+"""
+const DOWNLOADABLE_KITS = vcat(
+    [(spec.name, "20 MB", (; kw...) -> build_avl(spec; kw...), true) for spec in AVL_KITS],
+    [("Sommerhack", "12 MB", (; kw...) -> build_drumgizmo(DG_KITS[5]; kw...), true),
+     ("ShittyKit", "370 MB", (; kw...) -> build_drumgizmo(DG_KITS[4]; kw...), true),
+     ("CrocellKit", "561 MB", build_crocell, true),
+     ("VirtuosityDrums", "1,2 GB", build_virtuosity, true),
+     ("DRSKit", "2,8 GB", (; kw...) -> build_drumgizmo(DG_KITS[1]; kw...), false),
+     ("MuldjordKit", "2,5 GB", (; kw...) -> build_drumgizmo(DG_KITS[2]; kw...), false),
+     ("Aasimonster", "2,4 GB", (; kw...) -> build_drumgizmo(DG_KITS[3]; kw...), false)])
 
 "Downloadable kits that are not installed yet."
 missing_kits() = [k for k in DOWNLOADABLE_KITS if !any(e -> e.name == k[1], kit_entries())]
+
+"Downloadable kits that are only built on request (large, or automatic download switched off)."
+on_demand_kits() = [k for k in missing_kits() if !(k[4] && auto_kits_enabled())]
 
 """
 Automatic download is on unless the setting `auto_kits = false` is stored or the environment
@@ -308,25 +712,50 @@ variable `DRUMMACHINE_NO_KIT_DOWNLOAD` is set.
 """
 auto_kits_enabled() = !haskey(ENV, "DRUMMACHINE_NO_KIT_DOWNLOAD") && get(load_settings(), "auto_kits", true) != false
 
+"Kits being built right now (so a kit is never built twice at the same time)."
+const KITS_BUILDING = Set{String}()
+const KITS_BUILDING_LOCK = ReentrantLock()
+
+"Builds one downloadable kit (in the calling task); false if it is already being built."
+function fetch_kit(kit, post::Function, done::Function)
+    name, size, build, _ = kit
+    lock(() -> name in KITS_BUILDING ? false : (push!(KITS_BUILDING, name); true), KITS_BUILDING_LOCK) || return false
+    post(L("Kit {1} wird geladen ({2}, läuft im Hintergrund) …", name, size))
+    try
+        build(; log = post)
+        done(name)
+    catch e
+        post(L("Kit {1} konnte nicht geladen werden: {2}", name, sprint(showerror, e)))
+        @warn L("Kit {1} konnte nicht geladen werden", name) exception = e
+    finally
+        lock(() -> delete!(KITS_BUILDING, name), KITS_BUILDING_LOCK)
+    end
+    return true
+end
+
+"""
+    fetch_kit!(name, post, done) -> Union{Task,Nothing}
+
+Builds the downloadable kit `name` on a background thread (chosen in the kit menu).
+"""
+function fetch_kit!(name::AbstractString, post::Function, done::Function)
+    k = findfirst(x -> x[1] == name, DOWNLOADABLE_KITS)
+    k === nothing && return nothing
+    return Threads.@spawn fetch_kit(DOWNLOADABLE_KITS[k], post, done)
+end
+
 """
     auto_fetch_kits!(post, done) -> Union{Task,Nothing}
 
-Builds all missing downloadable kits one after another on a background thread. `post(msg)` gets
+Builds all missing kits marked `auto` one after another on a background thread. `post(msg)` gets
 progress and error messages, `done(name)` is called after each finished kit. Returns `nothing`
 if there is nothing to do or the automatic download is switched off.
 """
 function auto_fetch_kits!(post::Function, done::Function)
-    (auto_kits_enabled() && !isempty(missing_kits())) || return nothing
-    return Threads.@spawn begin
-        for (name, size, build) in missing_kits()
-            post(L("Erster Start: Kit {1} wird geladen ({2}, läuft im Hintergrund) …", name, size))
-            try
-                build(; log = post)
-                done(name)
-            catch e
-                post(L("Kit {1} konnte nicht geladen werden: {2}", name, sprint(showerror, e)))
-                @warn L("Kit {1} konnte nicht geladen werden", name) exception = e
-            end
-        end
+    auto_kits_enabled() || return nothing
+    todo = [k for k in missing_kits() if k[4]]
+    isempty(todo) && return nothing
+    return Threads.@spawn for k in todo
+        fetch_kit(k, post, done)
     end
 end

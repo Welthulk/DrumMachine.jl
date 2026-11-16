@@ -52,6 +52,7 @@ Preview() = Preview(zeros(Float32, 0, 1), SR, 1.0, 0, 1, false, false, Threads.A
 mutable struct Engine
     song::Song
     kit::Kit
+    kitgain::Float32                 # gain of the current kit (settings, see `kit_gain`)
     voices::Vector{Voice}
     last::Vector{Sample}             # last sample played per track (no immediate repeat)
     rng::MersenneTwister             # seeded → exports are reproducible
@@ -90,7 +91,7 @@ end
 function Engine(song::Song, kit::Kit)
     fx = FXState()
     nos = Sample(Float32[])
-    eng = Engine(song, kit, [Voice() for _ in 1:NVOICES], fill(nos, NTRACKS), MersenneTwister(4711), fx,
+    eng = Engine(song, kit, kit_gain(kit.name), [Voice() for _ in 1:NVOICES], fill(nos, NTRACKS), MersenneTwister(4711), fx,
                  [TrackFX() for _ in 1:NTRACKS], [zeros(Float32, BLOCK, 2) for _ in 1:NTRACKS], fill(false, NTRACKS),
                  click_sound(true), click_sound(false),
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
@@ -144,6 +145,19 @@ function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rat
     return v
 end
 
+"Gain of kit `name`: factor 0–2 from the settings table `kit_gain`, 1 if unset."
+function kit_gain(name::AbstractString)
+    v = get(get(load_settings(), "kit_gain", Dict{String,Any}()), name, 1.0)
+    return v isa Real ? clamp(Float32(v), 0f0, 2f0) : 1f0
+end
+
+"Stores the gain of kit `name` in the settings file (applies to playback and export)."
+function set_kit_gain!(name::AbstractString, g::Real)
+    d = get(load_settings(), "kit_gain", Dict{String,Any}())
+    d[String(name)] = round(Float64(g), digits = 2)
+    save_setting!("kit_gain", d)
+end
+
 "Plays track `t` at velocity level `level` (1–3). `seq=true` honors mute/solo."
 function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
     tp = eng.song.tracks[t]
@@ -155,7 +169,7 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
     kit = eng.kit
     smp = pick_sample(eng.rng, kit.layers[t], level, eng.last[t])
     eng.last[t] = smp
-    gain = kit.level_gain[level] * kit.gain[t] * tp.vol
+    gain = kit.level_gain[level] * kit.gain[t] * tp.vol * eng.kitgain
     rate = 2.0^(tp.pitch / 12)
     start_voice!(eng, smp, gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t])
     return

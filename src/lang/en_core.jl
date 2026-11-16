@@ -39,7 +39,11 @@ add_translations!(Dict{String,String}(
     "Kein Samples/oh unter {1} gefunden" => "No Samples/oh found below {1}",
     "Keine Aufnahme für {1}" => "No recording for {1}",
     "Keine Dateien für {1}/{2}" => "No files for {1}/{2}",
-    "Erster Start: Kit {1} wird geladen ({2}, läuft im Hintergrund) …" =>
-        "First start: downloading kit {1} ({2}, runs in the background) …",
+    "Kit {1} wird geladen ({2}, läuft im Hintergrund) …" =>
+        "Downloading kit {1} ({2}, runs in the background) …",
+    "Dateien fehlen in {1}" => "Files missing in {1}",
+    "Instrument {1} fehlt in {2}" => "Instrument {1} missing in {2}",
+    "{1} (laden, {2})" => "{1} (download, {2})",
+    "Kit {1} wird schon geladen." => "Kit {1} is already being downloaded.",
     "Kit {1} konnte nicht geladen werden: {2}" => "Kit {1} could not be loaded: {2}",
 ))
