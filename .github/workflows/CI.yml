@@ -1,0 +1,31 @@
+# Tests: Pkg.test() on Linux with Julia 1.13 (the version the package is developed with).
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.13']
+        os: [ubuntu-latest]
+    env:
+      DRUMMACHINE_NO_KIT_DOWNLOAD: '1'      # tests use the kit in the repo and the synth kits
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1

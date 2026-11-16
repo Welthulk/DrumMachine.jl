@@ -301,7 +301,7 @@ function wave_editor_figure(eng::Engine; wave::Union{Nothing,Wave} = nothing, la
             empty!(hist.undo); empty!(hist.redo)
             sel[] = nothing; cursor[] = 1; modified[] = false
             fit!(); refresh_info!()
-            status[] = L("Geladen: {1}", path) * (nch > 2 ? "  " * L("(Datei hat {1} Kanäle – die ersten beiden werden bearbeitet)", nch) : "")
+            status[] = L("Geladen: {1}", Base.contractuser(path)) * (nch > 2 ? "  " * L("(Datei hat {1} Kanäle – die ersten beiden werden bearbeitet)", nch) : "")
         catch e
             status[] = L("Fehler beim Laden: {1}", sprint(showerror, e))
         end

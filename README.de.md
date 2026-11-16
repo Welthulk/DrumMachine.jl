@@ -1,14 +1,22 @@
 # DrumMachine.jl
 
+[![main](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FWelthulk%2FDrumMachine.jl%2Fmain%2FProject.toml&query=%24.version&label=main&color=orange)](https://github.com/Welthulk/DrumMachine.jl)
+[![Release](https://img.shields.io/github/v/release/Welthulk/DrumMachine.jl?label=release)](https://github.com/Welthulk/DrumMachine.jl/releases)
+[![CI](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml)
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://welthulk.github.io/DrumMachine.jl/dev/)
+[![Julia](https://img.shields.io/badge/Julia-1.13-9558B2?logo=julia&logoColor=white)](https://julialang.org)
+[![License](https://img.shields.io/github/license/Welthulk/DrumMachine.jl)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)](PLATFORMS.md)
+
 [English](README.md) | Deutsch
 
 Step-Sequencer in Julia zum Schlagzeug-Üben: Groove eintragen, vorhören, als WAV exportieren und mitspielen.
 
-![Screenshot](docs/screenshot.png)
+![Screenshot](docs/screenshot-de.png)
 
 ## Installation
 
-Getestet unter Linux mit Julia 1.13. Gebraucht werden ein Grafiktreiber mit OpenGL (für GLMakie)
+Getestet unter Linux mit Julia 1.13 (Windows und macOS: siehe [PLATFORMS.md](PLATFORMS.md)). Gebraucht werden ein Grafiktreiber mit OpenGL (für GLMakie)
 und eine Soundkarte. PortAudio bringt Julia selbst mit.
 
 1. **Julia installieren**, am einfachsten mit [juliaup](https://github.com/JuliaLang/juliaup):
@@ -44,6 +52,13 @@ und eine Soundkarte. PortAudio bringt Julia selbst mit.
    - `zenity` (GNOME) oder `kdialog` (KDE) für die Datei-Dialoge
    - `ffmpeg` nur für den AAC-Export im WAV-Editor
 
+## Plattformen
+
+Entwickelt und getestet nur unter Linux, Windows und macOS sind nicht getestet. Benötigte
+Julia-Pakete und Programme sowie die bekannten Lücken für eine Portierung stehen in
+[PLATFORMS.md](PLATFORMS.md) (englisch). Wer portieren möchte, ist herzlich eingeladen; weitere
+Möglichkeiten zu helfen (testen, Songs, Hardware) stehen in [SUPPORT.md](SUPPORT.md).
+
 ## Start
 
 ```bash
@@ -58,73 +73,50 @@ Schneller Start: Fehlt das Sysimage `build/drummachine.so` (vorkompiliertes GLMa
 `./start_drum.sh`, ob es jetzt gebaut werden soll (dauert einige Minuten). Danach meldet das
 Skript bei jedem Start, ob es das Image gefunden hat, und fragt nach Paket-Updates von selbst
 nach einem Neubau. Direkt bauen: `./start_drum.sh --build`; ohne Image starten:
-`./start_drum.sh --no-image`.
+`./start_drum.sh --no-image`; nur den Setup-Player (für die Bühne): `./start_drum.sh --player`;
+alle Optionen: `./start_drum.sh --help`.
 
 **Sprache:** Deutsch oder Englisch über *DE* / *EN* in der Kopfzeile. Voreingestellt ist die
 Systemsprache, die Wahl wird in `~/.config/DrumMachine/settings.toml` gespeichert.
 
-**Kits beim ersten Start:** Nur BlackPearl liegt im Repo. Die übrigen Kits (zusammen etwa
-2,2 GB) werden beim ersten Start automatisch im Hintergrund geladen und gebaut, der Fortschritt
-steht in der Statuszeile. BlackPearl und die Synth-Kits gehen sofort, die anderen erscheinen
-im Kit-Menü, sobald sie fertig sind. DRSKit, MuldjordKit, Aasimonster (je 2,4–2,8 GB) und die Crocell-Mischungen
-(5,6 GB) werden erst geladen, wenn man sie im Kit-Menü wählt („(laden, …)“). Der Regler *Gain* neben dem
-Kit-Menü stellt den Pegel des Kits ein und wird pro Kit gespeichert. Ablage: `~/.local/share/DrumMachine/kits`, die Downloads in
-`~/.cache/DrumMachine` (danach löschbar). Abschalten mit `auto_kits = false` in der
-Einstellungsdatei oder der Umgebungsvariable `DRUMMACHINE_NO_KIT_DOWNLOAD`.
+### Gegen Knackser und Aussetzer
 
-**Loop-Export:** Schalter *Loop* in der Export-Zeile. Die WAV hat dann keinen Einzähler, ist exakt
-ganze Takte lang, und das Ausklingen wird auf den Anfang gefaltet. So läuft sie ohne Lücke in
-Schleife. Am Roland TD-27: SONG → [F2] SETUP → Loop Type = LOOP.
+- **GC-Pause** (Transportzeile): hält die Speicherbereinigung von Julia (Garbage Collection, GC)
+  beim Abspielen für 2–20 min an. Sie läuft bei Stop, nach Ablauf der Zeit oder unter 1 GB freiem
+  Speicher wieder.
+- **Audio-Puffer:** Play/Stop reagieren mit dem Puffer, voreingestellt 0,08 s. Knackt es, in
+  `~/.config/DrumMachine/settings.toml` z. B. `audio_latency = 0.15` eintragen.
+- **Hohe Priorität:** `./start_drum.sh --prio` (kombinierbar, z. B. `--prio --player`) startet das
+  Programm mit `nice -15` und den Audio-Thread mit Echtzeit-Priorität 70. Einen Wert muss man
+  nirgends eintragen, das Skript nimmt, was das System erlaubt. Ein normaler Benutzer braucht dafür
+  einmalig die Rechte; PipeWire stellt sie für die Gruppe `pipewire` bereit:
+  `sudo groupadd -f pipewire && sudo usermod -aG pipewire $USER` (der erste Befehl legt die Gruppe
+  nur an, falls sie fehlt), danach ab- und wieder anmelden (`ulimit -r` zeigt dann 95
+  statt 0). Ohne die Rechte startet das Programm normal und sagt Bescheid. Ein Setuid- oder
+  Sticky-Bit am Skript hilft nicht: Linux ignoriert Setuid bei Skripten, Root-Rechte sind nicht nötig.
 
-**Song-Dateien:** einfache TOML-Dateien, auch von Hand editierbar. Alle Felder inklusive Master- und
-Spur-Effekten beschreibt [docs/song-format.md](docs/song-format.md) (englisch).
+## Funktionen
 
-**Drum-JSON-Import:** Knopf *JSON-Import …* in der Zeile LADEN (mehrere Dateien auf einmal) oder
-Strg+V für JSON aus der Zwischenablage. Übernimmt Kompositionen aus Browser-Drum-Machines im
-JSON-Format und speichert jede als Song. Toms 1 und 2 landen auf *Tom*, Tom 3 auf *Floor Tom*.
+Alle Funktionen stehen in [FEATURES.md](FEATURES.md), die Änderungen je Version in
+[CHANGELOG.md](CHANGELOG.md) (beide englisch). Die Bedienung erklärt der **?**-Button im Programm,
+*Docs* zeigt die Dokumentation ([docs/](docs), englisch): Song-Format, WAV-Editor, Metronom,
+Setup-Player. Dieselben Seiten gibt es online:
+[welthulk.github.io/DrumMachine.jl](https://welthulk.github.io/DrumMachine.jl/dev/). Über 40 Grooves liegen unter *Preset laden*, ausgearbeitete Beispiel-Songs unter
+`songs/` (*Eigenen Song laden*).
 
-**Reaktionszeit:** Play/Stop und Metronom reagieren mit dem Audio-Puffer, voreingestellt 0,08 s.
-Knackt es, in `~/.config/DrumMachine/settings.toml` z. B. `audio_latency = 0.15` eintragen.
-Alternativ hält *GC-Pause* (Transportzeile) die Speicherbereinigung von Julia beim Abspielen bis
-zu 2–20 min an. Sie läuft bei Stop, nach Ablauf der Zeit oder bei unter 1 GB freiem Speicher wieder.
+![WAV-Editor](docs/wav-editor-de.png)
 
-**Info:** Knopf *Info* in der Kopfzeile: Version, Lizenzen, Grüße.
+![Setup-Player](docs/player-de.png)
 
-**Metronom:** Knopf *Metronom* in der Kopfzeile. 30–400 BPM per Regler, Eingabe oder Tap,
-Taktarten bis 12/8 mit Akzentgruppen, Unterteilung (Achtel, Triolen, 16tel, Swing, punktiert …),
-Betonung (Akzent auf der 1, ohne, nur 2 und 4, nur Offbeats), sieben Klänge, Lücken-Training
-(n Takte spielen, m Takte stumm) und Tempo-Trainer (+x BPM alle n Takte). Die Einstellungen
-werden gespeichert. Anleitung: [docs/metronome.md](docs/metronome.md) (englisch) oder Knopf *Docs*.
-
-**WAV-Editor:** Knopf *WAV-Editor* in der Kopfzeile. Exportierte WAVs schneiden, trimmen, Fades,
-Normalisieren, Gain, Effekte und EQ, Einzähler voranstellen, BPM erkennen, mit Rückgängig. Unter
-*Format* gibt es auch AAC (.m4a), z. B. zum Verschicken per WhatsApp (braucht ffmpeg).
-
-![WAV-Editor](docs/wav-editor.png)
- Siehe
-[docs/wav-editor.md](docs/wav-editor.md) (englisch) oder den Knopf *Docs* im Programm.
-
-**Bearbeiten:** Nach dem Laden eines eigenen Songs ist der Schalter an, *Speichern* überschreibt die
-Datei dann ohne Rückfrage.
-
-Die Bedienung erklärt der **?**-Button im Programm. Über 40 Grooves (Rock, Funk, Shuffle, Blues, Jazz, Latin, ungerade Taktarten) liegen unter *Preset laden*,
-ausgearbeitete Beispiel-Songs mit Form, Fills und Spur-Effekten unter `songs/` (*Eigenen Song laden*).
+![Setup-Editor](docs/setup-editor-de.png)
 
 ## Kits
 
-| Kit | Herkunft | Lizenz |
-|---|---|---|
-| BlackPearl | [AVL Drumkits](http://www.bandshed.net/avldrumkits/), im Repo | CC BY-SA 3.0 |
-| CrocellKit | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits%3Acrocellkit), Stereo-Mix von Henry Järvinen | CC BY 4.0 |
-| VirtuosityDrums | [Versilian Studios / Karoryfer](https://github.com/sfzinstruments/virtuosity_drums) | CC0 |
-| RedZeppelin, BlondeBop, BlondeBopHotRods, BuskmansHoliday (Percussion) | [AVL Drumkits](http://www.bandshed.net/avldrumkits/) | CC BY-SA 3.0 |
-| ShittyKit, Sommerhack (Alltagsgegenstände) | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), Stereo-Mix von DrumMachine.jl | CC BY 4.0 |
-| DRSKit, MuldjordKit, Aasimonster | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), Stereo-Mix von DrumMachine.jl, auf Wunsch | CC BY 4.0 |
-| CrocellClose, CrocellStudio, CrocellRoom, CrocellVintage, CrocellLoFi | CrocellKit aus den Einzelmikros, eigene Mischungen (trocken … großer Raum, nur Overheads, Lo-Fi), auf Wunsch („CrocellMixes“, 5,6 GB) | CC BY 4.0 |
-| 808 / 909 (Synth) | synthetisiert | – |
-
-Kits einzeln bauen: `julia --project=. tools/build_kit.jl` (Liste) bzw. `tools/build_kit.jl DRSKit` (oder `all`).
+Nur BlackPearl liegt im Repo, die übrigen Kits werden beim ersten Start im Hintergrund geladen
+und gebaut (zusammen etwa 2,2 GB, Fortschritt in der Statuszeile). Liste der Kits mit Herkunft,
+Lizenzen und Größen, der Gain pro Kit, Abschalten des Downloads und Kits von Hand bauen:
+[KITS.md](KITS.md) (englisch).
 
 ## Lizenz
 
-Code: [MIT](LICENSE). Die Samples stehen unter den oben genannten Lizenzen.
+Code: [MIT](LICENSE). Die Samples stehen unter den Lizenzen in [KITS.md](KITS.md).

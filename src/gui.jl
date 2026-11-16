@@ -87,6 +87,16 @@ const HELP_TEXT = """
 EINGABE
   Linksklick            Schlag an / aus
   Rechtsklick           Ghost  →  normal  →  Akzent
+  L⇄R (pro Spur)        Instrument links/rechts spiegeln (Wiedergabe und WAV); zusammen mit
+                        dem globalen L ⇄ R lässt sich jedes Instrument auf seine Seite legen
+  Spur-Regler           Lautstärke der Spur in dB, ganz links = aus, bis +12 dB. Sehr laute
+                        Spuren drückt der Limiter am Ende: dann lieber die anderen leiser
+  Verzierung            Auswahl unter dem Pattern: Linksklick setzt sie auf den Schlag,
+                        nochmal = entfernen. 2 Doppelschlag (zwei 32tel), z Buzz-Roll,
+                        f Flam, r Drag (zwei Vorschläge). 5-Stroke-Roll im 16tel-Raster:
+                        2 auf „3+“ und „a“, Akzent auf „4“
+  Verzierungen (rechts) Abstände von Flam, Drag und Buzz in ms und Lautstärke der Vorschläge,
+                        gelten für den ganzen Song und werden mit ihm gespeichert
   Spurname              Vorhören      M / S   Stumm / Solo (gilt auch für den Export)
   Spur-Effekte          Spurname anklicken: EQ (Tiefen, Mitten, Höhen) und
                         Chorus / Flanger für diese Spur, wird im Song gespeichert
@@ -97,26 +107,31 @@ TRANSPORT
   Modus Song            spielt die Kette in Schleife, das Raster zeigt das laufende Pattern
   Einzähler             Klick-Takt(e) vor dem Start
   BPM                   Regler oder Zahl eintippen (30–400)
-  GC-Pause              Speicherbereinigung beim Abspielen bis zu x min anhalten
-                        (gegen Knackser bei schnellen Tempi), läuft bei Stop, nach Ablauf
-                        der Zeit oder unter 1 GB freiem Speicher wieder; beim Ablauf mitten
-                        im Spielen ist ein einzelner Knackser möglich
+  GC-Pause              hält die Speicherbereinigung von Julia (Garbage Collection, GC)
+                        beim Abspielen bis zu x min an, gegen Knackser bei schnellen Tempi;
+                        läuft bei Stop, nach Ablauf der Zeit oder unter 1 GB freiem Speicher
+                        wieder (beim Ablauf mitten im Spielen ist ein Knackser möglich)
 
 RASTER & SWING
-  Raster                16tel, 8tel-Triolen, 16tel-Triolen oder 8tel
+  Raster                16tel, 8tel-Triolen, 16tel-Triolen, 8tel oder 32tel
   Swing                 Lage der Off-Beat-Note: 50 % gerade, 67 % Triole, 75 % punktiert
   Auto / 8tel / 16tel   worauf im geraden Raster geswingt wird
 
 PATTERNS & KETTE
-  1 … 16                Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
+  1 … 24                Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
   + Fill                neues Pattern: Groove mit Fill am Ende, nochmal klicken = anderer Fill
   Steps                 Länge des Patterns (z. B. 12 für 3/4, 20 für 5/4)
+  Tempo                 eigenes Tempo nur für das gewählte Pattern (30–400), „Song“ oder
+                        leer = Song-Tempo; der BPM-Regler oben ändert nur das Song-Tempo
   Kette                 Reihenfolge für Song-Modus und Export, z. B. „1x3 2“ = 1 1 1 2
 
-WAV-EDITOR, METRONOM & DOCS
+WAV-EDITOR, METRONOM, PLAYER & DOCS
   WAV-Editor            exportierte WAVs schneiden, Fades, Effekte, Einzähler (eigenes Fenster)
-  Docs                  Dokumentation: Song-Dateiformat, WAV-Editor, Metronom
+  Docs                  Dokumentation: Song-Dateiformat, WAV-Editor, Metronom, Player
   Metronom              Klick mit Taktart, Unterteilung, Betonung, Klang, Lücken- und Tempo-Trainer
+  Player, Setup-Editor  Setup-Player für die Bühne: Songs und WAVs der Reihe nach abspielen,
+                        Auto mit Pausen und Countdown-Beeps oder Manuell per Klick, eigener
+                        Master (Lautstärke, EQ, Hall); allein: ./start_drum.sh --player
 
 DATEI
   Neu / Duplizieren     neuer Groove bzw. Kopie, das Original bleibt erhalten
@@ -135,6 +150,16 @@ EXPORT
   Loop                  nahtlose Schleife ohne Einzähler, Datei „<Name> Loop.wav“;
                         am TD-27: SONG → [F2] SETUP → Loop Type = LOOP
   WAV exportieren       songs/<Name>.wav, 44,1 kHz, 16 Bit
+
+START (im Terminal, Optionen kombinierbar)
+  ./start_drum.sh       Hauptfenster, mit Sysimage für schnellen Start
+  --player              nur der Setup-Player (Bühne)
+  --prio                hohe Priorität: nice -15, Audio-Thread in Echtzeit (70), kein Wert
+                        nötig; einmalig: sudo groupadd -f pipewire &&
+                        sudo usermod -aG pipewire \$USER, dann neu anmelden
+  --no-image / --build  ohne Sysimage starten / Sysimage neu bauen
+  --help                alle Optionen
+  Knackt es: GC-Pause, --prio oder audio_latency = 0.15 in settings.toml
 """
 
 # English quick help (labels as shown in the English GUI).
@@ -142,6 +167,16 @@ const HELP_TEXT_EN = """
 INPUT
   Left click            note on / off
   Right click           ghost  →  normal  →  accent
+  L⇄R (per track)       mirror the instrument left/right (playback and WAV); together with the
+                        global L ⇄ R every instrument can be put on its own side
+  Track slider          track volume in dB, far left = off, up to +12 dB. The limiter at the
+                        end holds back very loud tracks: then turn the others down instead
+  Ornament              choice below the pattern: left click puts it on the note, again =
+                        remove. 2 double stroke (two 32nds), z buzz roll, f flam,
+                        r drag (two grace notes). 5-stroke roll in the 16th grid:
+                        2 on “3+” and “a”, accent on “4”
+  Ornaments (right)     distances of flam, drag and buzz in ms and volume of the grace notes,
+                        apply to the whole song and are saved with it
   Track name            preview      M / S   mute / solo (also applies to the export)
   Track effects         click a track name: EQ (low, mid, high) and
                         chorus / flanger for this track, saved with the song
@@ -152,28 +187,33 @@ TRANSPORT
   Mode: Song            loops the chain, the grid follows the playing pattern
   Count-in              count-in bar(s) before playback starts
   BPM                   slider, or type a number (30–400)
-  GC pause              halt garbage collection during playback for up to x min
-                        (against crackles at fast tempos), resumes on stop, when the time
-                        is up or below 1 GB of free memory; if the time runs out while
-                        playing, a single crackle is possible
+  GC pause              holds Julia's garbage collection (GC) during playback for up to
+                        x min, against crackles at fast tempos; resumes on stop, when the
+                        time is up or below 1 GB of free memory (if the time runs out while
+                        playing, a single crackle is possible)
 
 GRID & SWING
-  Grid                  16ths, 8th triplets, 16th triplets or 8ths
+  Grid                  16ths, 8th triplets, 16th triplets, 8ths or 32nds
   Swing                 position of the off-beat: 50 % straight, 67 % triplet, 75 % dotted
   Auto / 8ths / 16ths   which subdivision swings in a straight grid
 
 PATTERNS & CHAIN
-  1 … 16                edit pattern
+  1 … 24                edit pattern
   + Copy / + Empty      new pattern as copy / empty
   Delete / Clear        delete pattern / clear all notes
   + Fill                new pattern: groove with a fill at the end, click again = other fill
   Steps                 pattern length (e.g. 12 for 3/4, 20 for 5/4)
+  Tempo                 own tempo for the selected pattern only (30–400), “Song” or
+                        empty = song tempo; the BPM slider at the top changes the song tempo
   Chain                 order for song mode and export, e.g. “1x3 2” = 1 1 1 2
 
-WAV EDITOR, METRONOME & DOCS
+WAV EDITOR, METRONOME, PLAYER & DOCS
   WAV Editor            cut exported WAVs, fades, effects, count-in (own window)
-  Docs                  documentation: song file format, WAV editor, metronome
+  Docs                  documentation: song file format, WAV editor, metronome, player
   Metronome             click with time signature, subdivision, accents, sound, gap and tempo trainer
+  Player, Setup editor  setup player for the stage: plays songs and WAVs in order, auto with
+                        pauses and countdown beeps or manual by click, own master (volume,
+                        EQ, reverb); on its own: ./start_drum.sh --player
 
 FILE
   New / Duplicate       new groove or copy, the original stays untouched
@@ -192,6 +232,16 @@ EXPORT
   Loop                  seamless loop without count-in, file “<name> Loop.wav”;
                         on the TD-27: SONG → [F2] SETUP → Loop Type = LOOP
   Export WAV            songs/<name>.wav, 44.1 kHz, 16 bit
+
+START (in the terminal, options can be combined)
+  ./start_drum.sh       main window, with sysimage for a fast start
+  --player              only the setup player (stage)
+  --prio                high priority: nice -15, realtime audio thread (70), no value
+                        needed; once: sudo groupadd -f pipewire &&
+                        sudo usermod -aG pipewire \$USER, then log in again
+  --no-image / --build  start without sysimage / rebuild the sysimage
+  --help                all options
+  If it crackles: GC pause, --prio or audio_latency = 0.15 in settings.toml
 """
 
 "Text of the info window (German / English)."
@@ -271,26 +321,45 @@ function show_info()
     return screen
 end
 
-"Figure with the quick help, switchable between German and English."
+"The quick help in two pages (it does not fit into one window): controls, then tools and start."
+help_pages(lang::Symbol) = lang == :en ? split_help(HELP_TEXT_EN, "WAV EDITOR") : split_help(HELP_TEXT, "WAV-EDITOR")
+function split_help(t::AbstractString, at::AbstractString)
+    k = findfirst("\n" * at, t)
+    return k === nothing ? (String(t), "") : (String(t[1:first(k)]), String(t[first(k)+1:end]))
+end
+
+"Figure with the quick help, switchable between German and English and between the two pages."
 help_figure(lang::Symbol = LANG[]) = with_theme(DM_THEME) do
-    f = Figure(size = (920, 990), figure_padding = 16)     # longest line ~100 chars, 54 lines
+    f = Figure(size = (920, 900), figure_padding = 16)      # longest line ~100 chars, ≤ 50 lines per page
     bar = f[1, 1] = GridLayout(halign = :left, tellwidth = false)
     de = Button(bar[1, 1], label = "Deutsch", width = 90)
     en = Button(bar[1, 2], label = "English", width = 90)
-    Label(bar[1, 3], "DrumMachine.jl $(app_version())  ·  $(REPO_URL)", color = C_TEXT2, fontsize = 12,
+    pg1 = Button(bar[1, 3], label = "1", width = 40)
+    pg2 = Button(bar[1, 4], label = "2", width = 40)
+    pagelab = Label(bar[1, 5], "", color = C_TEXT2, fontsize = 13, padding = (8, 0, 0, 0))
+    Label(bar[1, 6], "DrumMachine.jl $(app_version())", color = C_TEXT2, fontsize = 12,
           padding = (14, 0, 0, 0))
+    colgap!(bar, 6); colgap!(bar, 2, 20)
     panel!(f[2, 1])
-    txt = Observable(lang == :en ? HELP_TEXT_EN : HELP_TEXT)
+    cur = Ref(lang); page = Ref(1)
+    txt = Observable(help_pages(lang)[1])
     Label(f[2, 1], txt; font = "DejaVu Sans Mono", fontsize = 13, justification = :left,
           halign = :left, valign = :top, color = C_TEXT, padding = (22, 22, 20, 20),
           tellwidth = false, tellheight = false)
-    function mark(l)
-        de.buttoncolor[] = l == :de ? C_ACTIVE : C_BTN; de.labelcolor[] = l == :de ? C_BG : C_TEXT
-        en.buttoncolor[] = l == :en ? C_ACTIVE : C_BTN; en.labelcolor[] = l == :en ? C_BG : C_TEXT
+    function show!()
+        l = cur[]; p = page[]
+        txt[] = help_pages(l)[p]
+        for (b, on_) in ((de, l == :de), (en, l == :en), (pg1, p == 1), (pg2, p == 2))
+            b.buttoncolor[] = on_ ? C_ACTIVE : C_BTN; b.labelcolor[] = on_ ? C_BG : C_TEXT
+        end
+        pagelab.text[] = l == :en ? (p == 1 ? "Controls" : "Tools, file, export, start") :
+                                    (p == 1 ? "Bedienung" : "Werkzeuge, Datei, Export, Start")   # i18n-ok: page titles follow the language chosen in the help
     end
-    mark(lang)
-    on(_ -> (txt[] = HELP_TEXT; mark(:de)), de.clicks)
-    on(_ -> (txt[] = HELP_TEXT_EN; mark(:en)), en.clicks)
+    show!()
+    on(_ -> (cur[] = :de; show!()), de.clicks)
+    on(_ -> (cur[] = :en; show!()), en.clicks)
+    on(_ -> (page[] = 1; show!()), pg1.clicks)
+    on(_ -> (page[] = 2; show!()), pg2.clicks)
     rowsize!(f.layout, 1, Fixed(36))
     f
 end
@@ -335,8 +404,15 @@ const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),
                      ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2),   # i18n-ok: shown via Ls()
                      ("32tel (8 pro Schlag)", 8)]   # i18n-ok: shown via Ls()
 const SWING_OPTS = [("Auto", 0), ("auf 8tel", 8), ("auf 16tel", 16)]   # i18n-ok: shown via Ls()
+# Track volume slider in dB; the lowest position means off. The song keeps the linear factor (`vol`).
+const VOL_DB = -30:0.5:12
+vol_to_db(v) = v <= 0 ? first(VOL_DB) : clamp(round(2 * 20log10(v)) / 2, first(VOL_DB) + 0.5, last(VOL_DB))
+db_to_vol(d) = d <= first(VOL_DB) ? 0f0 : Float32(10^(d / 20))
+vol_label(d) = d <= first(VOL_DB) ? "−∞ dB" : (d > 0 ? "+" : "") * string(round(d, digits = 1)) * " dB"
+
+const ORN_MARKS = ("2", "z", "f", "r")           # cell label per ornament (= ORN_CHARS[2:end])
 const STEP_OPTS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 28, 30, 32]
-const MAXPATTERNS = 16
+const MAXPATTERNS = 24
 
 "Count syllables for the header row: 1 e + a / 1 + a / 1 la li + la li / 1 + (32nds: 1 e + a on every other step)."
 function count_labels(steps::Int, spb::Int)
@@ -446,13 +522,24 @@ function list_songs()
     sort(unique(names))
 end
 
+"Own tempo of a pattern from the tempo field: 0 for empty or \"Song\", `nothing` if invalid."
+function parse_pattern_bpm(s::AbstractString)
+    t = lowercase(strip(s))
+    (isempty(t) || t in ("song", lowercase(L("Song")), "-", "–", "0")) && return 0.0
+    v = tryparse(Float64, replace(t, "," => "."))
+    return v !== nothing && BPM_RANGE[1] <= v <= BPM_RANGE[2] ? v : nothing
+end
+"Text of the tempo field; parses back to exactly `p.bpm` (no rounding, else showing would change it)."
+pattern_bpm_string(p::Pattern) = p.bpm <= 0 ? L("Song") : isinteger(p.bpm) ? string(Int(p.bpm)) : string(p.bpm)
+
 "Short summary for the status line, e.g. `100 BPM · Swing 63 % (Auto) · Kette 1 1 2`."
 function song_summary(s::Song)
     pct = round(Int, 100s.swing)
     sw = s.steps_per_beat in (3, 6) ? (s.swing == 2 / 3 ? L("exakte Triolen") : L("Triolen-Swing {1} %", pct)) :
          s.swing == 0.5 ? L("kein Swing") :
          L("Swing {1} % ({2})", pct, s.swing_on == 0 ? L("Auto") : L("auf {1}tel", s.swing_on))
-    return L("{1} BPM · {2} · Kette {3}", round(Int, s.bpm), sw, chain_string(s.chain))
+    bpm = has_pattern_tempo(s) ? L("{1} BPM (Patterns mit eigenem Tempo)", round(Int, s.bpm)) : "$(round(Int, s.bpm)) BPM"
+    return L("{1} · {2} · Kette {3}", bpm, sw, chain_string(s.chain))
 end
 
 fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 60, 2, '0'))
@@ -538,7 +625,7 @@ State that outlives a rebuild of the main window (language switch): last WAV exp
 editor window and the rebuild callback set by `run`.
 """
 new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = Ref{Any}(nothing),
-                 metro_win = Ref{Any}(nothing), screen = Ref{Any}(nothing),
+                 metro_win = Ref{Any}(nothing), player_win = Ref{Any}(nothing), setup_win = Ref{Any}(nothing), screen = Ref{Any}(nothing),
                  kitmsg = Channel{String}(64),            # messages of the background kit download
                  kits_changed = Threads.Atomic{Bool}(false),
                  edit_path = Ref(""), edit_name = Ref(""),  # edit mode ("Bearbeiten"): file and its song name
@@ -648,11 +735,13 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     ghbtn = Button(hdr_r[1, 2], label = "GitHub ↗", height = 34, fontsize = 13)
     metbtn = Button(hdr_r[1, 3], label = L("Metronom"), height = 34, fontsize = 13)
     wavbtn = Button(hdr_r[1, 4], label = L("WAV-Editor"), height = 34, fontsize = 13)
-    docsbtn = Button(hdr_r[1, 5], label = "Docs", height = 34, fontsize = 13)
-    infobtn = Button(hdr_r[1, 6], label = "Info", height = 34, fontsize = 13)
-    helpbtn = Button(hdr_r[1, 7], label = "?", width = 34, height = 34, cornerradius = 17,
+    plybtn = Button(hdr_r[1, 5], label = "Player", height = 34, fontsize = 13)
+    setbtn = Button(hdr_r[1, 6], label = L("Setup-Editor"), height = 34, fontsize = 13)
+    docsbtn = Button(hdr_r[1, 7], label = "Docs", height = 34, fontsize = 13)
+    infobtn = Button(hdr_r[1, 8], label = "Info", height = 34, fontsize = 13)
+    helpbtn = Button(hdr_r[1, 9], label = "?", width = 34, height = 34, cornerradius = 17,
                      fontsize = 17, font = :bold)
-    langbtns = [Button(hdr_r[1, 7+k], label = uppercase(String(l)), width = 40, height = 34, fontsize = 13,
+    langbtns = [Button(hdr_r[1, 9+k], label = uppercase(String(l)), width = 40, height = 34, fontsize = 13,
                        buttoncolor = LANG[] == l ? C_ACTIVE : C_BTN, labelcolor = LANG[] == l ? C_BG : C_TEXT)
                 for (k, l) in enumerate(LANGS)]
     for (b, l) in zip(langbtns, LANGS)
@@ -714,21 +803,29 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     pbox = fig[3, 1] = GridLayout(tellwidth = false, halign = :left, alignmode = Outside(14))
     pbar = pbox[1, 1] = GridLayout(halign = :left)
     Label(pbar[1, 1], "PATTERN", font = :bold, color = C_TEXT2, width = 70, halign = :left)
-    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 36) for i in 1:MAXPATTERNS]
+    patbtns = [Button(pbar[1, 1+i], label = string(i), width = 30) for i in 1:MAXPATTERNS]
     addcopy = Button(pbar[1, MAXPATTERNS+2], label = L("+ Kopie"))
     addempty = Button(pbar[1, MAXPATTERNS+3], label = L("+ Leer"))
     fillbtn = Button(pbar[1, MAXPATTERNS+4], label = "+ Fill")
     delbtn = Button(pbar[1, MAXPATTERNS+5], label = L("Löschen"))
     clrbtn = Button(pbar[1, MAXPATTERNS+6], label = L("Leeren"))
-    colgap!(pbar, 6)
+    colgap!(pbar, 4)
     colgap!(pbar, MAXPATTERNS + 1, 16)       # gap between pattern numbers and actions
     pbar2 = pbox[2, 1] = GridLayout(halign = :left)
     Label(pbar2[1, 1], "Steps", halign = :left, color = C_TEXT2, width = 70)
     steps_menu = Menu(pbar2[1, 2], options = string.(STEP_OPTS), width = 60)
-    Label(pbar2[1, 3], L("Kette"), halign = :right, color = C_TEXT2)
-    chain_tb = Textbox(pbar2[1, 4], stored_string = chain_string(song.chain), width = 260,
+    Label(pbar2[1, 3], L("Tempo"), halign = :right, color = C_TEXT2)
+    ptempo_tb = Textbox(pbar2[1, 4], stored_string = L("Song"), width = 64, reset_on_defocus = false,
+                        validator = s -> parse_pattern_bpm(s) !== nothing)
+    Label(pbar2[1, 5], L("Kette"), halign = :right, color = C_TEXT2)
+    chain_tb = Textbox(pbar2[1, 6], stored_string = chain_string(song.chain), width = 260,
                        placeholder = L("z. B. 1x3 2"), reset_on_defocus = false)
-    Label(pbar2[1, 5], L("für Song-Modus und Export"), color = C_DIM, fontsize = 12)
+    Label(pbar2[1, 7], L("für Song-Modus und Export"), color = C_DIM, fontsize = 12)
+    Label(pbar2[1, 8], L("   Verzierung"), halign = :right, color = C_TEXT2)
+    orn_opts = [i == 1 ? L("keine (Klick = Schlag)") : "$(ORN_CHARS[i])  $(L(ORN_NAMES[i]))" for i in eachindex(ORN_NAMES)]
+    orn_menu = Menu(pbar2[1, 9], options = orn_opts, width = 190)
+    orn_mode = Ref(0x00)                       # ornament set by a left click (0 = plain notes)
+    on(sel -> (orn_mode[] = UInt8(something(findfirst(==(sel), orn_opts), 1) - 1)), orn_menu.selection)
     rowgap!(pbox, 10)
 
     # ---------------------------------------------------------------- Grid
@@ -742,8 +839,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
 
     cellrects = [Rect2f(s - 1 + 0.06, 0.1, 0.88, 0.8) for s in 1:MAXSTEPS]
     rowcolors = [Observable(fill(C_OFF_A, MAXSTEPS)) for _ in 1:NTRACKS]
+    ornmarks = [Observable(fill("", MAXSTEPS)) for _ in 1:NTRACKS]   # ornament letter per cell
+    ornpos = [Point2f(s - 0.5, 0.5) for s in 1:MAXSTEPS]
     axes = Axis[]
-    mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]; namebtns = Button[]
+    mutebtns = Button[]; solobtns = Button[]; volsls = Slider[]; namebtns = Button[]; swapbtns = Button[]
     fx_track = Ref(1)                          # track whose effects are shown on the right
     for t in 1:NTRACKS
         r = t + 1
@@ -756,7 +855,11 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
         mb = Button(grid[r, 2], label = "M", width = 30)
         sb = Button(grid[r, 3], label = "S", width = 30)
-        vs = Slider(grid[r, 4], range = 0:0.01:1.5, startvalue = song.tracks[t].vol, width = 90)
+        vbox = grid[r, 4] = GridLayout()
+        push!(swapbtns, Button(vbox[1, 1], label = "L⇄R", width = 44, fontsize = 12))
+        vs = Slider(vbox[1, 2], range = VOL_DB, startvalue = vol_to_db(song.tracks[t].vol), width = 90)
+        Label(vbox[1, 3], lift(vol_label, vs.value), width = 54, halign = :right, fontsize = 12, color = C_TEXT2)
+        colgap!(vbox, 4)
         push!(mutebtns, mb); push!(solobtns, sb); push!(volsls, vs)
         ax = Axis(grid[r, 5]; height = 34, backgroundcolor = :transparent,
                   xrectzoom = false, yrectzoom = false, xzoomlock = true, yzoomlock = true,
@@ -765,6 +868,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             try deregister_interaction!(ax, k) catch end
         end
         poly!(ax, cellrects; color = rowcolors[t], strokewidth = 0)
+        text!(ax, ornpos; text = ornmarks[t], align = (:center, :center), fontsize = 15, font = :bold,
+              color = C_BG)
         push!(axes, ax)
         register_interaction!(ax, :cellclick) do ev::MouseEvent, _
             ev.type in (MouseEventTypes.leftclick, MouseEventTypes.rightclick) || return
@@ -772,8 +877,13 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             s = floor(Int, ev.data[1]) + 1
             1 <= s <= p.steps || return
             v = p.grid[t, s]
-            if ev.type == MouseEventTypes.leftclick
+            m = orn_mode[]
+            if ev.type == MouseEventTypes.leftclick && m > 0     # ornament: set, again = remove
+                nv = v == 0 ? 0x02 : v
+                p.orn[t, s] = ornament(p, t, s) == m ? 0x00 : m
+            elseif ev.type == MouseEventTypes.leftclick
                 nv = v == 0 ? 0x02 : 0x00
+                p.orn[t, s] = 0x00
             else
                 nv = v == 0 ? 0x01 : v == 3 ? 0x01 : v + 0x01
             end
@@ -784,7 +894,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
     end
     colgap!(grid, 8); rowgap!(grid, 4)
-    leg = Label(grid[NTRACKS+2, 5], L("Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören + Effekte"),
+    leg = Label(grid[NTRACKS+2, 5], L("Ghost (o)  ·  normal (x)  ·  Akzent (X)     2 Doppelschlag  ·  z Buzz  ·  f Flam  ·  r Drag     Klick auf den Spurnamen = Vorhören + Effekte"),
                 halign = :left, color = C_TEXT2, fontsize = 12, tellwidth = false)
 
     # track effects (right of the grid): EQ + chorus/flanger of the selected track
@@ -817,6 +927,25 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         fx_sliders[f] = sl; fx_vals[f] = val
     end
     fx_reset = Button(fxbox[13, 1:3], label = L("Effekte der Spur zurücksetzen"))
+    # ornament timing of the song (flam, drag, buzz in ms, volume of the grace notes)
+    Label(fxbox[14, 1:3], L("VERZIERUNGEN (Song)"), font = :bold, color = C_TEXT2, halign = :left,
+          padding = (0, 0, 0, 10))
+    orn_sliders = Dict{Symbol,Slider}()
+    ms(v) = "$(round(Int, v)) ms"
+    orn_rows = [(:flam_ms, "Flam", ms), (:drag_ms, "Drag", ms), (:buzz_ms, "Buzz", ms),
+                (:grace, L("Vorschläge"), v -> "$(round(Int, 100v)) %")]
+    for (k, (f, name, fmt)) in enumerate(orn_rows)
+        Label(fxbox[14+k, 1], name, color = C_TEXT2, halign = :left)
+        sl = Slider(fxbox[14+k, 2], range = getfield(ORN_TUNING_RANGES, f), startvalue = getfield(song.orn, f), width = 130)
+        Label(fxbox[14+k, 3], lift(fmt, sl.value), color = C_TEXT, halign = :left, width = 62, fontsize = 12)
+        on(v -> setfield!(eng.song.orn, f, Float64(v)), sl.value)
+        orn_sliders[f] = sl
+    end
+    orn_reset = Button(fxbox[19, 1:3], label = L("Verzierungen zurücksetzen"))
+    on(orn_reset.clicks) do _
+        def = OrnTuning()
+        for (f, sl) in orn_sliders; set_close_to!(sl, getfield(def, f)); end
+    end
     rowgap!(fxbox, 4); colgap!(fxbox, 6)
 
     # ---------------------------------------------------------------- File / export
@@ -886,6 +1015,24 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             status[] = L("WAV-Editor geöffnet.")
         end
     end
+    on(plybtn.clicks) do _
+        win = session.player_win[]
+        if win !== nothing && isopen(win)
+            status[] = L("Der Setup-Player ist schon offen.")
+        else
+            session.player_win[] = show_player(eng)
+            status[] = L("Setup-Player geöffnet.")
+        end
+    end
+    on(setbtn.clicks) do _
+        win = session.setup_win[]
+        if win !== nothing && isopen(win)
+            status[] = L("Der Setup-Editor ist schon offen.")
+        else
+            session.setup_win[] = show_setlist_editor_last()
+            status[] = L("Setup-Editor geöffnet: Songs zusammenstellen, speichern, dann im Player spielen.")
+        end
+    end
     on(metbtn.clicks) do _
         win = session.metro_win[]
         if win !== nothing && isopen(win)
@@ -916,6 +1063,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             cols[s] = c; changed = true
         end
         changed && notify(rowcolors[t])
+        marks = ornmarks[t][]
+        mchanged = false
+        for s in 1:MAXSTEPS
+            o = s <= p.steps ? ornament(p, t, s) : 0x00
+            mk = o == 0 ? "" : ORN_MARKS[o]
+            marks[s] == mk && continue
+            marks[s] = mk; mchanged = true
+        end
+        mchanged && notify(ornmarks[t])
     end
 
     # Grid geometry (step count, raster) of the last refresh: a pattern change in song mode
@@ -936,6 +1092,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             k = findfirst(==(p.steps), STEP_OPTS)
             k === nothing || steps_menu.i_selected[] == k || (steps_menu.i_selected[] = k)
         end
+        tstr = pattern_bpm_string(p)                     # own tempo of the pattern (only on a change)
+        if !ptempo_tb.focused[] && ptempo_tb.displayed_string[] != tstr
+            ptempo_tb.stored_string[] = tstr; ptempo_tb.displayed_string[] = tstr
+        end
         for t in 1:NTRACKS
             refresh_row!(t)
         end
@@ -946,6 +1106,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             tp = eng.song.tracks[t]
             mutebtns[t].buttoncolor[] = tp.mute ? C_MUTE : C_BTN
             solobtns[t].buttoncolor[] = tp.solo ? C_SOLO : C_BTN
+            swapbtns[t].buttoncolor[] = tp.swap ? C_ACTIVE : C_BTN
         end
     end
 
@@ -994,7 +1155,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         raster_menu.i_selected[] = something(findfirst(o -> o[2] == s.steps_per_beat, RASTER_OPTS), 1)
         fx_menu.i_selected[] = something(findfirst(==(s.fx), FX_NAMES), 1)
         set_close_to!(fx_sl, s.fxmix); set_close_to!(mst_sl, s.master)
-        for t in 1:NTRACKS; set_close_to!(volsls[t], s.tracks[t].vol); end
+        for t in 1:NTRACKS; set_close_to!(volsls[t], vol_to_db(s.tracks[t].vol)); end
+        for (f, sl) in orn_sliders; set_close_to!(sl, getfield(s.orn, f)); end
         chain_tb.stored_string[] = chain_string(s.chain); chain_tb.displayed_string[] = chain_string(s.chain)
         name_tb.stored_string[] = s.name; name_tb.displayed_string[] = s.name
         rep_tb.stored_string[] = string(s.repeats); rep_tb.displayed_string[] = string(s.repeats)
@@ -1075,6 +1237,9 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
                    L("GC-Pause: Speicherbereinigung beim Abspielen bis zu {1} min angehalten.", m)
     end
     on(bpm_sl.value) do v
+        v == eng.song.bpm || cur_pattern().bpm == 0 ||
+            (status[] = L("Song-Tempo {1} BPM. Pattern {2} hat ein eigenes Tempo ({3} BPM, Feld „Tempo“ in der Pattern-Zeile) und bleibt dabei.",
+                          round(Int, v), eng.edit_pat, round(Int, cur_pattern().bpm)))
         eng.song.bpm = v; refresh_export_info!()
         str = string(v)
         bpm_tb.stored_string[] == str || (bpm_tb.stored_string[] = str)
@@ -1160,7 +1325,17 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         on(solobtns[t].clicks) do _
             eng.song.tracks[t].solo = !eng.song.tracks[t].solo; refresh_tracks!()
         end
-        on(v -> (eng.song.tracks[t].vol = v), volsls[t].value)
+        on(swapbtns[t].clicks) do _
+            tp = eng.song.tracks[t]
+            tp.swap = !tp.swap; refresh_tracks!()
+            status[] = tp.swap ? L("{1}: links und rechts getauscht.", L(TRACKS[t][2])) :
+                                 L("{1}: Stereo-Position wie im Kit.", L(TRACKS[t][2]))
+            !eng.playing && put!(eng.pads, (t, 2))
+        end
+        on(volsls[t].value) do d                 # dB -> linear; unchanged position keeps the exact value
+            tp = eng.song.tracks[t]
+            vol_to_db(tp.vol) == d || (tp.vol = db_to_vol(d))
+        end
     end
     # Track effects
     for (f, sl) in fx_sliders
@@ -1232,7 +1407,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             q = make_fill(fill_src[], s.steps_per_beat, fill_style[])
             lock(eng.lock) do
                 cur.steps = q.steps
-                copyto!(cur.grid, q.grid)
+                copyto!(cur.grid, q.grid); copyto!(cur.orn, q.orn)
             end
             refresh_grid!()
         else
@@ -1263,7 +1438,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
     end
     on(clrbtn.clicks) do _
-        fill!(cur_pattern().grid, 0x00); refresh_grid!()
+        fill!(cur_pattern().grid, 0x00); fill!(cur_pattern().orn, 0x00); refresh_grid!()
     end
     on(steps_menu.selection) do sel
         sel === nothing && return
@@ -1272,6 +1447,29 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         p.steps == n && return
         p.steps = n
         refresh_grid!(); refresh_export_info!()
+    end
+    # The field belongs to the pattern shown when it was clicked: in song mode the grid may move on
+    # to the next pattern while typing, the value must not land there.
+    ptempo_target = Ref{Any}(nothing)
+    on(ptempo_tb.focused) do f
+        f && (ptempo_target[] = (eng.edit_pat, cur_pattern()))
+    end
+    on(ptempo_tb.stored_string) do str
+        v = parse_pattern_bpm(something(str, ""))
+        v === nothing && return
+        k, p = something(ptempo_target[], (eng.edit_pat, cur_pattern()))
+        ptempo_target[] = nothing
+        if p.bpm != v
+            p.bpm = v
+            refresh_export_info!()
+            status[] = v > 0 ? L("Pattern {1}: eigenes Tempo {2} BPM (Song: {3} BPM).", k, pattern_bpm_string(p), round(Int, eng.song.bpm)) :
+                               L("Pattern {1}: Song-Tempo.", k)
+        end
+        q = cur_pattern()                              # the grid may show another pattern by now
+        if q !== p
+            t = pattern_bpm_string(q)
+            ptempo_tb.stored_string[] = t; ptempo_tb.displayed_string[] = t
+        end
     end
     on(chain_tb.stored_string) do str
         str === nothing && return
@@ -1326,8 +1524,16 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     commit_chain!() = commit_field!(chain_tb)
     commit_repeats!() = commit_field!(rep_tb, str -> tryparse(Int, str) !== nothing)
     commit_bpm!() = commit_field!(bpm_tb, valid_bpm)
-    commit_fields!() = (commit_name!(); commit_chain!(); commit_repeats!(); commit_bpm!())
+    commit_ptempo!() = commit_field!(ptempo_tb, s -> parse_pattern_bpm(s) !== nothing)
+    commit_fields!() = (commit_name!(); commit_chain!(); commit_repeats!(); commit_bpm!(); commit_ptempo!())
     on(f -> f || commit_bpm!(), bpm_tb.focused)
+    on(ptempo_tb.focused) do f                                    # pattern tempo: also without Enter
+        f && return
+        commit_ptempo!()
+        ptempo_target[] = nothing
+        t = pattern_bpm_string(cur_pattern())                     # show the pattern on screen again
+        ptempo_tb.displayed_string[] == t || (ptempo_tb.stored_string[] = t; ptempo_tb.displayed_string[] = t)
+    end
     on(f -> f || commit_chain!(), chain_tb.focused)
     on(f -> f || commit_repeats!(), rep_tb.focused)
     # Edit mode ("Bearbeiten"): "Speichern" overwrites the file being edited without asking.
@@ -1513,7 +1719,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     # keyboard: space = play/stop (not while typing)
     on(events(fig).keyboardbutton) do ev
         ev.action == Keyboard.press || return
-        any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb, bpm_tb)) && return
+        any(tb -> tb.focused[], (chain_tb, name_tb, rep_tb, bpm_tb, ptempo_tb)) && return
         if ev.key == Keyboard.space
             toggle_play()
         elseif ev.key == Keyboard.v && (Keyboard.left_control in events(fig).keyboardstate ||

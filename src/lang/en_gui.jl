@@ -40,7 +40,17 @@ add_translations!(Dict{String,String}(
     "kein Swing" => "no swing",
     "Swing {1} % ({2})" => "swing {1} % ({2})",
     "auf {1}tel" => "on {1}ths",
-    "{1} BPM · {2} · Kette {3}" => "{1} BPM · {2} · chain {3}",
+    "{1} · {2} · Kette {3}" => "{1} · {2} · chain {3}",
+    "{1} BPM (Patterns mit eigenem Tempo)" => "{1} BPM (patterns with their own tempo)",
+    "Pattern {1}: eigenes Tempo {2} BPM (Song: {3} BPM)." => "Pattern {1}: own tempo {2} BPM (song: {3} BPM).",
+    "Pattern {1}: Song-Tempo." => "Pattern {1}: song tempo.",
+    "Song" => "Song",
+    "Tempo" => "Tempo",
+    "Song-Tempo {1} BPM. Pattern {2} hat ein eigenes Tempo ({3} BPM, Feld „Tempo“ in der Pattern-Zeile) und bleibt dabei." =>
+        "Song tempo {1} BPM. Pattern {2} has its own tempo ({3} BPM, field \"Tempo\" in the pattern row) and keeps it.",
+    "Audio-Thread läuft mit Echtzeit-Priorität {1}." => "Audio thread runs with realtime priority {1}.",
+    "Echtzeit-Priorität für den Audio-Thread nicht erlaubt – normale Priorität." =>
+        "Realtime priority for the audio thread not allowed – normal priority.",
 
     # patterns and chain
     "+ Kopie" => "+ Copy",
@@ -71,8 +81,21 @@ add_translations!(Dict{String,String}(
 
     # tracks and track effects
     "HH offen" => "HH Open",
-    "Ghost (o)  ·  normal (x)  ·  Akzent (X)     Klick auf den Spurnamen = Vorhören + Effekte" =>
-        "Ghost (o)  ·  normal (x)  ·  accent (X)     click a track name = preview + effects",
+    "Ghost (o)  ·  normal (x)  ·  Akzent (X)     2 Doppelschlag  ·  z Buzz  ·  f Flam  ·  r Drag     Klick auf den Spurnamen = Vorhören + Effekte" =>
+        "Ghost (o)  ·  normal (x)  ·  accent (X)     2 double stroke  ·  z buzz  ·  f flam  ·  r drag     click a track name = preview + effects",
+    "{1}: links und rechts getauscht." => "{1}: left and right swapped.",
+    "{1}: Stereo-Position wie im Kit." => "{1}: stereo position as in the kit.",
+    "VERZIERUNGEN (Song)" => "ORNAMENTS (song)",
+    "Vorschläge" => "Grace notes",
+    "Verzierungen zurücksetzen" => "Reset ornaments",
+    # ornaments
+    "   Verzierung" => "   Ornament",
+    "keine (Klick = Schlag)" => "none (click = note)",
+    "Doppelschlag" => "double stroke",
+    "Buzz-Roll" => "buzz roll",
+    "Flam" => "flam",
+    "Drag" => "drag",
+    "Unbekanntes Verzierungszeichen '{1}' (erlaubt: . 2 z f r)" => "Unknown ornament character '{1}' (allowed: . 2 z f r)",
     "SPUR-EFFEKTE" => "TRACK EFFECTS",
     "Tiefen" => "Low",
     "Mitten" => "Mid",
@@ -155,11 +178,11 @@ add_translations!(Dict{String,String}(
     "Raster mit {1} Schlägen pro Viertel wird nicht unterstützt" => "A grid with {1} slots per beat is not supported",
     "Takt mit {1} Schritten ist zu lang (höchstens {2})" => "Bar with {1} steps is too long (at most {2})",
     "Unbekannter Klang „{1}“ übersprungen" => "Unknown sound \"{1}\" skipped",
-    "Flams/Delays von „{1}“ nicht übernommen" => "Flams/delays of \"{1}\" not taken over",
+    "Delays von „{1}“ nicht übernommen" => "Delays of \"{1}\" not taken over",
     "Verschiebung von „{1}“ nicht übernommen" => "Shift of \"{1}\" not taken over",
     "{1} zusammengelegt auf {2}" => "{1} merged into {2}",
-    "{1} verschiedene Takte – im Programm sind nur 16 Patterns bearbeitbar" =>
-        "{1} different bars – only 16 patterns can be edited in the program",
+    "{1} verschiedene Takte – im Programm sind nur 24 Patterns bearbeitbar" =>
+        "{1} different bars – only 24 patterns can be edited in the program",
     "DrumMachine – Info" => "DrumMachine – Info",
     "Sprache wird umgestellt …" => "Switching language …",
     "Gain für Kit {1}: {2} dB" => "Gain for kit {1}: {2} dB",

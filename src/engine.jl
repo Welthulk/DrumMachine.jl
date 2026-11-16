@@ -86,6 +86,8 @@ mutable struct Engine
     task::Union{Task,Nothing}
     preview::Preview
     metro::Metronome
+    pending::Vector{Tuple{Float64,Int,Int,Float32}}   # ornament strokes: (sample time, track, level, gain)
+    player::Player                   # setup player (prepared songs), mixed in last
 end
 
 function Engine(song::Song, kit::Kit)
@@ -96,7 +98,8 @@ function Engine(song::Song, kit::Kit)
                  click_sound(true), click_sound(false),
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
-                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview(), Metronome())
+                 Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview(), Metronome(),
+                 sizehint!(Tuple{Float64,Int,Int,Float32}[], 64), Player())
     apply_fx!(eng)
     return eng
 end
@@ -114,7 +117,7 @@ end
 # ---------------------------------------------------------------------------
 
 function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rate::Float64,
-                      track::Int, choke::Int)
+                      track::Int, choke::Int; swap::Bool = false)
     if choke > 0                      # fade out the same choke group
         for v in eng.voices
             if v.active && v.choke == choke && v.fade == 0
@@ -131,8 +134,8 @@ function start_voice!(eng::Engine, smp::Sample, gain::Float32, pan::Float32, rat
     if v === nothing                  # steal the oldest voice
         v = eng.voices[argmax(w.pos for w in eng.voices)]
     end
-    p = clamp(pan, -1f0, 1f0)
-    v.buf = smp.l; v.bufr = smp.r; v.pos = 0.0; v.rate = rate
+    p = clamp(swap ? -pan : pan, -1f0, 1f0)
+    v.buf = swap ? smp.r : smp.l; v.bufr = swap ? smp.l : smp.r; v.pos = 0.0; v.rate = rate
     if isstereo(smp)          # stereo sample: balance, center = unchanged
         v.gl = gain * min(1f0, 1f0 - p)
         v.gr = gain * min(1f0, 1f0 + p)
@@ -158,8 +161,8 @@ function set_kit_gain!(name::AbstractString, g::Real)
     save_setting!("kit_gain", d)
 end
 
-"Plays track `t` at velocity level `level` (1–3). `seq=true` honors mute/solo."
-function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
+"Plays track `t` at velocity level `level` (1–3), scaled by `gain`. `seq=true` honors mute/solo."
+function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true, gain::Float32 = 1f0)
     tp = eng.song.tracks[t]
     if seq
         tp.mute && return
@@ -169,9 +172,9 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true)
     kit = eng.kit
     smp = pick_sample(eng.rng, kit.layers[t], level, eng.last[t])
     eng.last[t] = smp
-    gain = kit.level_gain[level] * kit.gain[t] * tp.vol * eng.kitgain
+    gain *= kit.level_gain[level] * kit.gain[t] * tp.vol * eng.kitgain
     rate = 2.0^(tp.pitch / 12)
-    start_voice!(eng, smp, gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t])
+    start_voice!(eng, smp, gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t]; swap = tp.swap)
     return
 end
 
@@ -270,7 +273,7 @@ Uniform meaning of `song.swing`: position of the off-beat note within its group
 """
 function step_samples(song::Song, s::Int, p::Union{Pattern,Nothing} = nothing)
     spb = song.steps_per_beat
-    base = 60.0 / song.bpm / spb * SR
+    base = 60.0 / pattern_bpm(song, p) / spb * SR             # own tempo of the pattern, else the song's
     sw = clamp(song.swing, 0.5, 0.8)
     if spb in (3, 6)
         g = 3base                                          # duration of a group of three
@@ -303,7 +306,10 @@ function do_step!(eng::Engine)
         if s < steps
             for t in 1:NTRACKS
                 lv = p.grid[t, s+1]
-                lv > 0 && trigger!(eng, t, Int(lv))
+                lv > 0 || continue
+                trigger!(eng, t, Int(lv))
+                o = p.orn[t, s+1]
+                o in (ORN_DOUBLE, ORN_BUZZ) && add_roll!(eng, t, Int(lv), o, step_samples(song, s, p))
             end
         end
         if song.click && s % song.steps_per_beat == 0
@@ -329,7 +335,54 @@ function do_step!(eng::Engine)
         end
         eng.pat = resolve_pat(eng, eng.seq[eng.seqpos])
     end
+    schedule_graces!(eng)
     return
+end
+
+# Ornaments: timing of the extra strokes
+# (distances and grace-note volume: `song.orn`, see OrnTuning)
+const FLAM_GAIN = 0.9f0                # grace notes relative to `song.orn.grace`
+const DRAG_GAIN = 1f0
+const BUZZ_COUNT = 4:16                # strokes per step incl. the main stroke
+const BUZZ_DECAY = 0.93                # gain factor from bounce to bounce
+
+"Seconds before the main stroke at which the grace notes of a flam or drag come (earliest first)."
+grace_gaps(o::OrnTuning, orn::UInt8) = orn == ORN_FLAM ? (o.flam_ms / 1000,) : (o.drag_ms / 500, o.drag_ms / 1000)
+
+"Extra strokes of a double stroke or buzz roll within the current step (duration `d` samples)."
+function add_roll!(eng::Engine, t::Int, lv::Int, o::UInt8, d::Float64)
+    t0 = eng.next_step_at              # start of the step that is being played
+    if o == ORN_DOUBLE                 # second stroke of the double on the half step
+        push!(eng.pending, (t0 + d / 2, t, lv, 0.92f0))
+    else                               # buzz: bounces getting softer
+        n = clamp(round(Int, d / (eng.song.orn.buzz_ms / 1000 * SR)), first(BUZZ_COUNT), last(BUZZ_COUNT))
+        for k in 1:n-1
+            push!(eng.pending, (t0 + k * d / n, t, max(1, lv - 1), Float32(BUZZ_DECAY^k)))
+        end
+    end
+end
+
+"""
+Grace notes (flam, drag) of the next step, placed just before it. They have to fit into the
+time until that step: in fast grids the gaps shrink evenly (as when played fast).
+"""
+function schedule_graces!(eng::Engine)
+    eng.pat > 0 || return              # count-in
+    p = eng.song.patterns[eng.pat]
+    s = eng.step + 1
+    s <= p.steps || return
+    T = eng.next_step_at
+    room = max(T - eng.samplepos, 0.0)   # samples until the next step
+    for t in 1:NTRACKS
+        o = ornament(p, t, s)
+        o in (ORN_FLAM, ORN_DRAG) || continue
+        gaps = grace_gaps(eng.song.orn, o)
+        f = min(1.0, 0.95room / (first(gaps) * SR))     # squeeze so that all grace notes fit
+        g0 = Float32(eng.song.orn.grace) * (o == ORN_FLAM ? FLAM_GAIN : DRAG_GAIN)
+        for g in gaps
+            push!(eng.pending, (T - f * g * SR, t, 1, g0))
+        end
+    end
 end
 
 "Starts playback of sequence `seq` (see field docs) right away."
@@ -339,9 +392,11 @@ function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
     eng.seqpos = 1
     eng.pat = resolve_pat(eng, seq[1])
     eng.step = 0
-    eng.next_step_at = eng.samplepos + 0.01 * SR
+    eng.next_step_at = eng.samplepos + 0.1 * SR     # lead-in: room for grace notes of the first step
     eng.finished = false
     eng.playing = true
+    empty!(eng.pending)
+    schedule_graces!(eng)
     return eng
 end
 
@@ -383,9 +438,18 @@ function render!(eng::Engine, out::Matrix{Float32})
     i = 1
     while i <= N
         if eng.playing
-            due = eng.next_step_at - eng.samplepos
+            tnext = eng.next_step_at; k = 0          # next event: step or ornament stroke
+            for (j, ev) in enumerate(eng.pending)
+                ev[1] < tnext && (tnext = ev[1]; k = j)
+            end
+            due = tnext - eng.samplepos
             if due <= 0
-                do_step!(eng)
+                if k > 0
+                    ev = eng.pending[k]; deleteat!(eng.pending, k)
+                    trigger!(eng, ev[2], ev[3]; gain = ev[4])
+                else
+                    do_step!(eng)
+                end
                 continue
             end
             n = min(N - i + 1, ceil(Int, due))
@@ -413,6 +477,7 @@ function render!(eng::Engine, out::Matrix{Float32})
     end
     eng.preview.on && mix_preview!(eng.preview, out)
     metro_active(eng.metro) && mix_metro!(eng.metro, out)
+    player_active(eng.player) && mix_player!(eng.player, out)
     return out
 end
 
@@ -499,6 +564,52 @@ function audio_latency()
     return v isa Real ? clamp(Float64(v), 0.02, 0.5) : 0.08
 end
 
+# Realtime priority for the audio thread (Linux): `start_drum.sh --prio` sets DRUMMACHINE_RT to
+# the priority the user may use (RLIMIT_RTPRIO); the audio task then runs with SCHED_FIFO.
+const SCHED_OTHER, SCHED_FIFO = Cint(0), Cint(1)
+
+"Requested realtime priority of the audio thread (environment DRUMMACHINE_RT), 0 = normal."
+rt_priority() = (p = tryparse(Int, get(ENV, "DRUMMACHINE_RT", "")); p === nothing ? 0 : clamp(p, 0, 99))
+
+"Scheduling of POSIX thread `thread`: `prio > 0` = SCHED_FIFO with that priority, 0 = normal. `true` if it worked."
+function set_thread_sched!(thread::Culong, prio::Integer)
+    Sys.islinux() || return false
+    param = Ref{Cint}(prio)                          # struct sched_param { int sched_priority; }
+    return ccall(:pthread_setschedparam, Cint, (Culong, Cint, Ref{Cint}), thread,
+                 prio > 0 ? SCHED_FIFO : SCHED_OTHER, param) == 0
+end
+current_thread() = ccall(:pthread_self, Culong, ())
+
+"""
+Output buffer of `stream` for writing to the sound card directly from the audio task.
+`write(stream, buf)` hands the block to a helper task of PortAudio.jl, which then calls the
+blocking `Pa_WriteStream` on whatever thread it runs on; writing directly makes the audio thread
+itself wait for the sound card, so its realtime priority applies where it matters.
+`nothing` if this PortAudio.jl version is laid out differently (then `write` is used).
+"""
+function direct_sink(stream, frames::Int)
+    try
+        b = stream.sink_messenger.buffer
+        return b.data isa Matrix{Float32} && size(b.data) == (2, frames) ? b : nothing
+    catch
+        return nothing
+    end
+end
+
+"Writes `buf` (frames × 2) to the sound card: directly into `sink` if available, else via `write`."
+function write_block!(stream, sink, buf::Matrix{Float32})
+    if sink === nothing
+        write(stream, buf)
+    else
+        d = sink.data
+        @inbounds for k in axes(buf, 1), c in 1:2
+            d[c, k] = buf[k, c]
+        end
+        PortAudio.write_buffer(sink, size(buf, 1))
+    end
+    return nothing
+end
+
 """
     start_audio!(eng; device = nothing, latency = audio_latency())
 
@@ -515,6 +626,9 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
     warm = Engine(copy(eng.song), eng.kit)
     start_seq!(warm, [1], 1)
     metro_start!(warm.metro)
+    wp = warm.player                         # player path with pause, beep, EQ and reverb
+    wp.items = [zeros(Float32, 4BLOCK, 2)]; wp.cues = [BLOCK]; wp.delays = [0.01]; wp.beeps = [true]; wp.hall = 2
+    player_eq!(wp, 1, 0, 800, 0); player_start!(wp, 1; pause = true)
     wbuf = zeros(Float32, BLOCK, 2)
     for _ in 1:200
         render!(warm, wbuf)
@@ -524,18 +638,31 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
                                   PortAudio.PortAudioStream(device, 0, 2; kw...)
     eng.running = true
     eng.metro.latency = latency
+    sink = direct_sink(stream, BLOCK)
     eng.task = Threads.@spawn begin
         buf = zeros(Float32, BLOCK, 2)
+        rt = rt_priority(); rt_thread = Culong(0)
         try
             while eng.running
+                if rt > 0 && (me = current_thread()) != rt_thread   # the task may move to another thread
+                    if set_thread_sched!(me, rt)
+                        rt_thread == 0 || set_thread_sched!(rt_thread, 0)   # the old thread back to normal
+                        rt_thread == 0 && @info L("Audio-Thread läuft mit Echtzeit-Priorität {1}.", rt)
+                        rt_thread = me
+                    else
+                        @warn L("Echtzeit-Priorität für den Audio-Thread nicht erlaubt – normale Priorität.")
+                        rt = 0
+                    end
+                end
                 lock(eng.lock) do
                     render!(eng, buf)
                 end
-                write(stream, buf)
+                write_block!(stream, sink, buf)
             end
         catch e
             @error "Audio-Thread beendet" exception = (e, catch_backtrace())
         finally
+            rt_thread == 0 || set_thread_sched!(rt_thread, 0)
             close(stream)
         end
     end
@@ -571,6 +698,7 @@ function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin:
     seq = vcat(fill(0, countin), repeat(s.chain, max(repeats, 1)))
     start_seq!(eng, seq, 0)
     eng.next_step_at = 0.0
+    empty!(eng.pending); schedule_graces!(eng)
     blocks = Matrix{Float32}[]
     buf = zeros(Float32, BLOCK, 2)
     while !eng.finished

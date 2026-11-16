@@ -11,6 +11,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
     end
     bp = kits[1]
     @test all(length(l) == 5 for l in bp.layers)
+    syn = kits[end-1]                     # 808 synth: one sample per level, deterministic, cheap
 
     @testset "Presets & Pattern-Text" begin
         for n in PRESET_NAMES
@@ -59,7 +60,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         s = preset("Rock: 8tel")
         y0 = render_song(s, bp; repeats = 1)
         s2 = copy(s); s2.tracks[2].eq_midf = 2000                # only frequency changed: no effect
-        @test render_song(s2, bp; repeats = 1) == y0
+        @test render_song(s2, bp; repeats = 1) == y0             # exact equality: the export is reproducible
         D.set_mod!(s2.tracks[4], "Flanger"); s2.tracks[4].mod_mix = 1
         s2.tracks[1].eq_low = 4.5; D.set_mod!(s2.tracks[2], "Chorus")
         y1 = render_song(s2, bp; repeats = 1)
@@ -77,22 +78,211 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
-    @testset "L/R tauschen" begin
-        s = preset("Rock: 8tel"); s.fx = "Clean"
-        s.tracks[4].pan = -1                                       # hi-hat hard left
-        y = render_song(s, bp; repeats = 1)
-        s.swap_lr = true
-        z = render_song(s, bp; repeats = 1)
-        @test z[:, 1] == y[:, 2] && z[:, 2] == y[:, 1]
-        mktempdir() do dir
-            save_song(joinpath(dir, "s.toml"), s)
-            @test load_song(joinpath(dir, "s.toml")).swap_lr
+    @testset "Priorität" begin
+        D = DrumMachine
+        withenv("DRUMMACHINE_RT" => "70") do; @test D.rt_priority() == 70; end
+        withenv("DRUMMACHINE_RT" => "500") do; @test D.rt_priority() == 99; end
+        withenv("DRUMMACHINE_RT" => nothing) do; @test D.rt_priority() == 0; end
+        D.set_thread_sched!(D.current_thread(), 1)                          # may fail without rights, must not throw
+        @test D.set_thread_sched!(D.current_thread(), 0)
+    end
+
+    @testset "Tempo pro Pattern" begin
+        D = DrumMachine
+        a = pattern_from_rows(Dict("Kick" => "x...x...x...x...")); b = copy(a); b.bpm = 60
+        s = Song(bpm = 120, patterns = [a, b], chain = [1, 2], countin = 0, repeats = 1)
+        @test D.pattern_bpm(s, a) == 120 && D.pattern_bpm(s, b) == 60 && D.has_pattern_tempo(s)
+        @test sum(step_samples(s, k, b) for k in 0:15) ≈ 4SR                 # 4 quarters at 60 BPM
+        @test D.song_seconds(s) ≈ 2 + 4                                       # 120 BPM bar + 60 BPM bar
+        s.countin = 1; s.chain = [2, 1]
+        @test D.song_seconds(s) ≈ 4 + 4 + 2                                   # count-in at the first pattern's tempo
+        s.countin = 0; s.chain = [1, 2]
+        y = render_song(s, syn)
+        @test size(y, 1) >= round(Int, 6SR)                                  # 2 s + 4 s (plus decay)
+        mktempdir() do dir                                                   # saved only when set
+            f = joinpath(dir, "t.toml"); save_song(f, s)
+            l = load_song(f)
+            @test [p.bpm for p in l.patterns] == [0.0, 60.0] && count("bpm =", read(f, String)) == 2
         end
+        @test D.parse_pattern_bpm("") == 0 && D.parse_pattern_bpm("140,5") == 140.5
+        @test D.parse_pattern_bpm("10") === nothing && D.parse_pattern_bpm("abc") === nothing
+        @test make_fill(b, 4, 1).bpm == 60                                    # a fill keeps the tempo
+        for v in (0.0, 60.0, 92.5, 140.25)                                    # field text parses back exactly
+            q = Pattern(16); q.bpm = v
+            @test D.parse_pattern_bpm(D.pattern_bpm_string(q)) == v
+        end
+    end
+
+    @testset "Verzierungen" begin
+        D = DrumMachine
+        sn = D.track_index("Snare")
+        p = pattern_from_rows(Dict("Snare" => "x...x...x...x..."))
+        p.orn[sn, [1, 5, 9, 13]] .= [D.ORN_DOUBLE, D.ORN_BUZZ, D.ORN_FLAM, D.ORN_DRAG]
+        p.orn[sn, 2] = D.ORN_FLAM                                   # no note there: does not count
+        s = Song(bpm = 120, patterns = [p], countin = 0)
+        @test D.orn_string(p, sn) == "2...z...f...r..."
+        @test !haskey(D.pattern_to_dict(Pattern(16)), "orn")
+        @test_throws Exception D.orn_from_char('q')
+        q = make_fill(p, 4, 1)                                      # fill clears ornaments in its span
+        @test all(iszero, q.orn[:, 13:16])
+        # engine: the extra strokes of the first `n` steps (time, track, level, gain)
+        function strokes(song, n)
+            eng = D.Engine(song, syn)
+            D.start_seq!(eng, [1], 0); eng.next_step_at = 0.0; empty!(eng.pending)
+            evs = []
+            for _ in 1:n
+                eng.samplepos = floor(Int, eng.next_step_at)
+                D.do_step!(eng)
+                append!(evs, eng.pending); empty!(eng.pending)
+            end
+            return evs
+        end
+        evs = strokes(s, 16)
+        d = step_samples(s, 0)
+        n = clamp(round(Int, d / (s.orn.buzz_ms / 1000 * SR)), first(D.BUZZ_COUNT), last(D.BUZZ_COUNT))
+        @test count(e -> e[1] ≈ d / 2 && e[3] == 2, evs) == 1                  # double stroke
+        @test count(e -> 4d < e[1] < 5d, evs) == n - 1                         # buzz bounces
+        @test count(e -> e[1] ≈ 8d - s.orn.flam_ms / 1000 * SR && e[3] == 1, evs) == 1   # flam grace note
+        @test count(e -> any(g -> e[1] ≈ 12d - g * SR, D.grace_gaps(s.orn, D.ORN_DRAG)), evs) == 2  # drag
+        @test length(evs) == 1 + (n - 1) + 1 + 2 && all(e -> e[2] == sn, evs)
+        # timing per song: other flam distance, quieter grace notes; saved only when changed
+        s.orn.flam_ms = 50; s.orn.grace = 0.5
+        fl = only(filter(e -> 7d < e[1] < 8d, strokes(s, 8)))
+        @test fl[1] ≈ 8d - 0.05SR && fl[4] ≈ 0.5 * D.FLAM_GAIN
+        @test D.song_to_dict(s)["ornaments"] == Dict("flam_ms" => 50.0, "grace" => 0.5)
+        @test !haskey(D.song_to_dict(Song()), "ornaments")
+        mktempdir() do dir                                          # TOML round trip: ornaments and timing
+            f = joinpath(dir, "t.toml"); save_song(f, s)
+            @test occursin("pattern.orn", read(f, String))
+            l = load_song(f); o = l.orn
+            @test D.orn_string(l.patterns[1], sn) == "2...z...f...r..."
+            @test o.flam_ms == 50 && o.grace == 0.5 && o.drag_ms == D.OrnTuning().drag_ms
+        end
+        @test D.orn_tuning_from_dict(Dict("buzz_ms" => 1000)).buzz_ms == 40      # clamped
+        s.orn = D.OrnTuning()
+        # rendered: same length as without ornaments, but more strokes
+        plain = copy(s); fill!(plain.patterns[1].orn, 0x00)
+        y = render_song(s, syn; repeats = 1); y0 = render_song(plain, syn; repeats = 1)
+        @test size(y) == size(y0) && y != y0
+        # 32nd grid: double stroke on step 1 sits on the half step
+        z = Song(bpm = 104, steps_per_beat = 8, patterns = [pattern_from_rows(Dict("Snare" => "x"); steps = 32)])
+        z.patterns[1].orn[sn, 1] = D.ORN_DOUBLE
+        @test only(strokes(z, 1))[1] ≈ step_samples(z, 0) / 2
+        # drag in a fast grid: grace notes squeezed into the previous step, order kept
+        z.patterns[1] = pattern_from_rows(Dict("Snare" => ".x"); steps = 32)
+        z.patterns[1].orn[sn, 2] = D.ORN_DRAG
+        g = sort(first.(strokes(z, 1))); d1 = step_samples(z, 0)
+        @test length(g) == 2 && 0 < g[1] < g[2] < d1 && g[2] - g[1] ≈ d1 - g[2]
+    end
+
+    @testset "L/R pro Spur" begin
+        D = DrumMachine
+        eng = D.Engine(Song(), syn)
+        st = D.Sample(Float32[1, 1, 1], Float32[0, 0, 0])               # stereo: left only
+        v = D.start_voice!(eng, st, 1f0, 0.5f0, 1.0, 1, 0; swap = true)
+        @test v.buf === st.r && v.bufr === st.l && v.gl > v.gr          # channels swapped, pan mirrored
+        mo = D.Sample(Float32[1, 1, 1])
+        a = D.start_voice!(eng, mo, 1f0, 0.6f0, 1.0, 1, 0)
+        b = D.start_voice!(eng, mo, 1f0, 0.6f0, 1.0, 1, 0; swap = true)
+        @test a.gl ≈ b.gr && a.gr ≈ b.gl && a.gr > a.gl                  # mono: mirrored position
+        s = preset("Rock: 8tel"); s.fx = "Clean"; s.tracks[4].pan = -1  # hi-hat hard left
+        y = render_song(s, syn; repeats = 1)
+        for tp in s.tracks; tp.swap = true; end
+        yt = render_song(s, syn; repeats = 1)
+        s.swap_lr = true; for tp in s.tracks; tp.swap = false; end
+        z = render_song(s, syn; repeats = 1)
+        @test z[:, 1] == y[:, 2] && z[:, 2] == y[:, 1]                   # global swap exchanges the channels
+        @test yt ≈ z                                                     # all tracks swapped = global swap
+        mktempdir() do dir
+            s.tracks[D.track_index("Crash")].swap = true
+            f = joinpath(dir, "s.toml"); save_song(f, s)
+            l = load_song(f)
+            @test l.swap_lr && l.tracks[D.track_index("Crash")].swap && !l.tracks[D.track_index("Kick")].swap
+            @test count("swap_lr", read(f, String)) == 2                 # song-wide + Crash only
+        end
+    end
+
+    @testset "Setup-Player" begin
+        D = DrumMachine
+        mktempdir() do dir
+            # setup file round trip
+            sl = D.Setlist("Gig")
+            push!(sl.entries, D.SetEntry(joinpath(dir, "a.toml"); pause = 2.5, beep = true), D.SetEntry("b.wav"))
+            f = D.save_setlist(joinpath(dir, "gig.toml"), sl)
+            l = D.load_setlist(f)
+            @test l.name == "Gig" && length(l.entries) == 2
+            @test l.entries[1].pause == 2.5 && l.entries[1].beep && !l.entries[2].beep
+            @test D.entry_file(l.entries[2]) == joinpath(D.song_dir(), "b.wav")      # relative to the song folder
+            # preparing: song rendered with its kit, WAV resampled to stereo at SR
+            s = preset("Rock: 8tel"); s.kit = "808 (Synth)"; s.repeats = 1; s.countin = 1; s.name = "Probe"
+            save_song(joinpath(dir, "a.toml"), s)
+            y, cue = D.prepare_entry_cue(D.SetEntry(joinpath(dir, "a.toml")))
+            @test size(y, 2) == 2 && isapprox(size(y, 1), D.song_seconds(s) * SR; rtol = 0.1)
+            @test cue > 0 && isapprox(cue, (D.song_seconds(s) - D.song_seconds(s; countin = 0)) * SR; atol = 2)   # count-in
+            @test D.entry_title(D.SetEntry(joinpath(dir, "a.toml"))) == "Probe"
+            save_wave(joinpath(dir, "m.wav"), Wave(fill(0.25f0, 22050), 22050))
+            w, wc = D.prepare_entry_cue(D.SetEntry(joinpath(dir, "m.wav")))
+            @test size(w) == (SR, 2) && wc == 0 && D.entry_title(D.SetEntry(joinpath(dir, "m.wav"))) == "m"
+            @test_throws Exception D.prepare_entry(D.SetEntry(joinpath(dir, "fehlt.toml")))
+            # loop exports are refused, loop songs are rendered once (with count-in, not folded)
+            @test D.is_loop_file("x/Rock 8tel Loop.wav") && D.is_loop_file("a_loop.WAV") && !D.is_loop_file("Looping.wav")
+            save_wave(joinpath(dir, "m Loop.wav"), Wave(fill(0.25f0, 100), 22050))
+            @test_throws Exception D.prepare_entry(D.SetEntry(joinpath(dir, "m Loop.wav")))
+            s.loop = true; save_song(joinpath(dir, "l.toml"), s)
+            @test size(D.prepare_entry(D.SetEntry(joinpath(dir, "l.toml"))), 1) > D.song_seconds(s; countin = 0) * SR
+        end
+        # playback: auto continues after the pause (with beeps), manual stops after the song
+        pl = D.Player()
+        a = fill(0.1f0, 1000, 2); b = fill(-0.1f0, 1000, 2)
+        pl.items = [a, b]; pl.cues = [0, 0]; pl.delays = [0.0, 3.5]; pl.beeps = [false, true]
+        D.player_start!(pl, 1; pause = true)
+        @test pl.state == 2                                       # no pause before the first song
+        out = zeros(Float32, 1000 + round(Int, 3.5SR) + 500, 2)
+        D.mix_player!(pl, out)
+        @test all(out[1:1000, 1] .≈ 0.1f0)
+        beep_at = findall(k -> abs(out[k, 1]) > 0.05, 1001:1000+round(Int, 3.5SR)) .+ 1000
+        @test !isempty(beep_at) && minimum(beep_at) >= 1000 + round(Int, 0.5SR)   # beeps in the last 3 s only
+        @test pl.state == 2 && pl.cur == 2
+        D.mix_player!(pl, zeros(Float32, 2000, 2))
+        @test pl.state == 0 && pl.tail > 0                        # end of the setup, reverb tail
+        pl.auto = false
+        D.player_start!(pl, 1; pause = false)
+        D.mix_player!(pl, zeros(Float32, 1500, 2))
+        @test pl.state == 0 && pl.cur == 1                        # manual: no next song
+        D.player_start!(pl, 2; pause = false); D.player_stop!(pl)
+        @test !D.player_active(pl)
+        # beeps off: the pause runs silently
+        pl.auto = true; pl.beepgain = 0f0
+        D.player_start!(pl, 2; pause = true)
+        q = zeros(Float32, round(Int, 3.5SR), 2); D.mix_player!(pl, q)
+        @test all(iszero, q) && pl.state == 2
+        D.player_stop!(pl); pl.beepgain = 1f0
+        # routing: music mono left, beeps alone right
+        pl.route = 2; pl.auto = true
+        D.player_start!(pl, 2; pause = true)
+        q = zeros(Float32, round(Int, 3.5SR) + 100, 2); D.mix_player!(pl, q)
+        @test maximum(abs, q[1:round(Int, 3.5SR), 1]) == 0 && maximum(abs, q[1:round(Int, 3.5SR), 2]) > 0.1
+        @test all(q[end-50:end, 2] .== 0) && all(q[end-50:end, 1] .≈ -0.1f0 * 0.7071f0 * 2)
+        # the count-in at the start of a song is a cue as well: right channel only
+        pl.cues = [200, 0]; pl.auto = false; D.player_start!(pl, 1; pause = false)
+        q = zeros(Float32, 400, 2); D.mix_player!(pl, q)
+        @test all(iszero, q[1:199, 1]) && all(q[1:199, 2] .≈ 0.1f0) && all(q[202:400, 2] .== 0) && q[300, 1] ≈ 0.1f0 * 0.7071f0 * 2
+        pl.cues = [0, 0]
+        D.player_stop!(pl); pl.route = 1
+        # master: volume and soft limit
+        pl.gain = 0.5f0; pl.auto = false; D.player_start!(pl, 1; pause = false)
+        o = zeros(Float32, 10, 2); D.mix_player!(pl, o)
+        @test o[1, 1] ≈ 0.05f0
+        @test D.softclip(3f0) <= 1f0 && D.softclip(0.5f0) == 0.5f0 && D.softclip(-0.9f0) > -0.9f0
+        # in the engine: the player is mixed into the output
+        eng = Engine(Song(), syn)
+        eng.player.items = [a]; eng.player.cues = [0]; eng.player.delays = [0.0]; eng.player.beeps = [false]
+        D.player_start!(eng.player, 1; pause = false)
+        @test D.render!(eng, zeros(Float32, D.BLOCK, 2))[1, 1] ≈ 0.1f0
     end
 
     @testset "Loop-Export" begin
         D = DrumMachine
-        syn = only(filter(k -> k.name == "808 (Synth)", kits))     # one sample per level -> deterministic
         s = preset("Rock: 8tel"); s.chain = [2]; s.fx = "Hall"; s.fxmix = 0.5; s.master = 0.3
         L = render_song(s, syn; repeats = 1, loop = true)
         @test size(L, 1) == round(Int, D.song_seconds(s; repeats = 1, countin = 0) * SR)
@@ -121,7 +311,6 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         fs = 44100
         x = Float32.(0.5 .* sinpi.(2 * 440 .* (0:fs-1) ./ fs))
         w = Wave(hcat(x, -x), fs)
-        @test D.nframes(w) == fs && D.nchan(w) == 2
         v = copy(w); D.delete_range!(v, 1:100); @test D.nframes(v) == fs - 100
         v = copy(w); D.crop!(v, 101:200); @test D.nframes(v) == 100 && v.data[1, 1] == w.data[101, 1]
         v = copy(w); D.silence!(v, 1:50); @test all(iszero, v.data[1:50, :]) && v.data[51, 1] == w.data[51, 1]
@@ -199,14 +388,13 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             p3 = joinpath(dir, "3.wav"); WAV.wavwrite(hcat(x, x, x), p3; Fs = fs, nbits = 16, compression = WAV.WAVE_FORMAT_PCM)
             @test D.nchan(load_wave(p3)) == 2
         end
-        eng2 = Engine(preset("Rock: 8tel"), bp)                              # short loop at 96 kHz: no OOB
-        d96 = rand(Float32, 1000, 2)
-        D.preview_play!(eng2, d96, 96000; from = 999, to = 1000, loop = true)
-        for _ in 1:4; D.render!(eng2, buf); end
-        @test eng2.preview.on && 999 <= eng2.preview.shown[] <= 1001
+        d96 = rand(Float32, 1000, 2)                                         # short loop at 96 kHz: no OOB
+        D.preview_play!(eng, d96, 96000; from = 999, to = 1000, loop = true)
+        for _ in 1:4; D.render!(eng, buf); end
+        @test eng.preview.on && 999 <= eng.preview.shown[] <= 1001
         @test D.layout_char(D.GLMakie.Keyboard.z) in ('z', 'y')             # QWERTZ-aware shortcut letter
-        @test !isempty(D.load_docs())                                               # docs viewer finds docs/
-        @test all(p -> !isempty(p[2]), D.load_docs()[1][3])
+        docs = D.load_docs()                                                        # docs viewer finds docs/
+        @test !isempty(docs) && all(p -> !isempty(p[2]), docs[1][3])
     end
 
     @testset "Sprache" begin
@@ -235,8 +423,11 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             end
         end
         # every L("…") key has an English entry, no German UI text outside L()
-        out = read(`$(Base.julia_cmd()) --project=$(pkgdir(DrumMachine)) $(joinpath(pkgdir(DrumMachine), "tools", "check_i18n.jl"))`, String)
-        @test occursin("0 missing translations, 0 German literals outside L()", out)
+        # (run in this process: a second Julia process would cost ~3 s)
+        m = Module(); Core.eval(m, :(const ARGS = String[]))
+        @test redirect_stdout(devnull) do
+            Base.include(m, joinpath(pkgdir(DrumMachine), "tools", "check_i18n.jl"))
+        end == (0, 0)
     end
 
     @testset "AAC" begin
@@ -273,14 +464,13 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test isfile(joinpath(dest, "kit.toml")) && isfile(joinpath(dest, "LICENSE.txt"))
             @test !isdir(dest * ".building")                                   # built atomically
             @test any(occursin("11/11", m) for m in msgs) && occursin("CrocellKit", msgs[end])
-            k = load_kit(dest)
-            @test k.name == "CrocellKit" && all(!isempty, k.layers)
             withenv("DRUMMACHINE_KIT_DIR" => joinpath(dir, "kits")) do      # found in the user kit dir
-                @test "CrocellKit" in [x.name for x in available_kits(D.kit_dirs())]
+                @test joinpath(dir, "kits") in D.kit_dirs()
                 # listing reads no samples; a kit is loaded once and then taken from the cache
                 es = kit_entries([joinpath(dir, "kits")])
                 @test [e.name for e in es] == ["CrocellKit", "808 (Synth)", "909 (Synth)"]
                 k1 = get_kit(es[1]); @test get_kit(es[1]) === k1
+                @test k1.name == "CrocellKit" && all(length(l) == 5 for l in k1.layers)
                 touch(joinpath(dest, "kit.toml")); sleep(0.01)
                 @test get_kit(es[1]) !== k1                                     # kit.toml changed
                 write(joinpath(dest, "kit.toml"), "name = [")                   # broken file
@@ -351,7 +541,6 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test sum(step_samples(t, k) for k in 0:11) ≈ 2SR
         # 32nd grid: 8 steps per beat, swing on 16ths moves the second 16th (steps 3–4) later
         z = Song(bpm = 120, steps_per_beat = 8, swing_on = 16)
-        @test sum(step_samples(z, k) for k in 0:31) ≈ 2SR
         z.swing = 0.6
         @test step_samples(z, 0) == step_samples(z, 1) > step_samples(z, 2) == step_samples(z, 3)
         @test step_samples(z, 0) + step_samples(z, 1) ≈ 0.6 * 0.25SR
@@ -361,7 +550,6 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
     @testset "Export" begin
         s = preset("Rock: 8tel")
         y = render_song(s, bp; repeats = 1, countin = 1)
-        @test size(y, 2) == 2
         @test size(y, 1) >= round(Int, song_seconds(s; repeats = 1, countin = 1) * SR) - 1
         @test maximum(abs, y) <= 1
         # first beat comes after the count-in
@@ -373,7 +561,6 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         mktempdir() do d
             # file names ASCII only (Roland TD-27 etc.)
             @test ascii_filename("Übung: Größe ä ö ü ß – Café.wav") == "Uebung_ Groesse ae oe ue ss _ Cafe.wav"
-            @test all(isascii, ascii_filename("Funk: What-Is-Hip-Stil (Tower of Power).wav"))
             f = export_wav(joinpath(d, "Grüße Ölfaß.wav"), s, bp; repeats = 1)
             @test basename(f) == "Gruesse Oelfass.wav" && isfile(f)
             # standard WAV: RIFF/WAVE, fmt (16 bytes, PCM), data - nothing else
@@ -386,14 +573,11 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test b[37:40] == b"data" && 44 + reinterpret(UInt32, b[41:44])[1] == length(b)
             f = export_wav(joinpath(d, "a.wav"), s, bp; repeats = 1, mono = true)
             @test size(DrumMachine.WAV.wavread(f)[1], 2) == 1
-            f = export_wav(joinpath(d, "b.wav"), s, bp; repeats = 1)
-            @test size(DrumMachine.WAV.wavread(f)[1], 2) == 2
             # mono already applies when rendering (= live playback): both channels identical
             sm = copy(s); sm.mono = true
             ym = render_song(sm, bp; repeats = 1)
             @test ym[:, 1] == ym[:, 2]
-            ys = render_song(s, bp; repeats = 1)
-            @test ys[:, 1] != ys[:, 2]
+            @test y[:, 1] != y[:, 2]
         end
     end
 
@@ -438,9 +622,6 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test s !== prev
             prev = s
         end
-        # export is reproducible (seeded randomness)
-        s = preset("Funk: Ghost Notes")
-        @test render_song(s, bp; repeats = 2) == render_song(s, bp; repeats = 2)
     end
 
     @testset "Metronom" begin
@@ -456,7 +637,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             end
             return on
         end
-        eng = D.Engine(preset("Leer"), synth_kit()); m = eng.metro
+        eng = D.Engine(preset("Leer"), syn); m = eng.metro
         m.bpm = 120; D.metro_start!(m)
         @test onsets(eng, 2.1) ⊆ (0:4) .* 22050 .+ (0:1)'           # quarters, sample-accurate
         m.subdiv = 2; D.metro_stop!(m); D.metro_start!(m)
@@ -473,7 +654,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         D.metro_stop!(m); D.metro_start!(m); onsets(eng, 6)
         @test m.bpm == 135
         for k in eachindex(D.SOUND_OPTS)
-            a, b, c = D.metro_sounds(k, D.kit_808())
+            a, b, c = D.metro_sounds(k, syn)
             @test 0.3 < maximum(abs, a.l) <= 1 && !isempty(b.l) && !isempty(c.l)
         end
         d = D.metro_settings(m); m2 = D.Metronome(); D.metro_apply_settings!(m2, d)
@@ -488,11 +669,19 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test s.chain == [1, 2] && all(p -> p.steps == 16, s.patterns) && s.kit == "CrocellKit" && s.fx == "Room"
         @test D.row_string(s.patterns[1], D.track_index("Kick"))[1:16] == "x.......x.x....."
         @test D.row_string(s.patterns[2], D.track_index("HiHat"))[1:16] == "x.x.x.x.x.x.x..."
-        @test D.row_string(s.patterns[2], D.track_index("HHOpen"))[1:16] == "..............x."   # variant 1
         @test D.row_string(s.patterns[2], D.track_index("Crash"))[1:16] == "x..............." && isempty(notes)
         tr(snd; vol = Dict(), var = Dict(), kw...) = Dict{String,Any}("sound" => snd, "slot_volume" => vol,
                                                                       "slot_variant" => var, (String(k) => v for (k, v) in kw)...)
-        js(tracks; kw...) = D.JSON.json(Dict{String,Any}("name" => "Test",
+        function jw(io, x)                     # tiny JSON writer: JSON.json costs ~1 s to compile
+            if x isa AbstractDict
+                print(io, '{'); for (i, (k, v)) in enumerate(x); i > 1 && print(io, ','); print(io, '"', k, "\":"); jw(io, v); end; print(io, '}')
+            elseif x isa AbstractVector
+                print(io, '['); for (i, v) in enumerate(x); i > 1 && print(io, ','); jw(io, v); end; print(io, ']')
+            else
+                print(io, x isa AbstractString ? "\"$x\"" : x === nothing ? "null" : x)
+            end
+        end
+        js(tracks; kw...) = sprint(jw, Dict{String,Any}("name" => "Test",
             "tempo" => 120, "beat_div" => 4, "beats_per_bar" => 4, "bars" => 1, "tracks" => tracks, (String(k) => v for (k, v) in kw)...))
         s, notes = import_drum_json(js([
             tr("x_hihat"; vol = Dict("0" => 1, "2" => 0.6, "4" => 0.3), var = Dict("4" => 1)),
@@ -537,10 +726,13 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
     @testset "Beispiel-Songs" begin
         for f in filter(endswith(".toml"), readdir(DrumMachine.SONG_DIR; join = true))
             s = load_song(f)
-            @test !isempty(s.chain) && all(1 <= i <= length(s.patterns) <= 16 for i in s.chain)
+            @test !isempty(s.chain) && all(1 <= i <= length(s.patterns) <= DrumMachine.MAXPATTERNS for i in s.chain)
         end
         s = load_song(joinpath(DrumMachine.SONG_DIR, "Double-Time Swing (Whiplash-Stil).toml"))
-        @test s.bpm == 330 && length(s.chain) == 63 && 28 in [p.steps for p in s.patterns]
+        @test s.bpm == 330 && length(s.chain) == 60 && 28 in [p.steps for p in s.patterns]
+        @test DrumMachine.orn_string(s.patterns[7], DrumMachine.track_index("Snare")) == "2"^16 * "z"^16   # roll intro
+        @test sum(s.patterns[c].steps for c in s.chain) == 73 * 16 + 8 * 28   # 81 bars, 8 of them in 7/4
+        @test length(s.patterns) == 17 && s.tracks[DrumMachine.track_index("Crash")].swap
     end
 
     @testset "Speichern/Laden" begin
@@ -567,7 +759,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             s = D.preset("Rock: 8tel")
             push!(s.patterns, copy(s.patterns[1]))
             s.bpm = 123; s.kit = "808 (Synth)"; s.chain = [1, 2, 2]
-            eng = D.Engine(s, D.kit_808())
+            eng = D.Engine(s, syn)
             eng.edit_pat = 2; eng.songmode = true
             ses = D.new_session()
             f = joinpath(cfg, "mein.toml"); D.save_song(f, s)

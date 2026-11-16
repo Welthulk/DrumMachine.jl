@@ -1,11 +1,13 @@
-# Double-time swing in the style of the film "Whiplash", 63 bars, kit CrocellKit
+# Double-time swing in the style of the film "Whiplash", 81 bars, kit CrocellKit
 # Grid: 16ths, swing on the 8ths (58 %, almost straight at this tempo), quarter = 330
-# Form: intro (6) | A (16) | shout chorus (8) | 7/4 (8) | trading 4s (16) | drum solo finale (8) | ending (1)
-# Shows: fast ride with skip notes, hi-hat pedal on 2 and 4, feathered bass drum,
-#        snare roll intro, band hits with setups, a 7/4 section (2+2+3), trading 4s
-#        and a solo finale in 16ths. Slow it down with the BPM slider for practice.
+# Form: practice roll intro (24) | A (16) | shout chorus (8) | 7/4 (8) | trading 4s (16) | drum solo finale (8) | ending (1)
+# Shows: a snare roll intro the way it is practiced: one stroke, a pause, then doubling the
+#        speed step by step (whole notes, halves and quarters without hi-hat, then 8ths, 16ths,
+#        double strokes, buzz roll), fast ride with skip notes, hi-hat pedal on 2 and 4,
+#        feathered bass drum, band hits with flams and setups, a 7/4 section (2+2+3), trading 4s
+#        and a solo finale in 16ths. Crash mirrored (L⇄R). Slow it down with the BPM slider.
 bpm = 330.0
-chain = [1, 1, 2, 2, 3, 4, 5, 6, 7, 6, 6, 7, 6, 8, 5, 6, 7, 6, 6, 7, 6, 8, 9, 10, 9, 10, 9, 10, 9, 8, 11, 11, 11, 12, 11, 11, 11, 12, 5, 6, 7, 8, 13, 14, 13, 14, 5, 6, 7, 8, 13, 14, 15, 15, 13, 14, 13, 14, 15, 15, 15, 15, 16]
+chain = [1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 9, 10, 9, 9, 10, 9, 11, 8, 9, 10, 9, 9, 10, 9, 11, 12, 12, 12, 12, 13, 13, 13, 14, 13, 13, 13, 14, 8, 9, 10, 11, 15, 15, 8, 9, 10, 11, 15, 16, 16, 15, 15, 16, 16, 16, 16, 17]
 click = false
 countin = 1
 fx = "Room"
@@ -19,39 +21,56 @@ steps_per_beat = 4
 swing = 0.58
 swing_on = 8
 swing_version = 2
-#            1e+a2e+a3e+a4e+a
-# 1: intro 1: 16th roll, ghost notes, hi-hat pedal on the quarters
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 1: intro, a single stroke, then two bars of silence
 [[pattern]]
-steps = 16
+steps = 32
     [pattern.rows]
-    HHPedal = "x...x...x...x..."
-    Snare   = "oooooooooooooooo"
-#            1e+a2e+a3e+a4e+a
-# 2: intro 2: roll gets louder
+    Snare   = "x..............................."
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 2: intro, stage 1 (2 bars, played twice): whole notes, very slow single strokes
 [[pattern]]
-steps = 16
+steps = 32
     [pattern.rows]
-    HHPedal = "x...x...x...x..."
-    Snare   = "xxxxxxxxxxxxxxxx"
-#            1e+a2e+a3e+a4e+a
-# 3: intro 3: accents on the quarters, bass drum on 1 and 3
+    Snare   = "x...............x..............."
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 3: intro, stage 2 (2 bars): half notes
 [[pattern]]
-steps = 16
+steps = 32
     [pattern.rows]
-    HHPedal = "....x.......x..."
-    Snare   = "XxxxXxxxXxxxXxxx"
-    Kick    = "X.......X......."
-#            1e+a2e+a3e+a4e+a
-# 4: intro 4: accented 16ths down the toms into the crash
+    Snare   = "x.......x.......x.......x......."
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 4: intro, stage 3 (2 bars): quarter notes
 [[pattern]]
-steps = 16
+steps = 32
     [pattern.rows]
-    Snare    = "XXXXXXXX........"
-    Tom      = "........XXXX...."
-    FloorTom = "............XXXX"
-    Kick     = "X...X...X...X..."
-#            1e+a2e+a3e+a4e+a
-# 5: A with crash on the one
+    Snare   = "x...x...x...x...x...x...x...x..."
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 5: intro, stage 4 (2 bars): 8ths, accents on the quarters
+[[pattern]]
+steps = 32
+    [pattern.rows]
+    HHPedal = "....x.......x.......x.......x..."
+    Snare   = "X.x.X.x.X.x.X.x.X.x.X.x.X.x.X.x."
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 6: intro, stage 5 (2 bars): 16ths, accents on the quarters
+[[pattern]]
+steps = 32
+    [pattern.rows]
+    HHPedal = "....x.......x.......x.......x..."
+    Snare   = "XxxxXxxxXxxxXxxxXxxxXxxxXxxxXxxx"
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 7: intro, stage 6 (2 bars): double strokes (32nds), then a buzz roll getting louder into the crash
+[[pattern]]
+steps = 32
+    [pattern.rows]
+    HHPedal = "....x.......x.......x.......x..."
+    Snare   = "XxxxXxxxXxxxXxxxXXXXXXXXXXXXXXXX"
+    Kick    = "................X...X...X...X..."
+    [pattern.orn]
+    Snare   = "2222222222222222zzzzzzzzzzzzzzzz"
+#              1e+a2e+a3e+a4e+a
+# 8: A with crash on the one
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -59,16 +78,16 @@ steps = 16
     Ride    = "....X.x.x...X.x."
     HHPedal = "....x.......x..."
     Kick    = "X...o...o...o..."
-#            1e+a2e+a3e+a4e+a
-# 6: A: basic groove (spang-a-lang, pedal on 2 and 4, feathered bass drum)
+#              1e+a2e+a3e+a4e+a
+# 9: A: basic groove (spang-a-lang, pedal on 2 and 4, feathered bass drum)
 [[pattern]]
 steps = 16
     [pattern.rows]
     Ride    = "x...X.x.x...X.x."
     HHPedal = "....x.......x..."
     Kick    = "o...o...o...o..."
-#            1e+a2e+a3e+a4e+a
-# 7: A: comping on the snare, bass drum bomb on the 3+
+#              1e+a2e+a3e+a4e+a
+# 10: A: comping on the snare, bass drum bomb on the 3+
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -76,8 +95,8 @@ steps = 16
     HHPedal = "....x.......x..."
     Snare   = "......o.......x."
     Kick    = "o...o...o.X.o..."
-#            1e+a2e+a3e+a4e+a
-# 8: fill: 16ths snare - tom - floor tom on 3 and 4
+#               1e+a2e+a3e+a4e+a
+# 11: fill: 16ths snare - tom - floor tom on 3 and 4
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -87,27 +106,20 @@ steps = 16
     Tom      = ".............xx."
     FloorTom = "...............X"
     Kick     = "o...o..........."
-#            1e+a2e+a3e+a4e+a
-# 9: shout chorus: hits on 1 and 2+, setup on the 4
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 12: shout chorus (2 bars): flammed hits on 1 and 2+, setup on the 4; then time with a drag setup
 [[pattern]]
-steps = 16
+steps = 32
     [pattern.rows]
-    Crash   = "X.....X........."
-    Ride    = "........x.x....."
-    HHPedal = "....x.......x..."
-    Snare   = "X.....X.....xxX."
-    Kick    = "X.....X........."
-#            1e+a2e+a3e+a4e+a
-# 10: shout chorus: time, setup on the 4 for the next hit
-[[pattern]]
-steps = 16
-    [pattern.rows]
-    Ride    = "x...X.x.x...X..."
-    HHPedal = "....x.......x..."
-    Snare   = "..o.......o...X."
-    Kick    = "o...o...o...X..."
-#            1e+a2e+a3e+a4e+a5e+a6e+a7e+a
-# 11: 7/4 (2+2+3): ride accents the groups, bass drum on 1, 3 and 5
+    Crash   = "X.....X........................."
+    Ride    = "........x.x.....x...X.x.x...X..."
+    HHPedal = "....x.......x.......x.......x..."
+    Snare   = "X.....X.....xxX...o.......o...X."
+    Kick    = "X.....X.........o...o...o...X..."
+    [pattern.orn]
+    Snare   = "f.....f.......................r."
+#              1e+a2e+a3e+a4e+a5e+a6e+a7e+a
+# 13: 7/4 (2+2+3): ride accents the groups, bass drum on 1, 3 and 5
 [[pattern]]
 steps = 28
     [pattern.rows]
@@ -115,8 +127,8 @@ steps = 28
     HHPedal = "....x.......x.......x......."
     Snare   = "..............o...........o."
     Kick    = "x...o...x...o...x...o...o..."
-#            1e+a2e+a3e+a4e+a5e+a6e+a7e+a
-# 12: 7/4 fill: last group in 16ths across the kit
+#               1e+a2e+a3e+a4e+a5e+a6e+a7e+a
+# 14: 7/4 fill: last group in 16ths across the kit
 [[pattern]]
 steps = 28
     [pattern.rows]
@@ -126,26 +138,20 @@ steps = 28
     Tom      = "......................xxX..."
     FloorTom = ".........................xxX"
     Kick     = "x.......x.......X..........."
-#            1e+a2e+a3e+a4e+a
-# 13: solo: linear groups of three (snare - tom - bass drum) over the bar
+#               1e+a2e+a3e+a4e+a5e+a6e+a7e+a8e+a
+# 15: solo (2 bars): linear groups of three, then snare 16ths with flammed accents and floor tom answers
 [[pattern]]
-steps = 16
+steps = 32
     [pattern.rows]
-    HHPedal = "....x.......x..."
-    Snare   = "X..X..X..X..X..X"
-    Tom     = ".x..x..x..x..x.."
-    Kick    = "..x..x..x..x..x."
-#            1e+a2e+a3e+a4e+a
-# 14: solo: snare 16ths with accents moving forward, floor tom answers
-[[pattern]]
-steps = 16
-    [pattern.rows]
-    Snare    = "Xxx.xXx.xxX....."
-    Tom      = "............XxXx"
-    FloorTom = "...X...X...X...."
-    Kick     = "x...x...x...x..."
-#            1e+a2e+a3e+a4e+a
-# 15: finale: 16ths around the kit, bass drum on every quarter, crash on 1 and 3
+    HHPedal  = "....x.......x..................."
+    Snare    = "X..X..X..X..X..XXxx.xXx.xxX....."
+    Tom      = ".x..x..x..x..x..............XxXx"
+    Kick     = "..x..x..x..x..x.x...x...x...x..."
+    FloorTom = "...................X...X...X...."
+    [pattern.orn]
+    Snare    = "................f....f....f....."
+#               1e+a2e+a3e+a4e+a
+# 16: finale: 16ths around the kit, bass drum on every quarter, crash on 1 and 3
 [[pattern]]
 steps = 16
     [pattern.rows]
@@ -155,13 +161,15 @@ steps = 16
     FloorTom = "............xxXx"
     Kick     = "X...X...X...X..."
 #            1e+a2e+a3e+a4e+a
-# 16: ending: last hit
+# 17: ending: last hit with a flam
 [[pattern]]
 steps = 16
     [pattern.rows]
     Crash = "X..............."
     Snare = "X..............."
     Kick  = "X..............."
+    [pattern.orn]
+    Snare = "f..............."
 [track.Ride]
 vol = 0.9
 pan = 0.0
@@ -174,3 +182,10 @@ pan = 0.0
 pitch = 0.0
 mute = false
 solo = false
+[track.Crash]
+vol = 1.0
+pan = 0.0
+pitch = 0.0
+mute = false
+solo = false
+swap_lr = true

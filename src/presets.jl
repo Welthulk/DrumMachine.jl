@@ -502,6 +502,21 @@ const PRESETS = Pair{String,Function}[
         Song(name = "R&B: Neo Soul", bpm = 72, swing = 0.62, patterns = [g])
     end,
 
+    # ------------------------------------------------------------------ March
+    "Marsch: Spielmannszug (Flams, Drags, Rolls)" => function ()
+        # Carnival marching band: big drum on every beat, snare with ornaments (row 2):
+        # f flam, r drag, 2 double stroke (here a 5-stroke roll from the 3 to the 3+).
+        #             1 e + a 2 e + a 3 e + a 4 e + a
+        a = P(Snare = "X.x.x.X.X.x.x.X.",
+              Kick  = "X...x...X...x...")
+        set_orns!(a, Dict("Snare" => "f.....r.f.....r."))
+        b = P(Snare = "Xx..Xx..xxX.X.x.",
+              Kick  = "X...x...X...x...")
+        set_orns!(b, Dict("Snare" => "f...f...22..f..."))
+        Song(name = "Marsch: Spielmannszug (Flams, Drags, Rolls)", bpm = 116, patterns = [a, b],
+             chain = [1, 1, 1, 2], fx = "Room")
+    end,
+
     # ------------------------------------------------------------------ Time signatures
     "Taktart: Walzer 3/4" => function ()
         g = P(Kick  = "X...........",

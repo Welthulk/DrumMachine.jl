@@ -102,6 +102,8 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
 
     # hits per track here: level at each step (across all bars)
     grid = zeros(UInt8, NTRACKS, steps_bar * bars)
+    orng = zeros(UInt8, NTRACKS, steps_bar * bars)  # ornaments (flams)
+    isset(x) = x isa Real && x > 0
     params = Dict{String,Any}()                     # first source track per track here
     merged = Dict{String,Vector{String}}()
     for t in tracks
@@ -110,6 +112,7 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
         vols = slot_keys(t, "slot_volume")
         isempty(vols) && continue
         vars = slot_keys(t, "slot_variant")
+        flams, delays = slot_keys(t, "slot_flam"), slot_keys(t, "slot_delay")
         rep = round(Int, getnum(t, "repeat", 0))
         vs = [Float64(v) for v in values(vols) if v isa Real && v > 0]
         vmax = maximum(vs; init = 1.0); varied = length(unique(vs)) > 1
@@ -130,13 +133,12 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
             k = track_index(id)
             st = s * factor
             grid[k, st+1] = max(grid[k, st+1], djson_level(v, vmax, varied))
+            isset(get(flams, string(s), nothing)) && (orng[k, st+1] = ORN_FLAM)
             haskey(params, id) || (params[id] = t)
             snd in get!(merged, id, String[]) || push!(merged[id], snd)
         end
-        flams, delays = slot_keys(t, "slot_flam"), slot_keys(t, "slot_delay")
-        isset(x) = x isa Real && x > 0
-        any(s -> isset(get(flams, string(s), nothing)) || isset(get(delays, string(s), nothing)), keys(hits)) &&
-            push!(notes, L("Flams/Delays von „{1}“ nicht übernommen", snd))
+        any(s -> isset(get(delays, string(s), nothing)), keys(hits)) &&
+            push!(notes, L("Delays von „{1}“ nicht übernommen", snd))
         round(Int, getnum(t, "shift", 0)) != 0 && push!(notes, L("Verschiebung von „{1}“ nicht übernommen", snd))
     end
     for (id, snds) in merged
@@ -145,22 +147,23 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
 
     # 32nd grid with all hits on 16ths: 16th grid is easier to edit
     if spb == 8 && all(iszero, @view grid[:, 2:2:end])
-        grid = grid[:, 1:2:end]; spb = 4; steps_bar ÷= 2
+        grid = grid[:, 1:2:end]; orng = orng[:, 1:2:end]; spb = 4; steps_bar ÷= 2
     end
     steps_bar > MAXSTEPS && error(L("Takt mit {1} Schritten ist zu lang (höchstens {2})", steps_bar, MAXSTEPS))
 
     # one pattern per bar, identical bars share a pattern
     pats = Pattern[]; chain = Int[]
     for b in 1:bars
-        g = grid[:, (b-1)*steps_bar+1:b*steps_bar]
-        k = findfirst(p -> p.grid[:, 1:steps_bar] == g, pats)
+        r = (b-1)*steps_bar+1:b*steps_bar
+        g = grid[:, r]; og = orng[:, r]
+        k = findfirst(p -> p.grid[:, 1:steps_bar] == g && p.orn[:, 1:steps_bar] == og, pats)
         if k === nothing
-            p = Pattern(steps_bar); p.grid[:, 1:steps_bar] .= g
+            p = Pattern(steps_bar); p.grid[:, 1:steps_bar] .= g; p.orn[:, 1:steps_bar] .= og
             push!(pats, p); k = length(pats)
         end
         push!(chain, k)
     end
-    length(pats) > 16 && push!(notes, L("{1} verschiedene Takte – im Programm sind nur 16 Patterns bearbeitbar", length(pats)))
+    length(pats) > 24 && push!(notes, L("{1} verschiedene Takte – im Programm sind nur 24 Patterns bearbeitbar", length(pats)))
 
     sh = get(d, "shuffle", 0.5)
     sh = sh isa Bool ? (sh ? 2 / 3 : 0.5) : sh isa Real ? Float64(sh) : 0.5

@@ -87,6 +87,7 @@ function make_fill(p::Pattern, spb::Int, style::Integer = 1)
     off = p.steps - n
     q = copy(p)
     q.grid[:, off+1:p.steps] .= 0x00
+    q.orn[:, off+1:p.steps] .= 0x00
     for (i, id, lv) in gen(n, spb)
         q.grid[track_index(id), off+i] = lv
     end

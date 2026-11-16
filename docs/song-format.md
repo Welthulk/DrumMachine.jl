@@ -24,7 +24,7 @@ All keys are optional. A missing key gets the default listed below, so a minimal
 |---|---|---|---|
 | `name` | string | `"Neu"` | Song name, also used for the file names of save and export |
 | `bpm` | number | `100.0` | Tempo in beats per minute (GUI range 30–400) |
-| `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths |
+| `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths, `8` = 32nds |
 | `swing` | number | `0.5` (`2/3` for triplet grids in files without `swing_version`) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8) |
 | `swing_on` | integer | `0` | What swings in a straight grid: `0` auto, `8` 8ths, `16` 16ths |
 | `swing_version` | integer | `1` | Written as `2` by current versions. Files without it that use a triplet grid and `swing = 0.5` are read as exact triplets (compatibility with v0.1) |
@@ -48,7 +48,7 @@ All keys are optional. A missing key gets the default listed below, so a minimal
 ## Patterns
 
 Each `[[pattern]]` table is one pattern; their order gives the pattern numbers 1, 2, 3, … used in
-`chain`. Up to 16 patterns can be edited in the program.
+`chain`. Up to 24 patterns can be edited in the program.
 
 ```toml
 [[pattern]]
@@ -64,6 +64,8 @@ steps = 16
 |---|---|---|---|
 | `steps` | integer | `16` | Length of the pattern in steps, 1–32. Patterns of one song may differ (e.g. `8` steps for a 2/4 bar in a 4/4 song) |
 | `rows` | table | empty | One string per track, one character per step |
+| `orn` | table | empty | Ornaments: one string per track, one character per step (see below) |
+| `bpm` | number | – | Own tempo of this pattern (30–400). Without it the pattern plays at the song tempo `bpm`. Written only when set; the count-in uses the tempo of the first pattern of the chain |
 
 Characters in a row:
 
@@ -76,6 +78,51 @@ Characters in a row:
 
 Rows of tracks without any note are left out when saving. A row longer than `steps` is cut off,
 a shorter one is filled with rests.
+
+### Ornaments
+
+The optional `orn` table adds an ornament to a note. Its strings line up with `rows`; a character
+only counts where the row has a note.
+
+| Character | Ornament |
+|---|---|
+| `.` (also `-`, `_`, space) | none |
+| `2` | double stroke: a second stroke on the half step (two 32nds in the 16th grid) |
+| `z` | buzz roll: soft bounces across the step |
+| `f` | flam: one soft grace note just before the note |
+| `r` | drag (ruff): two soft grace notes just before the note |
+
+A 5-stroke roll in the 16th grid is a double stroke on “3+” and “a” followed by an accent on “4”:
+
+```toml
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "....X.....xxX..."
+    [pattern.orn]
+    Snare = "..........22...."
+```
+
+Tracks without ornaments are left out of `orn` when saving; songs without ornaments have no `orn`
+table at all.
+
+The timing of the ornaments is set per song in the optional top-level table `[ornaments]`
+(in the program: *Verzierungen* on the right). Only values that differ from the defaults are saved.
+
+| Key | Default | Range | Meaning |
+|---|---|---|---|
+| `flam_ms` | `30` | 10–80 | Flam: grace note this many ms before the note |
+| `drag_ms` | `45` | 15–80 | Drag: distance between its strokes; grace notes 2× and 1× this distance before the note |
+| `buzz_ms` | `16` | 8–40 | Buzz roll: distance of the bounces (4–16 strokes per step) |
+| `grace` | `1.0` | 0.2–1.5 | Volume of the flam and drag grace notes (factor) |
+
+In fast grids the grace notes are moved closer together evenly so that they fit before the note.
+
+```toml
+[ornaments]
+flam_ms = 25.0
+grace = 0.8
+```
 
 ### Track names
 
@@ -112,11 +159,12 @@ solo = false
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `vol` | number | `1.0` | Volume, 0–1.5 |
+| `vol` | number | `1.0` | Volume as linear factor, 0–4 (the slider shows it in dB: off, −30 … +12 dB; `1.0` = 0 dB, `2.0` ≈ +6 dB) |
 | `pan` | number | `0.0` | Panorama offset from the kit's own panning, -1 (left) … 1 (right) |
 | `pitch` | number | `0.0` | Tuning in semitones |
 | `mute` | boolean | `false` | Muted (also in the export) |
 | `solo` | boolean | `false` | Solo (also in the export) |
+| `swap_lr` | boolean | `false` | Mirror the track left/right (stereo samples: channels swapped); written only when `true` |
 
 ### EQ
 

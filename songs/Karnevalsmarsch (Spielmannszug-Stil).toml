@@ -1,0 +1,88 @@
+# March in the style of a carnival marching band (Spielmannszug), 19 bars, kit CrocellKit
+# Grid: 16ths, straight, quarter = 116 (one pattern = two 2/4 march bars)
+# Form: roll call (1) | march A (4) | march B (4) | drag march (4) | march A (4) | final roll (1) | hit (1)
+# Shows the ornaments (row `orn`): buzz roll (z), flam (f), drag (r) and double strokes (2) for
+# 5- and 7-stroke rolls; big drum (Kick) on every beat, cymbal (Crash) at the ends of phrases.
+bpm = 116.0
+chain = [1, 2, 2, 2, 3, 2, 2, 3, 4, 5, 5, 3, 4, 2, 2, 3, 4, 6, 7]
+countin = 1
+fx = "Room"
+fxmix = 0.3
+kit = "CrocellKit"
+name = "Karnevalsmarsch (Spielmannszug-Stil)"
+repeats = 1
+steps_per_beat = 4
+swing = 0.5
+swing_version = 2
+
+#            1e+a2e+a3e+a4e+a
+# 1: roll call: buzz roll getting louder, flam accent on the 4 with drum and cymbal
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "ooooooxxxxxxX..."
+    Kick  = "............X..."
+    Crash = "............X..."
+    [pattern.orn]
+    Snare = "zzzzzzzzzzzzf..."
+
+#            1e+a2e+a3e+a4e+a
+# 2: march A: flams on 1 and 3, drag into the accents on 2+ and 4+
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "X.x.x.X.X.x.x.X."
+    Kick  = "X...x...X...x..."
+    [pattern.orn]
+    Snare = "f.....r.f.....r."
+
+#            1e+a2e+a3e+a4e+a
+# 3: march B: flam taps on 1 and 2, 5-stroke roll from the 3 to the 3+, flam on the 4
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "Xx..Xx..xxX.X.x."
+    Kick  = "X...x...X...x..."
+    [pattern.orn]
+    Snare = "f...f...22..f..."
+
+#            1e+a2e+a3e+a4e+a
+# 4: end of phrase: 7-stroke roll into the 3, drag accent on the 4 with drum and cymbal
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "X.x.xxxxX.x.X..."
+    Kick  = "X...x...X...X..."
+    Crash = "............X..."
+    [pattern.orn]
+    Snare = "f....222....r..."
+
+#            1e+a2e+a3e+a4e+a
+# 5: drag march: a drag on every beat, flams on the offbeats in the second half
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "X.x.X.x.X.x.X.x."
+    Kick  = "X...x...X...x..."
+    [pattern.orn]
+    Snare = "r...r...r.f.r.f."
+
+#            1e+a2e+a3e+a4e+a
+# 6: final roll: buzz roll over the whole bar, from soft to loud
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "oooooooxxxxxxxxx"
+    [pattern.orn]
+    Snare = "zzzzzzzzzzzzzzzz"
+
+#            1e+a2e+a3e+a4e+a
+# 7: final hit: flam with drum and cymbal
+[[pattern]]
+steps = 16
+    [pattern.rows]
+    Snare = "X..............."
+    Kick  = "X..............."
+    Crash = "X..............."
+    [pattern.orn]
+    Snare = "f..............."

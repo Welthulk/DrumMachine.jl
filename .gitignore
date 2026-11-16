@@ -2,13 +2,23 @@
 kits/CrocellKit/
 kits/VirtuosityDrums/
 
-# Exported audio files (generated from the .toml songs)
-songs/*.wav
+# Audio files and JSON compositions are never published.
+# Exceptions: the samples of the shipped kit and the test file for the JSON import.
+*.wav
 *.wav.tmp
+*.m4a
+*.mp3
+*.flac
+*.ogg
+*.aac
+*.json
+!kits/BlackPearl/*.wav
+!test/drum_json_example.json
 # Julia
 *.jl.cov
 *.jl.mem
 /docs/build/
+/docs/Manifest.toml
 .vscode/
 
 # Sysimage (tools/build_sysimage.jl)
