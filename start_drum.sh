@@ -2,6 +2,8 @@
 # Starts the DrumMachine GUI from the project directory, no matter where the script is called from.
 #   ./start_drum.sh            start (with build/drummachine.so, if present; asks to build it if not)
 #   ./start_drum.sh --build    build sysimage for faster startup (takes a few minutes), then start
+#   ./start_drum.sh --no-image start without sysimage (no questions; e.g. to rule out a stale image)
+#   ./start_drum.sh --help     list the options
 cd "$(dirname "$(readlink -f "$0")")" || exit 1
 
 img=build/drummachine.so
@@ -38,6 +40,25 @@ ask() {
     read -r -p "$1 [j/N] " a
     case "$a" in [jJyY]*) return 0 ;; *) return 1 ;; esac
 }
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    cat <<'HELP'
+Aufruf: ./start_drum.sh [Option]
+
+  (ohne)        Start mit Sysimage build/drummachine.so, falls vorhanden und aktuell;
+                fehlt es oder ist es veraltet, wird gefragt, ob es gebaut werden soll
+  --build       Sysimage neu bauen (einige Minuten), danach starten
+  --no-image    ohne Sysimage starten, keine Rückfragen (langsamerer Start)
+  -h, --help    diese Hilfe
+HELP
+    exit 0
+fi
+
+if [ "$1" = "--no-image" ]; then
+    shift
+    echo "Start ohne Sysimage (--no-image)."
+    exec "${julia_cmd[@]}" run.jl "$@"
+fi
 
 if [ "$1" = "--build" ]; then
     shift

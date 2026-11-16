@@ -332,17 +332,34 @@ function open_url(url::AbstractString)
 end
 
 const RASTER_OPTS = [("16tel (4 pro Schlag)", 4), ("Triolen (3 pro Schlag)", 3),   # i18n-ok: shown via Ls()
-                     ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2)]   # i18n-ok: shown via Ls()
+                     ("16tel-Triolen (6 pro Schlag)", 6), ("8tel (2 pro Schlag)", 2),   # i18n-ok: shown via Ls()
+                     ("32tel (8 pro Schlag)", 8)]   # i18n-ok: shown via Ls()
 const SWING_OPTS = [("Auto", 0), ("auf 8tel", 8), ("auf 16tel", 16)]   # i18n-ok: shown via Ls()
 const STEP_OPTS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16, 18, 20, 21, 24, 28, 30, 32]
 const MAXPATTERNS = 16
 
-"Count syllables for the header row: 1 e + a / 1 + a / 1 la li + la li / 1 +."
+"Count syllables for the header row: 1 e + a / 1 + a / 1 la li + la li / 1 + (32nds: 1 e + a on every other step)."
 function count_labels(steps::Int, spb::Int)
     syl = spb == 4 ? ("", "e", "+", "a") : spb == 3 ? ("", "+", "a") : spb == 6 ? ("", "la", "li", "+", "la", "li") :
-          spb == 2 ? ("", "+") : ntuple(_ -> "", spb)
+          spb == 2 ? ("", "+") : spb == 8 ? ("", "", "e", "", "+", "", "a", "") : ntuple(_ -> "", spb)
     [((s - 1) % spb == 0 ? string((s - 1) ÷ spb + 1) : syl[(s-1)%spb+1]) for s in 1:steps]
 end
+
+"""
+Dialog program: kdialog under KDE (zenity 4 goes through the portal there and loses the preselected
+filter), otherwise zenity, else kdialog; `nothing` if neither is installed.
+"""
+function dialog_prog()
+    has(p) = Sys.which(p) !== nothing
+    kde = contains(uppercase(get(ENV, "XDG_CURRENT_DESKTOP", "")), "KDE")
+    kde && has("kdialog") && return "kdialog"
+    has("zenity") && return "zenity"
+    has("kdialog") && return "kdialog"
+    return nothing
+end
+
+"kdialog filter: `kind` preselected, all files as second choice."
+kdialog_filter(pat, kind) = "$pat|$kind ($pat)\n*|$(L("Alle Dateien"))"
 
 """
     pick_file(startdir; title, ext, kind, save = false, name = "") -> String or nothing
@@ -357,14 +374,15 @@ function pick_file(startdir::AbstractString; title::AbstractString, ext::Abstrac
                    kind::AbstractString, save::Bool = false, name::AbstractString = "")
     dir = isdir(startdir) ? startdir : homedir()
     start = joinpath(dir, name)
-    cmd = if Sys.which("zenity") !== nothing
+    prog = dialog_prog()
+    cmd = if prog == "zenity"
         args = ["zenity", "--file-selection", "--title=$title", "--filename=$start",
                 "--file-filter=$kind (*.$ext) | *.$ext", "--file-filter=$(L("Alle Dateien")) | *"]
         save && append!(args, ["--save", "--confirm-overwrite"])
         Cmd(args)
-    elseif Sys.which("kdialog") !== nothing
+    elseif prog == "kdialog"
         Cmd(["kdialog", "--title", title, save ? "--getsavefilename" : "--getopenfilename", start,
-             "*.$ext|$kind (*.$ext)"])
+             kdialog_filter("*.$ext", kind)])
     else
         return nothing
     end
@@ -383,12 +401,13 @@ no dialog program is installed.
 function pick_files(startdir::AbstractString; title::AbstractString, exts, kind::AbstractString)
     dir = isdir(startdir) ? startdir : homedir()
     pat = join(("*.$e" for e in exts), " ")
-    cmd = if Sys.which("zenity") !== nothing
+    prog = dialog_prog()
+    cmd = if prog == "zenity"
         Cmd(["zenity", "--file-selection", "--multiple", "--separator=\n", "--title=$title",
              "--filename=$(dir)/", "--file-filter=$kind ($pat) | $pat", "--file-filter=$(L("Alle Dateien")) | *"])
-    elseif Sys.which("kdialog") !== nothing
+    elseif prog == "kdialog"
         Cmd(["kdialog", "--title", title, "--multiple", "--separate-output", "--getopenfilename", dir,
-             "$pat|$kind ($pat)"])
+             kdialog_filter(pat, kind)])
     else
         return nothing
     end
@@ -1476,7 +1495,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(expbtn.clicks) do _
         commit_fields!()
         s = eng.song
-        path = joinpath(song_dir(), safe(s.name) * (s.loop ? " Loop" : "") * ".wav")
+        path = joinpath(song_dir(), safe_song_name(s.name) * (s.loop ? " Loop" : "") * ".wav")
         status[] = L("Exportiere …")
         try
             t = @elapsed (path = export_wav(path, s, eng.kit))

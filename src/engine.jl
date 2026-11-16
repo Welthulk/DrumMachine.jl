@@ -254,7 +254,8 @@ pattern has hits on 'e' or 'a', otherwise on 8ths.
 function swing_unit(song::Song, p::Union{Pattern,Nothing})
     song.swing_on != 0 && return song.swing_on
     p === nothing && return 16
-    return any(!iszero, @view p.grid[:, 2:2:p.steps]) ? 16 : 8
+    k = max(1, song.steps_per_beat ÷ 4)                    # steps per 16th
+    return any(!iszero, @view p.grid[:, k+1:2k:p.steps]) ? 16 : 8
 end
 
 """
@@ -263,7 +264,7 @@ Duration of step `s` (0-based) in samples, incl. swing. The bar length always st
 Uniform meaning of `song.swing`: position of the off-beat note within its group
 (50 % = middle/straight, 67 % = triplet, 75 % = dotted).
 
-- 8th/16th grid: pairs (8th or 16th pair); the first half is stretched by `swing`.
+- 8th/16th/32nd grid: pairs (8th or 16th pair); the first half is stretched by `swing`.
 - Triplet grid (3 or 6 per beat): groups of three; the third triplet sits at `swing`
   of the group, the middle one exactly in between. At 2/3 this gives exact triplets.
 """
@@ -275,11 +276,10 @@ function step_samples(song::Song, s::Int, p::Union{Pattern,Nothing} = nothing)
         g = 3base                                          # duration of a group of three
         return s % 3 == 2 ? (1 - sw) * g : sw * g / 2
     end
-    (sw == 0.5 || !(spb in (2, 4))) && return base
-    if spb == 2 || swing_unit(song, p) == 16
-        return 2base * (iseven(s) ? sw : 1 - sw)          # pairs of single steps
-    end
-    return 2base * (s % 4 < 2 ? sw : 1 - sw)               # 16th grid, swing on 8ths
+    (sw == 0.5 || !(spb in (2, 4, 8))) && return base
+    # steps per swung note: an 8th is spb/2 steps, a 16th spb/4 (at least one step)
+    n = max(1, swing_unit(song, p) == 16 ? spb ÷ 4 : spb ÷ 2)
+    return 2base * (s % 2n < n ? sw : 1 - sw)              # first note of the pair longer
 end
 
 function resolve_pat(eng::Engine, p::Int)

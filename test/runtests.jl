@@ -349,6 +349,13 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         t.swing = 0.75
         @test step_samples(t, 0) + step_samples(t, 1) ≈ 0.75 * 0.5SR
         @test sum(step_samples(t, k) for k in 0:11) ≈ 2SR
+        # 32nd grid: 8 steps per beat, swing on 16ths moves the second 16th (steps 3–4) later
+        z = Song(bpm = 120, steps_per_beat = 8, swing_on = 16)
+        @test sum(step_samples(z, k) for k in 0:31) ≈ 2SR
+        z.swing = 0.6
+        @test step_samples(z, 0) == step_samples(z, 1) > step_samples(z, 2) == step_samples(z, 3)
+        @test step_samples(z, 0) + step_samples(z, 1) ≈ 0.6 * 0.25SR
+        @test sum(step_samples(z, k) for k in 0:31) ≈ 2SR
     end
 
     @testset "Export" begin
@@ -503,8 +510,14 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test any(contains("conga"), notes) && any(contains("Tom"), notes)
         s, _ = import_drum_json(js([tr("x_kick"; vol = Dict("0" => 1, "3" => 1))]; beat_div = 1, beats_per_bar = 4))
         @test s.steps_per_beat == 2 && D.row_string(s.patterns[1], 1)[1:8] == "x.....x."
-        s, notes = import_drum_json(js([tr("x_kick"; vol = Dict("31" => 1))]; beat_div = 8))
-        @test s.bpm == 240 && s.patterns[1].steps == 32 && s.patterns[1].grid[1, 32] == 0x02 && !isempty(notes)
+        # 32nd grid: kept as 32nds at the original tempo; only 16ths used -> 16th grid
+        s, notes = import_drum_json(js([tr("x_kick"; vol = Dict("0" => 1, "31" => 1))]; beat_div = 8))
+        @test s.bpm == 120 && s.steps_per_beat == 8 && s.patterns[1].steps == 32 && isempty(notes)
+        @test findall(!iszero, s.patterns[1].grid[1, 1:32]) == [1, 32]
+        s, _ = import_drum_json(js([tr("x_kick"; vol = Dict("0" => 1, "30" => 1))]; beat_div = 8))
+        @test s.bpm == 120 && s.steps_per_beat == 4 && s.patterns[1].steps == 16
+        @test findall(!iszero, s.patterns[1].grid[1, 1:16]) == [1, 16]
+        @test_throws Exception import_drum_json(js([tr("x_kick"; vol = Dict("1" => 1))]; beat_div = 8, beats_per_bar = 5))
         # newer files: per-slot values as arrays (index = slot, null/0 = nothing)
         av = Any[0 for _ in 1:16]; av[1] = 1; av[5] = 0.4; av[9] = 1
         dv = Any[1 for _ in 1:16]; dv[[1, 5, 9]] .= nothing

@@ -66,7 +66,7 @@ mutable struct Song
     bpm::Float64
     swing::Float64               # position of the off-beat note: 0.5 = straight, 2/3 = triplet, 0.75 = dotted
     swing_on::Int                # swing base: 0 = auto, 8 = on 8ths, 16 = on 16ths
-    steps_per_beat::Int          # 4 = 16ths, 3 = 8th triplets (shuffle/jazz), 6 = 16th triplets, 2 = 8ths
+    steps_per_beat::Int          # 4 = 16ths, 3 = 8th triplets (shuffle/jazz), 6 = 16th triplets, 2 = 8ths, 8 = 32nds
     patterns::Vector{Pattern}
     chain::Vector{Int}           # order of the patterns in song mode/export
     tracks::Vector{TrackParams}

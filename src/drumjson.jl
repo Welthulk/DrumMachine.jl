@@ -4,7 +4,8 @@
 # (0-based across all bars) the velocity in `slot_volume` (0.01 … 1) and a sound variant in
 # `slot_variant` (0 = main sound; 1 = open hi-hat / rim / ride bell; 2 = hi-hat pedal). Song
 # settings: tempo, shuffle (0.5 = straight, 0.67 = triplet, as `song.swing`), beat_div (slots per
-# beat), beats_per_bar, bars, kit, effect_type, effect_amount.
+# beat; 8 = 32nds, taken over as 16ths if no hit falls between), beats_per_bar, bars, kit,
+# effect_type, effect_amount.
 
 import JSON
 
@@ -93,13 +94,9 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
     bars = max(1, round(Int, getnum(d, "bars", cld(maxslot + 1, div * bpb))))
     nslots = div * bpb * bars
     bpm = getnum(d, "tempo", 100)
-    # slots per beat -> grid here: 2, 3, 4, 6 directly; 1 spread to 2; 8 = 16ths at double tempo
-    spb, factor = div in (2, 3, 4, 6) ? (div, 1) : div == 1 ? (2, 2) : div == 8 ? (4, 1) : (0, 0)
+    # slots per beat -> grid here: 2, 3, 4, 6, 8 directly; 1 spread to 2
+    spb, factor = div in (2, 3, 4, 6, 8) ? (div, 1) : div == 1 ? (2, 2) : (0, 0)
     spb == 0 && error(L("Raster mit {1} Schlägen pro Viertel wird nicht unterstützt", div))
-    if div == 8
-        bpm *= 2; bpb *= 2
-        push!(notes, L("32tel-Raster: als 16tel bei doppeltem Tempo übernommen"))
-    end
     bpm = clamp(bpm, 30, 400)
     steps_bar = bpb * spb
 
@@ -146,6 +143,12 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
         length(snds) > 1 && push!(notes, L("{1} zusammengelegt auf {2}", join(snds, ", "), L(TRACKS[track_index(id)][2])))
     end
 
+    # 32nd grid with all hits on 16ths: 16th grid is easier to edit
+    if spb == 8 && all(iszero, @view grid[:, 2:2:end])
+        grid = grid[:, 1:2:end]; spb = 4; steps_bar ÷= 2
+    end
+    steps_bar > MAXSTEPS && error(L("Takt mit {1} Schritten ist zu lang (höchstens {2})", steps_bar, MAXSTEPS))
+
     # one pattern per bar, identical bars share a pattern
     pats = Pattern[]; chain = Int[]
     for b in 1:bars
@@ -166,7 +169,7 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
     nm = strip(String(get(d, "name", "")))
     generic = isempty(nm) || lowercase(nm) == "drums"           # default name: use the file name
     nm = !isempty(name) ? name : !generic ? nm : isjson ? "JSON-Import" : splitext(basename(src))[1]
-    song = Song(name = nm, bpm = bpm, swing = swing, swing_on = spb == 4 ? 16 : 0, steps_per_beat = spb,
+    song = Song(name = nm, bpm = bpm, swing = swing, swing_on = spb in (4, 8) ? 16 : 0, steps_per_beat = spb,
                 patterns = pats, chain = chain, kit = djson_kit(String(get(d, "kit", ""))),
                 fx = djson_fx(get(d, "effect_type", nothing)),
                 fxmix = clamp(0.25 * getnum(d, "effect_amount", 1), 0, 1), repeats = 4)

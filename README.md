@@ -60,7 +60,7 @@ cannot open the window.
 Faster start: if the sysimage `build/drummachine.so` (precompiled GLMakie) is missing,
 `./start_drum.sh` asks whether to build it now (takes a few minutes). After that the script reports
 at every start whether it found the image, and offers a rebuild after package updates. Build
-directly: `./start_drum.sh --build`.
+directly: `./start_drum.sh --build`; start without the image: `./start_drum.sh --no-image`.
 
 More than 40 grooves (rock, funk, shuffle, blues, jazz, latin, odd meters) are available under
 *Preset laden*. Worked-out example songs with form, fills and track effects are in `songs/`

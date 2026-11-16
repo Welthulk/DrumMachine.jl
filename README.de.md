@@ -57,7 +57,8 @@ Flatpak) öffnet sich kein Fenster.
 Schneller Start: Fehlt das Sysimage `build/drummachine.so` (vorkompiliertes GLMakie), fragt
 `./start_drum.sh`, ob es jetzt gebaut werden soll (dauert einige Minuten). Danach meldet das
 Skript bei jedem Start, ob es das Image gefunden hat, und fragt nach Paket-Updates von selbst
-nach einem Neubau. Direkt bauen: `./start_drum.sh --build`.
+nach einem Neubau. Direkt bauen: `./start_drum.sh --build`; ohne Image starten:
+`./start_drum.sh --no-image`.
 
 **Sprache:** Deutsch oder Englisch über *DE* / *EN* in der Kopfzeile. Voreingestellt ist die
 Systemsprache, die Wahl wird in `~/.config/DrumMachine/settings.toml` gespeichert.
