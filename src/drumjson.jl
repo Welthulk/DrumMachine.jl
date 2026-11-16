@@ -74,8 +74,15 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
         error(L("Keine Drum-JSON-Datei (Feld „tracks“ fehlt)"))
     notes = String[]
     tracks = [t for t in d["tracks"] if t isa AbstractDict]
-    slot_keys(t, k) = (x = get(t, k, nothing); x isa AbstractDict ? x : Dict{String,Any}())
-    maxslot = maximum((parse(Int, k) for t in tracks for k in keys(slot_keys(t, "slot_volume"))); init = -1)
+    # per-slot values come as dict {"slot": value} or (newer files) as array indexed by slot
+    function slot_keys(t, k)
+        x = get(t, k, nothing)
+        x isa AbstractDict && return x
+        x isa AbstractVector || return Dict{String,Any}()
+        return Dict{String,Any}(string(i - 1) => v for (i, v) in enumerate(x) if v !== nothing)
+    end
+    maxslot = maximum((parse(Int, k) for t in tracks for (k, v) in slot_keys(t, "slot_volume")
+                       if v isa Real && v > 0); init = -1)
 
     div = round(Int, getnum(d, "beat_div", 4))
     bpb = round(Int, getnum(d, "beats_per_bar", 0))
@@ -107,7 +114,7 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
         isempty(vols) && continue
         vars = slot_keys(t, "slot_variant")
         rep = round(Int, getnum(t, "repeat", 0))
-        vs = [Float64(v) for v in values(vols) if v isa Real]
+        vs = [Float64(v) for v in values(vols) if v isa Real && v > 0]
         vmax = maximum(vs; init = 1.0); varied = length(unique(vs)) > 1
         hits = Dict{Int,Float64}(parse(Int, k) => Float64(v) for (k, v) in vols if v isa Real && v > 0)
         if rep > 0                                  # track repeats after `rep` slots
@@ -129,7 +136,9 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
             haskey(params, id) || (params[id] = t)
             snd in get!(merged, id, String[]) || push!(merged[id], snd)
         end
-        any(!isempty, (slot_keys(t, "slot_flam"), slot_keys(t, "slot_delay"))) &&
+        flams, delays = slot_keys(t, "slot_flam"), slot_keys(t, "slot_delay")
+        isset(x) = x isa Real && x > 0
+        any(s -> isset(get(flams, string(s), nothing)) || isset(get(delays, string(s), nothing)), keys(hits)) &&
             push!(notes, L("Flams/Delays von „{1}“ nicht übernommen", snd))
         round(Int, getnum(t, "shift", 0)) != 0 && push!(notes, L("Verschiebung von „{1}“ nicht übernommen", snd))
     end

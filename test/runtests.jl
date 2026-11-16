@@ -505,6 +505,12 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test s.steps_per_beat == 2 && D.row_string(s.patterns[1], 1)[1:8] == "x.....x."
         s, notes = import_drum_json(js([tr("x_kick"; vol = Dict("31" => 1))]; beat_div = 8))
         @test s.bpm == 240 && s.patterns[1].steps == 32 && s.patterns[1].grid[1, 32] == 0x02 && !isempty(notes)
+        # newer files: per-slot values as arrays (index = slot, null/0 = nothing)
+        av = Any[0 for _ in 1:16]; av[1] = 1; av[5] = 0.4; av[9] = 1
+        dv = Any[1 for _ in 1:16]; dv[[1, 5, 9]] .= nothing
+        s, notes = import_drum_json(js([tr("x_snare"; vol = av, var = Any[0 for _ in 1:16], slot_delay = dv,
+                                           slot_flam = Any[0 for _ in 1:16])]))
+        @test D.row_string(s.patterns[1], D.track_index("Snare"))[1:16] == "X...o...X......." && isempty(notes)
         @test D.is_drum_json(js([tr("x_kick"; vol = Dict("0" => 1))])) && !D.is_drum_json("{}")
         @test_throws Exception import_drum_json("{\"a\": 1}")
         mktempdir() do dir
