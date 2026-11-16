@@ -8,8 +8,9 @@ using DrumMachine
 const D = DrumMachine
 installed(n) = any(e -> e.name == n, D.kit_entries())
 if isempty(ARGS)
-    for (name, size, _, auto) in D.DOWNLOADABLE_KITS
-        println(rpad(name, 18), lpad(size, 8), auto ? "  auto " : "  on demand", installed(name) ? "  installed" : "")
+    for (name, size, _, auto, kits) in D.DOWNLOADABLE_KITS
+        println(rpad(name, 18), lpad(size, 8), auto ? "  auto     " : "  on demand", all(installed, kits) ? "  installed" : "",
+                kits == [name] ? "" : "  (" * join(kits, ", ") * ")")
     end
 else
     names = ARGS == ["all"] ? [k[1] for k in D.missing_kits()] : ARGS

@@ -65,8 +65,8 @@ Systemsprache, die Wahl wird in `~/.config/DrumMachine/settings.toml` gespeicher
 **Kits beim ersten Start:** Nur BlackPearl liegt im Repo. Die übrigen Kits (zusammen etwa
 2,2 GB) werden beim ersten Start automatisch im Hintergrund geladen und gebaut, der Fortschritt
 steht in der Statuszeile. BlackPearl und die Synth-Kits gehen sofort, die anderen erscheinen
-im Kit-Menü, sobald sie fertig sind. DRSKit, MuldjordKit und Aasimonster (je 2,4–2,8 GB) werden
-erst geladen, wenn man sie im Kit-Menü wählt („(laden, …)“). Der Regler *Gain* neben dem
+im Kit-Menü, sobald sie fertig sind. DRSKit, MuldjordKit, Aasimonster (je 2,4–2,8 GB) und die Crocell-Mischungen
+(5,6 GB) werden erst geladen, wenn man sie im Kit-Menü wählt („(laden, …)“). Der Regler *Gain* neben dem
 Kit-Menü stellt den Pegel des Kits ein und wird pro Kit gespeichert. Ablage: `~/.local/share/DrumMachine/kits`, die Downloads in
 `~/.cache/DrumMachine` (danach löschbar). Abschalten mit `auto_kits = false` in der
 Einstellungsdatei oder der Umgebungsvariable `DRUMMACHINE_NO_KIT_DOWNLOAD`.
@@ -119,6 +119,7 @@ ausgearbeitete Beispiel-Songs mit Form, Fills und Spur-Effekten unter `songs/` (
 | RedZeppelin, BlondeBop, BlondeBopHotRods, BuskmansHoliday (Percussion) | [AVL Drumkits](http://www.bandshed.net/avldrumkits/) | CC BY-SA 3.0 |
 | ShittyKit, Sommerhack (Alltagsgegenstände) | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), Stereo-Mix von DrumMachine.jl | CC BY 4.0 |
 | DRSKit, MuldjordKit, Aasimonster | [DrumGizmo](https://drumgizmo.org/wiki/doku.php?id=kits), Stereo-Mix von DrumMachine.jl, auf Wunsch | CC BY 4.0 |
+| CrocellClose, CrocellStudio, CrocellRoom, CrocellVintage, CrocellLoFi | CrocellKit aus den Einzelmikros, eigene Mischungen (trocken … großer Raum, nur Overheads, Lo-Fi), auf Wunsch („CrocellMixes“, 5,6 GB) | CC BY 4.0 |
 | 808 / 909 (Synth) | synthetisiert | – |
 
 Kits einzeln bauen: `julia --project=. tools/build_kit.jl` (Liste) bzw. `tools/build_kit.jl DRSKit` (oder `all`).

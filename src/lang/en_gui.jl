@@ -162,4 +162,8 @@ add_translations!(Dict{String,String}(
     "DrumMachine – Info" => "DrumMachine – Info",
     "Sprache wird umgestellt …" => "Switching language …",
     "Gain für Kit {1}: {2} dB" => "Gain for kit {1}: {2} dB",
+    "Sitzung konnte nicht gespeichert werden" => "Session could not be saved",
+    "Letzte Sitzung konnte nicht geladen werden" => "Last session could not be loaded",
+    "Letzte Sitzung: \"{1}\"  ({2})" => "Last session: \"{1}\"  ({2})",
+    " – Bearbeiten: {1}" => " – editing: {1}",
 ))

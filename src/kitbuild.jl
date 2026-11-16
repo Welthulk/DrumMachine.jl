@@ -51,12 +51,13 @@ end
     build_kit(dest, name, sources; header, license, choke, log = println)
 
 `sources`: vector `track_id => loaders`, each loader is a function `() -> (y::Matrix, fs)`
+`post`: optional processing of each prepared recording (stereo matrix at 44.1 kHz, peak ≤ 0.95).
 (one recording, stereo or mono). Writes `dest/<track>/<layer>-<rr>.wav`, `kit.toml`, `LICENSE.txt`.
 The kit is built in a temporary folder next to `dest` and moved into place at the end, so an
 interrupted build never leaves a half-finished kit behind.
 """
 function build_kit(dest, name, sources; header::AbstractString, license::AbstractString,
-                   choke = ("HiHat", "HHOpen", "HHPedal"), log = println)
+                   choke = ("HiHat", "HHOpen", "HHPedal"), post = nothing, log = println)
     tmp = build_tmp(dest)
     refs = Dict{String,Float64}()
     for (k, (id, loaders)) in enumerate(sources)
@@ -80,6 +81,7 @@ function build_kit(dest, name, sources; header::AbstractString, license::Abstrac
             for (rr, i) in enumerate(unique(pick))
                 y, fs = loaders[i]()
                 out = prepare_sample(y, fs, MAXLEN[id]) .* Float32(scale)
+                post === nothing || (out = post(out))
                 pcm = round.(Int16, clamp.(out, -1, 1) .* 32767)
                 WAV.wavwrite(pcm, joinpath(tmp, id, "$b-$rr.wav"); Fs = SR, nbits = 16,
                              compression = WAV.WAVE_FORMAT_PCM)
@@ -563,6 +565,38 @@ const DG_SHITTY_MIX = Dict(
 const DG_STEREO_MIX = Dict("L" => (1.0, -0.6), "R" => (1.0, 0.6))
 
 const DG_SNARE_POLARITY = ["Snare_bottom" => "Snare_top"]
+
+# CrocellKit, multi-mic version: several mixes of the same recordings. Channels: kick inside /
+# outside the drum, snare top / bottom, hi-hat, ride, toms, overheads L/C/R, room L/R.
+crocell_mix(; close, oh, amb, hh = 0.3close, ride = 0.3close) = Dict(
+    "KDrumInside" => (close, 0.0), "KDrumOutside" => (0.5close, 0.0),
+    "SnareTop" => (close, -0.1), "SnareBottom" => (0.3close, -0.1),
+    "Tom1" => (0.9close, -0.15), "Tom2" => (0.9close, 0.05), "FTom1" => (0.9close, 0.35),
+    "FTom2" => (0.9close, 0.5), "Hihat" => (hh, -0.5), "Ride" => (ride, 0.5),
+    "OHLeft" => (oh, -0.8), "OHRight" => (oh, 0.8), "OHCenter" => (0.5oh, 0.0),
+    "AmbLeft" => (amb, -0.9), "AmbRight" => (amb, 0.9))
+# overheads only (plus a touch of kick and room): the kit as heard from above, like old records
+const CROCELL_VINTAGE_MIX = Dict(
+    "OHLeft" => (1.0, -0.6), "OHRight" => (1.0, 0.6), "OHCenter" => (0.7, 0.0),
+    "KDrumOutside" => (0.35, 0.0), "AmbLeft" => (0.2, -0.8), "AmbRight" => (0.2, 0.8))
+
+"""
+Lo-fi processing for a prepared recording: narrow stereo, band limit 70 Hz – 5 kHz, tape-like
+saturation, 12-bit grit. Keeps the peak at most 0.95.
+"""
+function lofi(y::AbstractMatrix)
+    m = (y[:, 1] .+ y[:, 2]) ./ 2
+    sd = (y[:, 1] .- y[:, 2]) ./ 2 .* 0.3
+    out = similar(y)
+    for (c, x) in enumerate((m .+ sd, m .- sd))
+        highpass!(x, 70); lowpass!(x, 5000); lowpass!(x, 7000)
+        x .= tanh.(2.5 .* x) ./ tanh(2.5)
+        crush!(x, 12, 1)
+        out[:, c] .= x
+    end
+    pk = maximum(abs, out)
+    return pk > 0.95f0 ? out .* Float32(0.95 / pk) : out     # only lower: layers keep their dynamics
+end
 const DG_URL = "https://drumgizmo.org/kits/"
 const DG_LICENSE = """
     License: Creative Commons Attribution 4.0 International (CC BY 4.0)
@@ -621,6 +655,30 @@ const DG_KITS = [
         (18" kick, 14x5 snare, 12" tom, 14" floor tom), 8 channels. The original archive with the
         unchanged WAV and XML files is available at the source below.
         """),
+    # same recordings as the CrocellKit stereo mix, but from the single mics: own mixes
+    (name = "CrocellMixes", url = DG_URL * "CrocellKit/CrocellKit1_1.zip", root = "CrocellKit",
+     xml = "CrocellKit_full.xml",
+     map = ["Kick" => ["KDrumL", "KDrumR"], "Snare" => ["Snare"], "Rim" => ["SnareRim"],
+            "HiHat" => ["HihatClosed"], "HHOpen" => ["HihatOpen"], "HHPedal" => ["HihatPedal"],
+            "Tom" => ["Tom1"], "FloorTom" => ["FTom1"], "Ride" => ["RideR"],
+            "RideBell" => ["RideRBell"], "Crash" => ["CrashL"]],
+     polarity = ["SnareBottom" => "SnareTop", "KDrumOutside" => "KDrumInside"],
+     variants = [
+        (name = "CrocellClose", post = nothing, mix = crocell_mix(close = 1.0, oh = 0.35, amb = 0.0, hh = 0.6, ride = 0.5),
+         desc = "close mics up front, little overhead, no room – dry and direct"),
+        (name = "CrocellStudio", post = nothing, mix = crocell_mix(close = 0.8, oh = 0.8, amb = 0.15),
+         desc = "close mics and overheads balanced, a little room – studio sound"),
+        (name = "CrocellRoom", post = nothing, mix = crocell_mix(close = 0.5, oh = 0.7, amb = 1.2),
+         desc = "lots of room mics – big, live"),
+        (name = "CrocellVintage", post = nothing, mix = CROCELL_VINTAGE_MIX,
+         desc = "overheads only plus a touch of kick and room – natural, like old records"),
+        (name = "CrocellLoFi", post = lofi, mix = crocell_mix(close = 0.8, oh = 0.8, amb = 0.15),
+         desc = "studio mix, narrowed, band-limited (70 Hz – 5 kHz), saturated, 12 bit – hip-hop"),
+     ],
+     credit = """
+        CrocellKit 1.1 (DrumGizmo) – kit of the Danish metal band Crocell (crocell.dk), set up by
+        Andreas; mic setup Jacob Olsen (JBOSound); sampled and prepared by Lars Muldjord (drumgizmo.org).
+        """),
     # fun kit of everyday objects; there are no cymbals, so cup/glass/clap stand in
     (name = "Sommerhack", url = "http://www.drumgizmo.org/kits/sommerhack-kit.zip", root = "sommerhack-kit",
      xml = "sommerhack-kit.xml",
@@ -642,6 +700,8 @@ Downloads one of the `DG_KITS`, extracts only the instruments needed and mixes t
 larger than 1 GB is deleted after a successful build.
 """
 function build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.name), log = println)
+    vs = dg_variants(spec)
+    length(vs) == 1 || (dest = user_kit_dir())             # several mixes: one folder per variant
     given = src !== nothing
     cache = cache_dir()
     given || (src = joinpath(cache, spec.root))
@@ -663,17 +723,20 @@ function build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), sp
     wavs = unique(f for (_, rs) in recs for afs in rs for (_, f, _) in afs)
     missing_wavs = filter(!isfile, wavs)
     isempty(missing_wavs) || unpack(relpath.(missing_wavs, cache))
-    sources = [id => Function[() -> dg_mix(afs, spec.mix; polarity = spec.polarity) for afs in rs]
-               for (id, rs) in recs]
-    build_kit(dest, spec.name, sources; log,
-        header = "# Built by DrumMachine.jl (build_drumgizmo) – $(spec.name) (DrumGizmo), stereo mix by DrumMachine.jl",
-        license = """
-        $(spec.credit)
-        Source: $(spec.url)
-        $DG_LICENSE
-        Changes by DrumMachine.jl: stereo mix of the microphone channels, selection of single
-        recordings, resampling to 44.1 kHz, trimming/fading, conversion to 16 bit, level matching.
-        """)
+    for v in vs
+        sources = [id => Function[() -> dg_mix(afs, v.mix; polarity = spec.polarity) for afs in rs]
+                   for (id, rs) in recs]
+        build_kit(length(vs) == 1 ? dest : joinpath(dest, v.name), v.name, sources; log, post = v.post,
+            header = "# Built by DrumMachine.jl (build_drumgizmo) – $(v.name) (DrumGizmo), stereo mix by DrumMachine.jl",
+            license = """
+            $(spec.credit)$(isempty(v.desc) ? "" : "\nThis variant: " * v.desc * "\n")
+            Source: $(spec.url)
+            $DG_LICENSE
+            Changes by DrumMachine.jl: stereo mix of the microphone channels$(v.post === nothing ? "" : " plus processing (see above)"),
+            selection of single recordings, resampling to 44.1 kHz, trimming/fading, conversion to
+            16 bit, level matching.
+            """)
+    end
     if !given && isfile(archive) && filesize(archive) > 1_000_000_000
         rm(archive; force = true)
         rm(src; recursive = true, force = true)
@@ -681,27 +744,38 @@ function build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), sp
     return dest
 end
 
+"Mixes of a DrumGizmo kit spec: its `variants`, or a single one from `name` and `mix`."
+dg_variants(spec) = hasproperty(spec, :variants) ? spec.variants :
+                    [(name = spec.name, mix = spec.mix, post = nothing, desc = "")]
+
 # ---------------------------------------------------------------------------
 # Automatic download on first start
 # ---------------------------------------------------------------------------
 
 """
-Kits that can be downloaded and built: (name, size label, build function, auto). Kits with
+Kits that can be downloaded and built: (name, size label, build function, auto, kits it
+provides – several for the mixes of one recording). Kits with
 `auto = true` are fetched automatically in the background; the large ones only when chosen in
 the kit menu.
 """
+dgkit(name) = (; kw...) -> build_drumgizmo(DG_KITS[findfirst(k -> k.name == name, DG_KITS)]; kw...)
 const DOWNLOADABLE_KITS = vcat(
-    [(spec.name, "20 MB", (; kw...) -> build_avl(spec; kw...), true) for spec in AVL_KITS],
-    [("Sommerhack", "12 MB", (; kw...) -> build_drumgizmo(DG_KITS[5]; kw...), true),
-     ("ShittyKit", "370 MB", (; kw...) -> build_drumgizmo(DG_KITS[4]; kw...), true),
-     ("CrocellKit", "561 MB", build_crocell, true),
-     ("VirtuosityDrums", "1,2 GB", build_virtuosity, true),
-     ("DRSKit", "2,8 GB", (; kw...) -> build_drumgizmo(DG_KITS[1]; kw...), false),
-     ("MuldjordKit", "2,5 GB", (; kw...) -> build_drumgizmo(DG_KITS[2]; kw...), false),
-     ("Aasimonster", "2,4 GB", (; kw...) -> build_drumgizmo(DG_KITS[3]; kw...), false)])
+    [(spec.name, "20 MB", (; kw...) -> build_avl(spec; kw...), true, [spec.name]) for spec in AVL_KITS],
+    [("Sommerhack", "12 MB", dgkit("Sommerhack"), true, ["Sommerhack"]),
+     ("ShittyKit", "370 MB", dgkit("ShittyKit"), true, ["ShittyKit"]),
+     ("CrocellKit", "561 MB", build_crocell, true, ["CrocellKit"]),
+     ("VirtuosityDrums", "1,2 GB", build_virtuosity, true, ["VirtuosityDrums"]),
+     ("DRSKit", "2,8 GB", dgkit("DRSKit"), false, ["DRSKit"]),
+     ("MuldjordKit", "2,5 GB", dgkit("MuldjordKit"), false, ["MuldjordKit"]),
+     ("Aasimonster", "2,4 GB", dgkit("Aasimonster"), false, ["Aasimonster"]),
+     ("CrocellMixes", "5,6 GB", dgkit("CrocellMixes"), false,
+      [v.name for v in dg_variants(DG_KITS[findfirst(k -> k.name == "CrocellMixes", DG_KITS)])])])
 
-"Downloadable kits that are not installed yet."
-missing_kits() = [k for k in DOWNLOADABLE_KITS if !any(e -> e.name == k[1], kit_entries())]
+"Downloadable kits of which at least one provided kit is not installed yet."
+function missing_kits()
+    have = Set(e.name for e in kit_entries())
+    return [k for k in DOWNLOADABLE_KITS if !all(in(have), k[5])]
+end
 
 "Downloadable kits that are only built on request (large, or automatic download switched off)."
 on_demand_kits() = [k for k in missing_kits() if !(k[4] && auto_kits_enabled())]

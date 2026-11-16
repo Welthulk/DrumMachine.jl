@@ -212,6 +212,8 @@ KITS
                      AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
   DRSKit, MuldjordKit, Aasimonster, ShittyKit, Sommerhack
                      DrumGizmo (drumgizmo.org), stereo mix by us        CC BY 4.0
+  CrocellClose/Studio/Room/Vintage/LoFi
+                     CrocellKit (DrumGizmo), own mixes of the mics      CC BY 4.0
   808 / 909          synthesized
 
 GREETINGS
@@ -237,6 +239,8 @@ KITS
                      AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
   DRSKit, MuldjordKit, Aasimonster, ShittyKit, Sommerhack
                      DrumGizmo (drumgizmo.org), Stereo-Mix von uns      CC BY 4.0
+  CrocellClose/Studio/Room/Vintage/LoFi
+                     CrocellKit (DrumGizmo), eigene Mischungen          CC BY 4.0
   808 / 909          synthetisiert
 
 GRÜSSE
@@ -435,15 +439,21 @@ end
 fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 60, 2, '0'))
 
 """
-    run(; song = preset("Rock: 8tel"), block = true)
+    run(; song = nothing, block = true)
 
-Starts the drum machine. `block=false` returns immediately (for the REPL) and returns
-`(fig, eng)`.
+Starts the drum machine. Without `song` it continues with the song and state of the last session
+(see `load_session`), on the very first start with the preset "Rock: 8tel". `block=false` returns
+immediately (for the REPL) and returns `(fig, eng)`.
 """
-function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Bool = true)
+function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::Bool = true)
     GLMakie.activate!(title = "DrumMachine.jl")
     set_lang!(initial_lang())
     session = new_session()
+    if song === nothing                                    # continue where the last session ended
+        last = load_session()
+        session.restore[] = last
+        song = last === nothing ? preset("Rock: 8tel") : last.song
+    end
     gcpause_set!(gcpause_setting())
     fig, eng, tick! = build_gui(song; audio, session)
     screen = display(fig)
@@ -462,15 +472,19 @@ function run(; song::Song = preset("Rock: 8tel"), block::Bool = true, audio::Boo
     auto_fetch_kits!(post, _ -> (session.kits_changed[] = true))
     # playhead display (runs on the main thread)
     @async begin
+        n = 0
         while isopen(screen)
             cur_tick[]()
+            (n += 1) % 1800 == 0 && save_session(eng, session)    # every ~30 s, only if changed
             sleep(1 / 60)
         end
+        save_session(eng, session)
         gcpause_release!()
         stop_audio!(eng)
     end
     if block
         wait(screen)
+        save_session(eng, session)
         return nothing
     end
     return fig, eng
@@ -507,7 +521,80 @@ editor window and the rebuild callback set by `run`.
 new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = Ref{Any}(nothing),
                  metro_win = Ref{Any}(nothing), screen = Ref{Any}(nothing),
                  kitmsg = Channel{String}(64),            # messages of the background kit download
-                 kits_changed = Threads.Atomic{Bool}(false))
+                 kits_changed = Threads.Atomic{Bool}(false),
+                 edit_path = Ref(""), edit_name = Ref(""),  # edit mode ("Bearbeiten"): file and its song name
+                 edit_on = Ref(false),                    # the toggle itself (may be off with a file loaded)
+                 restore = Ref{Any}(nothing))             # state of the last session, applied once at start
+
+# ---------------------------------------------------------------------------
+# Last session: song and GUI state are stored on exit (and every 30 s while they change) and
+# loaded on the next start.
+# ---------------------------------------------------------------------------
+
+"File with the song of the last session (next to the settings file)."
+last_song_path() = joinpath(dirname(settings_path()), "last_song.toml")
+
+const SESSION_LOCK = ReentrantLock()
+const SESSION_SAVED = Ref("")                             # state written last (skip unchanged saves)
+
+"GUI state that is not part of the song (stored in the settings as `[session]`)."
+session_state(eng, session) = Dict{String,Any}("edit_path" => session.edit_path[], "edit_name" => session.edit_name[],
+                                               "edit_on" => session.edit_on[], "edit_pat" => eng.edit_pat,
+                                               "songmode" => eng.songmode)
+
+"""
+    save_session(eng, session; force = false) -> Bool
+
+Writes the current song to `last_song.toml` and the GUI state to the settings, if anything changed
+since the last save (or `force`). The song file is replaced atomically.
+"""
+function save_session(eng, session; force::Bool = false)
+    lock(SESSION_LOCK) do
+        song = sprint(io -> TOML.print(io, song_to_dict(eng.song); sorted = true))
+        st = session_state(eng, session)
+        key = song * repr(sort(collect(st); by = first))
+        (force || key != SESSION_SAVED[]) || return false
+        try
+            p = last_song_path()
+            mkpath(dirname(p))
+            tmp = p * ".tmp"
+            write(tmp, song)
+            mv(tmp, p; force = true)
+            save_setting!("session", st)
+            SESSION_SAVED[] = key
+            return true
+        catch e
+            @warn L("Sitzung konnte nicht gespeichert werden") exception = e
+            return false
+        end
+    end
+end
+
+"""
+    load_session() -> NamedTuple or nothing
+
+Song and GUI state of the last session; `nothing` if there is none or it cannot be read. A file
+being edited that no longer exists is dropped (edit mode off).
+"""
+function load_session()
+    p = last_song_path()
+    isfile(p) || return nothing
+    song = try
+        load_song(p)
+    catch e
+        @warn L("Letzte Sitzung konnte nicht geladen werden") exception = e
+        return nothing
+    end
+    d = get(load_settings(), "session", Dict{String,Any}())
+    d isa AbstractDict || (d = Dict{String,Any}())
+    path = string(get(d, "edit_path", ""))
+    isfile(path) || (path = "")
+    pat = get(d, "edit_pat", 1)
+    return (song = song, edit_path = path, edit_name = path == "" ? "" : string(get(d, "edit_name", "")),
+            edit_on = path != "" && get(d, "edit_on", false) === true,
+            edit_pat = pat isa Integer ? clamp(Int(pat), 1, length(song.patterns)) : 1,
+            songmode = get(d, "songmode", false) === true)
+end
 
 function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new_session())
     kits = kit_entries()                                  # samples are loaded on selection
@@ -518,6 +605,14 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     if eng === nothing
         eng = Engine(song, get_kit(kits[kitidx]))
         eng.song.kit = kitnames[kitidx]
+        r = session.restore[]
+        if r !== nothing
+            eng.edit_pat = r.edit_pat
+            eng.songmode = r.songmode
+            session.edit_path[] = r.edit_path
+            session.edit_name[] = r.edit_name
+            session.edit_on[] = r.edit_on
+        end
         audio && start_audio!(eng)
     end
 
@@ -562,7 +657,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     playbtn = Button(top[1, 1], label = "▶  Play", width = 100, buttoncolor = C_ACTIVE, labelcolor = C_BG,
                      buttoncolor_hover = C_LEVEL_H[2], labelcolor_hover = C_BG, labelcolor_active = C_BG,
                      font = :bold)
-    modebtn = Button(top[1, 2], label = L("Modus: Pattern"), width = 140)
+    modebtn = Button(top[1, 2], label = eng.songmode ? L("Modus: Song") : L("Modus: Pattern"), width = 140)
     Label(top[1, 3], L("Einzähler"), halign = :right, color = C_TEXT2)
     ci_toggle = Toggle(top[1, 4], active = false)
     Label(top[1, 5], "BPM", halign = :right, color = C_TEXT2)
@@ -1218,8 +1313,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(f -> f || commit_repeats!(), rep_tb.focused)
     # Edit mode ("Bearbeiten"): "Speichern" overwrites the file being edited without asking.
     # It is switched on when a song file is loaded or saved and off for presets, new songs and copies.
-    edit_path = Ref("")                          # file being edited ("" = none)
-    edit_name = Ref("")                          # song name when that file was loaded/saved
+    edit_path = session.edit_path                # file being edited ("" = none), kept across rebuilds
+    edit_name = session.edit_name                # song name when that file was loaded/saved
     function set_edit!(path::AbstractString)
         edit_path[] = path
         edit_name[] = path == "" ? "" : eng.song.name
@@ -1227,6 +1322,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         edit_lab.text[] = path == "" ? "" : basename(path)
     end
     on(edit_toggle.active) do v
+        session.edit_on[] = v                     # remembered: switched off stays off after a restart
         (v && edit_path[] == "") || return
         status[] = L("Bearbeiten: Es ist noch keine Datei geladen – „Speichern“ legt sie an.")
     end
@@ -1410,6 +1506,16 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     sw_lab.text[] = "$(round(Int, 100song.swing))%"
     refresh_all!()
     status[] = HELP
+    if edit_path[] != ""                          # edit mode of the last session / before the rebuild
+        set_toggle!(edit_toggle, session.edit_on[])
+        edit_lab.text[] = basename(edit_path[])
+    end
+    r = session.restore[]
+    if r !== nothing                              # first window after start: say what was restored
+        session.restore[] = nothing
+        status[] = L("Letzte Sitzung: \"{1}\"  ({2})", eng.song.name, song_summary(eng.song)) *
+                   (session.edit_on[] ? L(" – Bearbeiten: {1}", basename(edit_path[])) : "")
+    end
 
     last = Ref((-2, -2, false, 0))
     function tick!()

@@ -540,6 +540,42 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
     end
 
+    @testset "Letzte Sitzung" begin
+        D = DrumMachine
+        cfg = mktempdir()
+        withenv("XDG_CONFIG_HOME" => cfg) do
+            @test D.load_session() === nothing                    # first start: nothing stored
+            s = D.preset("Rock: 8tel")
+            push!(s.patterns, copy(s.patterns[1]))
+            s.bpm = 123; s.kit = "808 (Synth)"; s.chain = [1, 2, 2]
+            eng = D.Engine(s, D.kit_808())
+            eng.edit_pat = 2; eng.songmode = true
+            ses = D.new_session()
+            f = joinpath(cfg, "mein.toml"); D.save_song(f, s)
+            ses.edit_path[] = f; ses.edit_name[] = s.name
+            @test D.save_session(eng, ses)
+            @test !D.save_session(eng, ses)                       # unchanged: not written again
+            r = D.load_session()
+            @test r.song.bpm == 123 && r.song.kit == "808 (Synth)" && r.song.chain == [1, 2, 2]
+            @test r.edit_pat == 2 && r.songmode && r.edit_path == f && r.edit_name == s.name
+            @test !r.edit_on                                      # toggle was not switched on
+            ses.edit_on[] = true; D.save_session(eng, ses)
+            @test D.load_session().edit_on
+            rm(f)                                                 # edited file gone: edit mode off
+            r = D.load_session()
+            @test r.edit_path == "" && r.edit_name == "" && !r.edit_on
+            write(D.last_song_path(), "kaputt = [")              # unreadable file: fresh start
+            @test D.load_session() === nothing
+        end
+    end
+    @testset "Lo-Fi behält die Dynamik" begin
+        D = DrumMachine
+        x = Float32.(0.5 .* sin.(2π .* 200 .* (0:4409) ./ 44100))
+        pk(a) = maximum(abs, D.lofi(hcat(a .* x, a .* x)))
+        @test pk(1.8f0) ≈ 0.95f0 atol = 1e-4                     # loud: limited to 0.95
+        @test pk(0.02f0) < 0.1                                    # quiet stays quiet
+        @test pk(0.2f0) > pk(0.02f0)
+    end
     @testset "GC-Pause" begin
         D = DrumMachine
         g = D.GCPause(0, false, 0.0, false, 0)
