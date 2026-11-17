@@ -13,7 +13,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 - Up to 24 patterns per song, played in a chain (`1x3 2` = 1 1 1 2).
 - Own tempo per pattern, so the tempo can change within a song.
 - *+ Fill* creates a fill pattern from the current groove, 7 styles.
-- 49 presets: rock, funk, shuffle, blues, jazz, latin, march, odd meters.
+- 55 presets: rock, funk, shuffle, blues, jazz, latin, hip-hop, drum and bass, jungle, march, odd meters.
 - Example songs with form, fills and track effects in `songs/`.
 
 ## Sound

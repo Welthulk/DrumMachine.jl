@@ -502,6 +502,98 @@ const PRESETS = Pair{String,Function}[
         Song(name = "R&B: Neo Soul", bpm = 72, swing = 0.62, patterns = [g])
     end,
 
+    # ------------------------------------------------------------------ Drum and Bass / Jungle
+    "DnB: Two-Step" => function ()
+        # The basic DnB beat: kick on the 1 and the 3+, backbeat on 2 and 4, 8th hi-hat.
+        # Variation with ghost notes, open hi-hat and a kick after the 4.
+        #             1 e + a 2 e + a 3 e + a 4 e + a
+        g = P(HiHat  = "x.x.x.x.x.x.x.x.",
+              Snare  = "....X.......X...",
+              Kick   = "X.........X.....")
+        v = P(HiHat  = "x.x.x.x.x.x.x...",
+              HHOpen = "..............x.",
+              Snare  = "....X..o.o..X...",
+              Kick   = "X.........X..x..")
+        f = P(HiHat  = "x.x.x.x.........",
+              Snare  = "....X...XxXx....",
+              Tom    = "............xx..",
+              FloorTom = "..............xX",
+              Kick   = "X.........X.....")
+        Song(name = "DnB: Two-Step", bpm = 174, patterns = [with_crash(g), g, v, f],
+             chain = [1, 2, 2, 3, 2, 2, 3, 4])
+    end,
+
+    "DnB: Half-Time" => function ()
+        # Same tempo, backbeat only on the 3: feels like 87 BPM.
+        g = P(HiHat = "x.x.x.x.x.x.x.x.",
+              Snare = "........X.......",
+              Kick  = "X.........X.....")
+        v = P(HiHat = "x.x.x.x.x.x.x.x.",
+              Snare = "........X..o..o.",
+              Kick  = "X.....X...X.....")
+        Song(name = "DnB: Half-Time", bpm = 174, patterns = [g, v], chain = [1, 1, 1, 2])
+    end,
+
+    "DnB: Liquid (Ride, Ghost Notes)" => function ()
+        # Softer two-step: 8th ride, ghost notes around the backbeat, double kick on the 3+ 3a.
+        g = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o..X..o",
+              Kick  = "X.........XX....")
+        v = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = ".o..X..o.o..X.o.",
+              Kick  = "X.X.......X.....")
+        Song(name = "DnB: Liquid (Ride, Ghost Notes)", bpm = 172, patterns = [g, v], chain = [1, 1, 1, 2])
+    end,
+
+    "DnB: Techstep" => function ()
+        # Harder and sparser: hi-hat only on the off-beats, syncopated kick.
+        g = P(HiHat = "..x...x...x...x.",
+              Snare = "....X.......X...",
+              Kick  = "X.X.......X..X..")
+        v = P(HiHat  = "..x...x...x.....",
+              HHOpen = "..............x.",
+              Snare  = "....X.......X..x",
+              Kick   = "X.X.....X.X.....")
+        Song(name = "DnB: Techstep", bpm = 174, patterns = [g, v], chain = [1, 1, 1, 2])
+    end,
+
+    "Jungle: Amen-Chops" => function ()
+        # The Amen break at jungle tempo, cut up: bars 1 and 3 of the break, a chop that
+        # repeats the first half bar, and a snare roll with double strokes (32nds) into the crash.
+        #             1 e + a 2 e + a 3 e + a 4 e + a
+        a = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o..X..o",
+              Kick  = "X.X.......XX....")
+        b = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o....X.",
+              Kick  = "X.X.......X.....")
+        c = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o....X..o",
+              Kick  = "X.X.....X.X.....")
+        r = P(Ride  = "x.x.x.x.........",
+              Snare = "....X..o.o.oXxXx",
+              Kick  = "X.X.............")
+        set_orns!(r, Dict("Snare" => "............2222"))
+        Song(name = "Jungle: Amen-Chops", bpm = 165, patterns = [with_crash(a), a, b, c, r],
+             chain = [1, 2, 2, 3, 2, 2, 4, 5])
+    end,
+
+    "Jungle: Ragga (One Drop / Amen)" => function ()
+        # Jungle switches between reggae half-time and the break: 4 bars one drop
+        # (kick and side stick on the 3), then 4 bars Amen.
+        d = P(HiHat = "x.o.x.o.x.o.x.o.",
+              Rim   = "........X.......",
+              Kick  = "........X.......")
+        a = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o..X..o",
+              Kick  = "X.X.......XX....")
+        b = P(Ride  = "x.x.x.x.x.x.x.x.",
+              Snare = "....X..o.o....X.",
+              Kick  = "X.X.......X.....")
+        Song(name = "Jungle: Ragga (One Drop / Amen)", bpm = 165, patterns = [d, with_crash(a), a, b],
+             chain = [1, 1, 1, 1, 2, 3, 3, 4])
+    end,
+
     # ------------------------------------------------------------------ March
     "Marsch: Spielmannszug (Flams, Drags, Rolls)" => function ()
         # Carnival marching band: big drum on every beat, snare with ornaments (row 2):

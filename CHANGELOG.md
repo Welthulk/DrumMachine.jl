@@ -9,6 +9,7 @@
 - Setup editor to put setups together. Loop WAVs are not accepted.
 - `start_drum.sh --player` starts only the player. `--prio` raises the priority and runs the audio thread in realtime (needs group `pipewire`). Options can be combined.
 - L⇄R button per track.
+- Presets *DnB: Two-Step*, *DnB: Half-Time*, *DnB: Liquid*, *DnB: Techstep*, *Jungle: Amen-Chops*, *Jungle: Ragga (One Drop / Amen)*.
 - Example song *Karnevalsmarsch (Spielmannszug-Stil)* and preset *Marsch: Spielmannszug*.
 - Player, setup editor, metronome and WAV editor are compiled into the sysimage.
 - Documentation website ([welthulk.github.io/DrumMachine.jl](https://welthulk.github.io/DrumMachine.jl/dev/)) and tests on GitHub Actions.
