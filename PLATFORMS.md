@@ -13,6 +13,8 @@ are very welcome: issues and pull requests are appreciated.
 | GLMakie | window and graphics (needs OpenGL 3.3) |
 | PortAudio | sound output (brings its own PortAudio library) |
 | WAV, FLAC_jll | reading samples, WAV export |
+| LibArchive_jll | unpacking the downloaded sample kits (bsdtar: zip and rar) |
+| FFMPEG_jll | AAC export in the WAV editor |
 | JSON | Drum-JSON import |
 | PrecompileTools | faster start |
 | Downloads, Markdown, Random, TOML | standard libraries |
@@ -22,16 +24,14 @@ are very welcome: issues and pull requests are appreciated.
 | Program | Used for | Without it |
 |---|---|---|
 | `zenity` or `kdialog` | file dialogs: open file, JSON import, WAV editor | these dialogs do not open; songs can still be loaded from the lists |
-| `bsdtar` (or `unrar`, `unzip`) | unpacking the downloaded sample kits | only BlackPearl and the synth kits |
-| `ffmpeg` | AAC export in the WAV editor | no AAC export |
 | `xdg-open` | opening links (GitHub, Docs); macOS uses `open`, Windows `start` | links do not open |
 | `bash` | `start_drum.sh` with the sysimage | start with `julia -t auto --project=. run.jl` |
 
 **Known gaps for a port:**
 
-- Windows: no file dialogs (only zenity/kdialog are supported); the built-in `tar.exe` is not
-  looked for, so the kits cannot be unpacked; `start_drum.sh` needs Git Bash or WSL.
-- macOS: zenity and ffmpeg are available via Homebrew; OpenGL is deprecated there but still
+- Windows: no file dialogs (only zenity/kdialog are supported); `start_drum.sh` needs Git Bash
+  or WSL.
+- macOS: zenity is available via Homebrew; OpenGL is deprecated there but still
   available. The GC pause ends below 1 GB of free memory, which macOS often reports even when
   enough RAM is available.
 - `start_drum.sh --prio` and the realtime audio thread use Linux scheduling (`nice`, SCHED_FIFO);

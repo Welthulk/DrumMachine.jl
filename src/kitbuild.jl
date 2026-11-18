@@ -2,11 +2,12 @@
 # Runs inside the package so it also works for an installed (read-only) package: archives go to
 # the cache directory, built kits to the user's data directory. The scripts in tools/ call this.
 #
-# Steps per kit: download (with progress), extract (bsdtar, or unrar/unzip), pick velocity layers by
+# Steps per kit: download (with progress), extract (bsdtar from LibArchive_jll), pick velocity layers by
 # measured level, resample to 44.1 kHz, trim, write 16-bit WAVs, calibrate the balance.
 
 import Downloads
 using FLAC_jll: flac
+using LibArchive_jll: bsdtar
 
 "User data directory (XDG): built kits live in its `kits` folder."
 data_dir() = joinpath(get(ENV, "XDG_DATA_HOME", joinpath(homedir(), ".local", "share")), "DrumMachine")
@@ -149,18 +150,10 @@ function fetch_file(url, file, label; log = println)
     return file
 end
 
-"Extracts `archive` into `dir` (only `patterns` if given) with bsdtar, or the named fallback tool."
-function extract(archive, dir, patterns = String[]; fallback::Symbol)
+"Extracts `archive` (zip, rar, tar) into `dir` (only `patterns` if given) with bsdtar from LibArchive_jll."
+function extract(archive, dir, patterns = String[])
     mkpath(dir)
-    if Sys.which("bsdtar") !== nothing
-        Base.run(`bsdtar -xf $archive -C $dir $patterns`)
-    elseif fallback == :unrar && Sys.which("unrar") !== nothing
-        Base.run(`unrar x -o+ -inul $archive $dir/`)
-    elseif fallback == :unzip && Sys.which("unzip") !== nothing
-        Base.run(`unzip -q -o $archive $patterns -d $dir`)
-    else
-        error(L("Zum Entpacken wird bsdtar (Paket libarchive-tools) oder {1} benötigt.", fallback))
-    end
+    Base.run(`$(bsdtar()) -xf $archive -C $dir $patterns`)
     return dir
 end
 
@@ -196,7 +189,7 @@ function build_crocell(; src = nothing, dest = joinpath(user_kit_dir(), "Crocell
         if !isdir(joinpath(src, "Snare"))
             rar = fetch_file(CROCELL_URL, joinpath(cache, "CrocellKit_Stereo_MIX.rar"), "CrocellKit"; log)
             log(L("{1} wird entpackt …", "CrocellKit"))
-            extract(rar, cache; fallback = :unrar)
+            extract(rar, cache)
         end
     end
     loader(f) = () -> WAV.wavread(f; format = "double")[1:2]
@@ -292,7 +285,7 @@ function build_virtuosity(; src = nothing, dest = joinpath(user_kit_dir(), "Virt
         if !isdir(joinpath(src, "Samples", "oh"))
             zip = fetch_file(VIRTUOSITY_URL, joinpath(cache, basename(VIRTUOSITY_URL)), "VirtuosityDrums"; log)
             log(L("{1} wird entpackt …", "VirtuosityDrums"))
-            extract(zip, src, ["Samples/$m/*" for m in VIRTUOSITY_MICS]; fallback = :unzip)
+            extract(zip, src, ["Samples/$m/*" for m in VIRTUOSITY_MICS])
         end
     end
     sdir = virtuosity_samples(src)
@@ -428,7 +421,7 @@ function build_avl(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.nam
         if !isdir(src)
             zip = fetch_file(AVL_BASE * spec.zip, joinpath(cache, spec.zip), spec.name; log)
             log(L("{1} wird entpackt …", spec.name))
-            extract(zip, cache; fallback = :unzip)
+            extract(zip, cache)
         end
     end
     sfz = only(f for f in readdir(src; join = true) if endswith(lowercase(f), ".sfz"))
@@ -710,7 +703,7 @@ function build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), sp
         given && error(L("Dateien fehlen in {1}", src))
         fetch_file(spec.url, archive, spec.name; log)
         log(L("{1} wird entpackt …", spec.name))
-        extract(archive, cache, patterns; fallback = :unzip)
+        extract(archive, cache, patterns)
     end
     isfile(joinpath(src, spec.xml)) || unpack(["$(spec.root)/*.xml"])   # kit and instrument files
     insts = dg_instruments(joinpath(src, spec.xml))
@@ -749,14 +742,14 @@ dg_variants(spec) = hasproperty(spec, :variants) ? spec.variants :
                     [(name = spec.name, mix = spec.mix, post = nothing, desc = "")]
 
 # ---------------------------------------------------------------------------
-# Automatic download on first start
+# Download on request (kit menu), optionally automatic
 # ---------------------------------------------------------------------------
 
 """
 Kits that can be downloaded and built: (name, size label, build function, auto, kits it
-provides – several for the mixes of one recording). Kits with
-`auto = true` are fetched automatically in the background; the large ones only when chosen in
-the kit menu.
+provides – several for the mixes of one recording). All of them appear in the kit menu as
+"(download, size)" and are built when chosen. With the setting `auto_kits = true` the kits with
+`auto = true` are fetched in the background at start; the large ones always need to be chosen.
 """
 dgkit(name) = (; kw...) -> build_drumgizmo(DG_KITS[findfirst(k -> k.name == name, DG_KITS)]; kw...)
 const DOWNLOADABLE_KITS = vcat(
@@ -777,14 +770,15 @@ function missing_kits()
     return [k for k in DOWNLOADABLE_KITS if !all(in(have), k[5])]
 end
 
-"Downloadable kits that are only built on request (large, or automatic download switched off)."
+"Downloadable kits that are only built on request (all of them unless `auto_kits` is on)."
 on_demand_kits() = [k for k in missing_kits() if !(k[4] && auto_kits_enabled())]
 
 """
-Automatic download is on unless the setting `auto_kits = false` is stored or the environment
-variable `DRUMMACHINE_NO_KIT_DOWNLOAD` is set.
+The automatic download is off by default: nothing is downloaded until a kit is chosen in the kit
+menu. The setting `auto_kits = true` switches it on; the environment variable
+`DRUMMACHINE_NO_KIT_DOWNLOAD` keeps it off regardless of the setting.
 """
-auto_kits_enabled() = !haskey(ENV, "DRUMMACHINE_NO_KIT_DOWNLOAD") && get(load_settings(), "auto_kits", true) != false
+auto_kits_enabled() = !haskey(ENV, "DRUMMACHINE_NO_KIT_DOWNLOAD") && get(load_settings(), "auto_kits", false) === true
 
 "Kits being built right now (so a kit is never built twice at the same time)."
 const KITS_BUILDING = Set{String}()
@@ -823,7 +817,7 @@ end
 
 Builds all missing kits marked `auto` one after another on a background thread. `post(msg)` gets
 progress and error messages, `done(name)` is called after each finished kit. Returns `nothing`
-if there is nothing to do or the automatic download is switched off.
+if there is nothing to do or the automatic download is off (the default, see `auto_kits_enabled`).
 """
 function auto_fetch_kits!(post::Function, done::Function)
     auto_kits_enabled() || return nothing

@@ -6,7 +6,7 @@ const WE_SEL    = Makie.to_color("#33547c")      # selection background
 const WE_CURSOR = Makie.to_color("#ffd59e")      # edit cursor
 const WE_PLAY   = Makie.to_color("#7fb2ff")      # playhead
 
-const WE_BITS = [("16 Bit", 16), ("24 Bit", 24), ("32 Bit Float", 32), ("AAC (.m4a)", 0)]   # 0 = AAC via ffmpeg   # (German display key, bits)
+const WE_BITS = [("16 Bit", 16), ("24 Bit", 24), ("32 Bit Float", 32), ("AAC (.m4a)", 0)]   # 0 = AAC via ffmpeg (FFMPEG_jll)   # (German display key, bits)
 const WE_EQF = [("250 Hz", 250), ("500 Hz", 500), ("800 Hz", 800), ("1.6 kHz", 1600), ("3.2 kHz", 3200)]
 
 "Bit depth as shown to the user."
@@ -513,7 +513,7 @@ function wave_editor_figure(eng::Engine; wave::Union{Nothing,Wave} = nothing, la
         b = WE_BITS[i][2]
         if b == 0                              # AAC: export copy for messengers, the WAV stays as it is
             if !has_ffmpeg()
-                status[] = L("AAC braucht das Programm ffmpeg (z. B. sudo apt install ffmpeg).")
+                status[] = L("ffmpeg ist auf dieser Plattform nicht verfügbar.")
                 refresh_info!(); return
             end
             aac[] = true; refresh_info!()

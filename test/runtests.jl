@@ -438,11 +438,11 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
                 x = Float32.(0.3 .* sinpi.(2 * 440 .* (0:2fs-1) ./ fs))
                 p = D.save_aac(joinpath(dir, "t.m4a"), Wave(hcat(x, x), fs); range = 1:fs)
                 @test filesize(p) > 1000
-                info = read(`ffprobe -v error -show_entries stream=codec_name,channels -of csv=p=0 $p`, String)
+                info = read(`$(D.FFMPEG_jll.ffprobe()) -v error -show_entries stream=codec_name,channels -of csv=p=0 $p`, String)
                 @test strip(info) == "aac,2"
             end
         else
-            @test_skip "ffmpeg not installed"
+            @test_skip "FFMPEG_jll not available on this platform"
         end
     end
 
@@ -481,8 +481,19 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             blob = joinpath(dir, "blob.bin"); write(blob, rand(UInt8, 3_000_000))
             got = D.fetch_file("file://" * blob, joinpath(dir, "cache", "blob.bin"), "Test"; log = m -> push!(msgs, m))
             @test read(got) == read(blob) && !isfile(got * ".part")
-            withenv("DRUMMACHINE_NO_KIT_DOWNLOAD" => "1") do
-                @test !D.auto_kits_enabled() && D.auto_fetch_kits!(println, println) === nothing
+            # unpacking with bsdtar from LibArchive_jll (zip made by bsdtar itself)
+            zip = joinpath(dir, "t.zip")
+            cd(() -> Base.run(`$(D.bsdtar()) -a -cf $zip blob.bin`), dir)
+            @test read(joinpath(D.extract(zip, joinpath(dir, "x"), ["blob.bin"]), "blob.bin")) == read(blob)
+            # automatic download only with auto_kits = true, never with DRUMMACHINE_NO_KIT_DOWNLOAD
+            withenv("XDG_CONFIG_HOME" => joinpath(dir, "cfg"), "DRUMMACHINE_NO_KIT_DOWNLOAD" => nothing) do
+                @test !D.auto_kits_enabled()                                    # default: off
+                @test length(D.on_demand_kits()) == length(D.missing_kits())   # all in the kit menu
+                D.save_setting!("auto_kits", true)
+                @test D.auto_kits_enabled()
+                withenv("DRUMMACHINE_NO_KIT_DOWNLOAD" => "1") do
+                    @test !D.auto_kits_enabled() && D.auto_fetch_kits!(println, println) === nothing
+                end
             end
         end
     end

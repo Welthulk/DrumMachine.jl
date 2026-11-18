@@ -639,8 +639,15 @@ const PRESETS = Pair{String,Function}[
     end,
 ]
 
+"Names of all built-in grooves, in menu order; see [`preset`](@ref)."
 const PRESET_NAMES = first.(PRESETS)
 
+"""
+    preset(name) -> Song
+
+A new copy of the built-in groove `name` (one of [`PRESET_NAMES`](@ref), e.g. `"Rock: 8tel"`).
+Unknown names raise an error that lists the available ones.
+"""
 function preset(name::AbstractString)
     k = findfirst(p -> p.first == name, PRESETS)
     k === nothing && error(L("Unbekanntes Preset \"{1}\". Verfügbar: {2}", name, join(PRESET_NAMES, ", ")))

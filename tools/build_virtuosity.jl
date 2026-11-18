@@ -5,6 +5,6 @@
 #   julia --project=. tools/build_virtuosity.jl /path/to/extracted/folder
 #
 # Result: ~/.local/share/DrumMachine/kits/VirtuosityDrums (DRUMMACHINE_KIT_DIR overrides the
-# folder). Extracted with `bsdtar` or `unzip`; FLAC is decoded with the flac from FLAC_jll.
+# folder). Extracted with bsdtar from LibArchive_jll; FLAC is decoded with the flac from FLAC_jll.
 using DrumMachine
 DrumMachine.build_virtuosity(; src = isempty(ARGS) ? nothing : ARGS[1])

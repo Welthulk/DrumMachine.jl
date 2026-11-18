@@ -2,7 +2,7 @@
 
 julia_version = "1.13.2"
 manifest_format = "2.1"
-project_hash = "f2b47467e8b6da347c06467a8e03bfeb775e99bd"
+project_hash = "6b4daa68df395ae5426edf5d7e29479815aa2f37"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -101,6 +101,13 @@ version = "1.1.2"
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 version = "1.11.0"
+
+[[deps.Attr_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "d334fb21c602553d9582d69f2556ba377c70962d"
+registries = "General"
+uuid = "1fd713ca-387f-5abc-8002-d8b8b1623b73"
+version = "2.6.0+0"
 
 [[deps.Automa]]
 deps = ["PrecompileTools", "TranscodingStreams"]
@@ -409,10 +416,10 @@ uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.7.0"
 
 [[deps.DrumMachine]]
-deps = ["Downloads", "FLAC_jll", "GLMakie", "JSON", "Markdown", "PortAudio", "PrecompileTools", "Random", "TOML", "WAV"]
+deps = ["Downloads", "FFMPEG_jll", "FLAC_jll", "GLMakie", "JSON", "LibArchive_jll", "Markdown", "PortAudio", "PrecompileTools", "Random", "TOML", "WAV"]
 path = "."
 uuid = "d7327aa8-29c9-46ee-884d-493085bbc330"
-version = "1.0.0"
+version = "1.1.0"
 
 [[deps.EarCut_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1023,6 +1030,13 @@ registries = "General"
 uuid = "8cdb02fc-e678-4876-92c5-9defec4f444e"
 version = "0.3.1"
 
+[[deps.LibArchive_jll]]
+deps = ["Artifacts", "Attr_jll", "Bzip2_jll", "Expat_jll", "JLLWrappers", "Libdl", "Libiconv_jll", "Lz4_jll", "OpenSSL_jll", "XZ_jll", "Zlib_jll", "Zstd_jll", "acl_jll"]
+git-tree-sha1 = "f93cda8eeee5c4c8b093f60a5396e7d9c0ef5dd2"
+registries = "General"
+uuid = "1e303b3e-d4db-56ce-88c4-91e52606a1a8"
+version = "3.8.11+0"
+
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
@@ -1138,6 +1152,13 @@ version = "1.0.6"
 [[deps.Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
+
+[[deps.Lz4_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "7dc3b0621d7942324cc3ed3272b4a491fd5cffa7"
+registries = "General"
+uuid = "5ced341a-0733-55b8-9ab6-a4889d929147"
+version = "1.11.1+0"
 
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "oneTBB_jll"]
@@ -2126,6 +2147,13 @@ version = "1.3.2+0"
 deps = ["CompilerSupportLibraries_jll", "Libdl"]
 uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
 version = "1.5.7+1"
+
+[[deps.acl_jll]]
+deps = ["Artifacts", "Attr_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "3ffd8bf314cf40835263d8186c27fcc2397c1c34"
+registries = "General"
+uuid = "ed5aba05-e74d-5cf7-8b09-107ba3463b8e"
+version = "2.4.0+0"
 
 [[deps.alsa_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]

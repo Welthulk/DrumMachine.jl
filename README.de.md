@@ -3,6 +3,7 @@
 [![main](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FWelthulk%2FDrumMachine.jl%2Fmain%2FProject.toml&query=%24.version&label=main&color=orange)](https://github.com/Welthulk/DrumMachine.jl)
 [![Release](https://img.shields.io/github/v/release/Welthulk/DrumMachine.jl?label=release)](https://github.com/Welthulk/DrumMachine.jl/releases)
 [![CI](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml)
+[![Coverage](https://codecov.io/gh/Welthulk/DrumMachine.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Welthulk/DrumMachine.jl)
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://welthulk.github.io/DrumMachine.jl/dev/)
 [![Julia](https://img.shields.io/badge/Julia-1.13-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![License](https://img.shields.io/github/license/Welthulk/DrumMachine.jl)](LICENSE)
@@ -41,16 +42,9 @@ und eine Soundkarte. PortAudio bringt Julia selbst mit.
    julia --project=. -e 'using Pkg; Pkg.instantiate()'
    ```
 
-3. **Empfohlene Systemprogramme** (Debian/Ubuntu):
-
-   ```bash
-   sudo apt install libarchive-tools zenity ffmpeg
-   ```
-
-   - `libarchive-tools` (bsdtar) entpackt beim ersten Start die großen Sample-Kits
-     (Alternativen: `unrar` und `unzip`)
-   - `zenity` (GNOME) oder `kdialog` (KDE) für die Datei-Dialoge
-   - `ffmpeg` nur für den AAC-Export im WAV-Editor
+3. **Empfohlenes Systemprogramm:** `zenity` (GNOME) oder `kdialog` (KDE) für die Datei-Dialoge
+   (`sudo apt install zenity`). Zum Entpacken der Kits (bsdtar) und für den AAC-Export (ffmpeg)
+   bringt das Paket `LibArchive_jll` und `FFMPEG_jll` mit, dafür muss nichts installiert werden.
 
 ## Plattformen
 
@@ -112,9 +106,10 @@ Setup-Player. Dieselben Seiten gibt es online:
 
 ## Kits
 
-Nur BlackPearl liegt im Repo, die übrigen Kits werden beim ersten Start im Hintergrund geladen
-und gebaut (zusammen etwa 2,2 GB, Fortschritt in der Statuszeile). Liste der Kits mit Herkunft,
-Lizenzen und Größen, der Gain pro Kit, Abschalten des Downloads und Kits von Hand bauen:
+Nur BlackPearl liegt im Repo. Die übrigen Kits stehen im Kit-Menü als „(laden, Größe)“ und
+werden erst geladen und gebaut, wenn man sie dort wählt (im Hintergrund, Fortschritt in der
+Statuszeile); ohne das wird nichts heruntergeladen. Liste der Kits mit Herkunft, Lizenzen und
+Größen, der Gain pro Kit, der automatische Download (`auto_kits = true`) und Kits von Hand bauen:
 [KITS.md](KITS.md) (englisch).
 
 ## Lizenz

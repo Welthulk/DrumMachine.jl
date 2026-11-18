@@ -12,6 +12,14 @@ const ORN_CHARS = ('.', '2', 'z', 'f', 'r')
 const ORN_NAMES = ("keine", "Doppelschlag", "Buzz-Roll", "Flam", "Drag")   # i18n-ok: shown via Ls()
 const ORN_DOUBLE, ORN_BUZZ, ORN_FLAM, ORN_DRAG = 0x01, 0x02, 0x03, 0x04
 
+"""
+    Pattern(steps = 16)
+
+One bar: a grid of 11 tracks × up to 32 steps. `grid[t, s]` is the level of the hit on track `t`
+at step `s` (0 = off, 1 = ghost note, 2 = normal, 3 = accent), `orn[t, s]` its ornament
+(0 = none, 1 = double stroke, 2 = buzz roll, 3 = flam, 4 = drag). `bpm > 0` gives the pattern its
+own tempo, 0 uses the song tempo. Usually built with [`pattern_from_rows`](@ref).
+"""
 mutable struct Pattern
     steps::Int
     grid::Matrix{UInt8}          # NTRACKS × MAXSTEPS
@@ -31,6 +39,17 @@ const MOD_DEFAULTS = Dict("Chorus" => (mix = 0.8, rate = 0.8, depth = 0.8, fb = 
                           "Flanger" => (mix = 1.0, rate = 0.3, depth = 0.9, fb = 0.75))
 const EQ_MIDF_DEFAULT = 800.0
 
+"""
+    TrackParams(; vol = 1, pan = 0, pitch = 0, mute = false, solo = false, eq_low = 0, eq_mid = 0,
+                eq_midf = 800, eq_high = 0, mod = 1, mod_mix = 0.5, mod_rate = 0.8, mod_depth = 0.5,
+                mod_fb = 0, swap = false)
+
+Mixer settings of one track of a [`Song`](@ref): volume as linear factor (0 to 4, the slider
+shows it in dB), pan offset (-1 to 1), pitch in
+semitones, mute/solo, 3-band EQ in dB (-12 to +12, mid frequency `eq_midf` 200 to 6000 Hz),
+modulation (`mod`: 1 = off, 2 = chorus, 3 = flanger, with mix, rate in Hz, depth, feedback) and
+`swap` (mirror left and right).
+"""
 mutable struct TrackParams
     vol::Float32                 # 0 … 1.5
     pan::Float32                 # offset from the kit panning, -1 … 1
@@ -89,6 +108,19 @@ OrnTuning(; flam_ms = 30.0, drag_ms = 45.0, buzz_ms = 16.0, grace = 1.0) = OrnTu
 Base.copy(o::OrnTuning) = OrnTuning(o.flam_ms, o.drag_ms, o.buzz_ms, o.grace)
 const ORN_TUNING_RANGES = (flam_ms = 10:1:80, drag_ms = 15:1:80, buzz_ms = 8:1:40, grace = 0.2:0.05:1.5)
 
+"""
+    Song(; name, bpm = 100, swing = nothing, swing_on = 0, steps_per_beat = 4,
+         patterns = [Pattern(16)], chain = [1], kit = "CrocellKit", fx = "Clean", fxmix = 0.25,
+         master = 0.8, repeats = 8, countin = 1, click = false, mono = false, swap_lr = false,
+         loop = false, orn = OrnTuning())
+
+A song: its `patterns`, the order in which they are played (`chain`, pattern numbers), tempo,
+grid (`steps_per_beat`: 2 = 8ths, 3 = 8th triplets, 4 = 16ths, 6 = 16th triplets, 8 = 32nds),
+swing (0.5 = straight, 2/3 = triplet, 0.75 = dotted; `swing_on` 0 = auto, 8 or 16), kit name,
+room effect and the export settings (`repeats` of the chain, count-in bars, click, mono, loop).
+`tracks` holds one [`TrackParams`](@ref) per track. Saved and loaded with [`save_song`](@ref) and
+[`load_song`](@ref); the file format is described on the page *Song format*.
+"""
 mutable struct Song
     name::String
     bpm::Float64
@@ -149,6 +181,12 @@ function level_from_char(c::Char)
     error(L("Unbekanntes Rasterzeichen '{1}' (erlaubt: . o x X)", c))
 end
 
+"""
+    row_string(p::Pattern, t::Int) -> String
+
+Track `t` of `p` as text, one character per step: `.` off, `o` ghost note, `x` normal, `X` accent.
+The inverse of the rows given to [`pattern_from_rows`](@ref).
+"""
 row_string(p::Pattern, t::Int) = String([LEVEL_CHARS[p.grid[t, s]+1] for s in 1:p.steps])
 
 "Ornament of the hit at track `t`, step `s` (0 if there is no hit)."
@@ -317,6 +355,11 @@ function song_from_dict(d::AbstractDict)
     return s
 end
 
+"""
+    save_song(path, song) -> path
+
+Writes `song` as a TOML file (see the page *Song format*), creating missing folders.
+"""
 function save_song(path::AbstractString, s::Song)
     mkpath(dirname(abspath(path)))
     open(io -> TOML.print(io, song_to_dict(s); sorted = true), path, "w")
@@ -326,6 +369,12 @@ end
 "File name (without .toml) for a song name: letters, digits, - and spaces, the rest becomes _."
 safe_song_name(name::AbstractString) = replace(strip(name), r"[^\w\-äöüÄÖÜß ]" => "_")   # i18n-ok: regex
 
+"""
+    load_song(path) -> Song
+
+Reads a song from a TOML file written by [`save_song`](@ref) or by hand. Missing keys get their
+default values.
+"""
 load_song(path::AbstractString) = song_from_dict(TOML.parsefile(path))
 
 "Chain from text like \"1 1 1 2\" or \"1x3 2\" (= 1 1 1 2)."

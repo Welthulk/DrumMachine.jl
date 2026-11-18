@@ -5,6 +5,6 @@
 #   julia --project=. tools/build_crocell.jl /path/CrocellKit_Stereo_MIX   # already extracted
 #
 # Result: ~/.local/share/DrumMachine/kits/CrocellKit (~70 MB; DRUMMACHINE_KIT_DIR overrides the
-# folder). Extracting the RAR archive requires `bsdtar` (libarchive-tools) or `unrar`.
+# folder). The RAR archive is extracted with bsdtar from LibArchive_jll.
 using DrumMachine
 DrumMachine.build_crocell(; src = isempty(ARGS) ? nothing : ARGS[1])

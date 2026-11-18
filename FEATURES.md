@@ -19,7 +19,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 ## Sound
 
 - 11 tracks: kick, snare, side stick, hi-hat closed, open and pedal, tom, floor tom, ride, ride bell, crash.
-- Kits from sample libraries (AVL, DrumGizmo, Virtuosity), several velocity layers and round robins, plus 808 and 909 synth kits. BlackPearl is included, the others are downloaded on first start (see [KITS.md](KITS.md)).
+- Kits from sample libraries (AVL, DrumGizmo, Virtuosity), several velocity layers and round robins, plus 808 and 909 synth kits. BlackPearl is included, the others are downloaded when chosen in the kit menu (see [KITS.md](KITS.md)).
 - Gain per kit.
 - Per track: volume in dB (off, −30 to +12 dB), mute, solo, left/right swap, 3-band EQ, chorus or flanger. Pan and pitch in the song file.
 - Master effects: room, hall, echo, drive, lo-fi. Master volume with soft limiter.
@@ -50,7 +50,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 - Cut, copy, paste, delete, crop, silence, reverse, with undo and redo.
 - Fade in and out, normalize, gain, effects (room, hall, echo …), 3-band EQ.
 - Insert silence, prepend a count-in, detect the BPM.
-- Save as WAV with 16 bit, 24 bit or 32 bit float, or as AAC (.m4a) for messengers (needs ffmpeg).
+- Save as WAV with 16 bit, 24 bit or 32 bit float, or as AAC (.m4a) for messengers.
 
 ## Setup player (stage)
 
@@ -67,6 +67,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 - Edit mode: *Speichern* overwrites the loaded song without asking.
 - Drum-JSON import from browser drum machines (OneMotion), several files at once or from the clipboard.
 - The last session is restored at start.
+- Julia API for scripts: build songs from text rows, presets and fills, render or export them as WAV, read and write WAV files ([API reference](https://welthulk.github.io/DrumMachine.jl/dev/api/)).
 
 ## Program
 

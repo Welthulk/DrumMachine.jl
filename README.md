@@ -3,6 +3,7 @@
 [![main](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FWelthulk%2FDrumMachine.jl%2Fmain%2FProject.toml&query=%24.version&label=main&color=orange)](https://github.com/Welthulk/DrumMachine.jl)
 [![Release](https://img.shields.io/github/v/release/Welthulk/DrumMachine.jl?label=release)](https://github.com/Welthulk/DrumMachine.jl/releases)
 [![CI](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml)
+[![Coverage](https://codecov.io/gh/Welthulk/DrumMachine.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Welthulk/DrumMachine.jl)
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://welthulk.github.io/DrumMachine.jl/dev/)
 [![Julia](https://img.shields.io/badge/Julia-1.13-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![License](https://img.shields.io/github/license/Welthulk/DrumMachine.jl)](LICENSE)
@@ -44,16 +45,9 @@ sound card. PortAudio is installed by Julia itself.
    julia --project=. -e 'using Pkg; Pkg.instantiate()'
    ```
 
-3. **Recommended system tools** (Debian/Ubuntu names):
-
-   ```bash
-   sudo apt install libarchive-tools zenity ffmpeg
-   ```
-
-   - `libarchive-tools` (bsdtar) unpacks the large sample kits on first start
-     (alternatives: `unrar` and `unzip`)
-   - `zenity` (GNOME) or `kdialog` (KDE) for the file dialogs
-   - `ffmpeg` only for AAC export in the WAV editor
+3. **Recommended system tool:** `zenity` (GNOME) or `kdialog` (KDE) for the file dialogs
+   (`sudo apt install zenity`). Unpacking the kits (bsdtar) and the AAC export (ffmpeg) use
+   the Julia packages `LibArchive_jll` and `FFMPEG_jll`, nothing to install.
 
 ## Platforms
 
@@ -111,9 +105,10 @@ are online: [welthulk.github.io/DrumMachine.jl](https://welthulk.github.io/DrumM
 
 ## Kits
 
-Only BlackPearl is in the repository, the other kits are downloaded and built in the background
-on first start. List of kits with sources, licenses and sizes, the gain per kit, switching the
-download off and building kits by hand: [KITS.md](KITS.md).
+Only BlackPearl is in the repository. The other kits are listed in the kit menu as
+"(download, size)" and are downloaded and built in the background when chosen; nothing is
+downloaded without that. List of kits with sources, licenses and sizes, the gain per kit, the
+automatic download (`auto_kits = true`) and building kits by hand: [KITS.md](KITS.md).
 
 ## Settings
 

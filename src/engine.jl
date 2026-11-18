@@ -49,6 +49,13 @@ mutable struct Preview
 end
 Preview() = Preview(zeros(Float32, 0, 1), SR, 1.0, 0, 1, false, false, Threads.Atomic{Int}(0))
 
+"""
+    Engine(song, kit)
+
+Playback state of the GUI: the current [`Song`](@ref) and [`Kit`](@ref), the voices, effects and
+transport. The audio callback calls it block by block; offline rendering ([`render_song`](@ref),
+[`export_wav`](@ref)) uses its own engine, so scripts normally don't need to create one.
+"""
 mutable struct Engine
     song::Song
     kit::Kit

@@ -561,6 +561,7 @@ function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::B
         song = last === nothing ? preset("Rock: 8tel") : last.song
     end
     gcpause_set!(gcpause_setting())
+    firststart = session.restore[] === nothing && isempty(load_settings())
     fig, eng, tick! = build_gui(song; audio, session)
     screen = display(fig)
     session.screen[] = screen
@@ -573,9 +574,13 @@ function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::B
         cur_tick[] = newtick!
         fig = newfig
     end
-    # first start: build missing sample kits in the background (messages go through the session)
+    # with `auto_kits = true`: build missing sample kits in the background (messages go through
+    # the session); otherwise a hint on the very first start that more kits are in the kit menu
     post(msg) = (isready(session.kitmsg) && length(session.kitmsg.data) > 32) || put!(session.kitmsg, msg)
-    auto_fetch_kits!(post, _ -> (session.kits_changed[] = true))
+    if auto_fetch_kits!(post, _ -> (session.kits_changed[] = true)) === nothing &&
+       firststart && !isempty(missing_kits())
+        post(L("Weitere Kits: im Kit-Menü einen Eintrag „(laden, …)“ wählen, er wird dann heruntergeladen."))
+    end
     # playhead display (runs on the main thread)
     @async begin
         n = 0

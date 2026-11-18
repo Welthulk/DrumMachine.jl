@@ -33,9 +33,9 @@ add_translations!(Dict{String,String}(
     "{1}: Instrument {2}/{3} ({4})" => "{1}: instrument {2}/{3} ({4})",
     "{1} fertig: {2}" => "{1} ready: {2}",
     "{1} wird geladen: {2} % ({3} von {4} MB)" => "Downloading {1}: {2} % ({3} of {4} MB)",
-    "Zum Entpacken wird bsdtar (Paket libarchive-tools) oder {1} benötigt." =>
-        "Extracting needs bsdtar (package libarchive-tools) or {1}.",
     "{1} wird entpackt …" => "Extracting {1} …",
+    "Weitere Kits: im Kit-Menü einen Eintrag „(laden, …)“ wählen, er wird dann heruntergeladen." =>
+        "More kits: choose an entry \"(download, …)\" in the kit menu to download it.",
     "Kein Samples/oh unter {1} gefunden" => "No Samples/oh found below {1}",
     "Keine Aufnahme für {1}" => "No recording for {1}",
     "Keine Dateien für {1}/{2}" => "No files for {1}/{2}",
