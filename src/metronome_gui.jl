@@ -24,7 +24,7 @@ function metronome_figure(eng::Engine)
     bpm_big = Label(disp[1:2, 1], string(round(Int, m.bpm)), fontsize = 72, font = :bold, color = C_TEXT,
                     width = 170, halign = :right)
     Label(disp[1:2, 2], "BPM", fontsize = 18, color = C_TEXT2, valign = :bottom, padding = (6, 20, 14, 0))
-    ind = Axis(disp[1, 3]; height = 90, backgroundcolor = :transparent, BARE_AXIS...)
+    ind = Axis(disp[1, 3]; width = 420, height = 90, backgroundcolor = :transparent, BARE_AXIS...)
     for k in (:rectanglezoom, :scrollzoom, :dragpan, :limitreset)
         try deregister_interaction!(ind, k) catch end
     end
@@ -43,7 +43,7 @@ function metronome_figure(eng::Engine)
                       font = :bold)
     steps = [Button(r1[1, k+1], label = (d > 0 ? "+" : "−") * string(abs(d)), width = 42)
              for (k, d) in enumerate((-5, -1))]
-    bpm_sl = Slider(r1[1, 4], range = 30:1:400, startvalue = round(Int, m.bpm), width = 260)
+    bpm_sl = Slider(r1[1, 4], range = 30:1:400, startvalue = round(Int, m.bpm), width = 220)
     append!(steps, [Button(r1[1, k+4], label = "+" * string(d), width = 42) for (k, d) in enumerate((1, 5))])
     bpm_tb = Textbox(r1[1, 7], stored_string = string(round(Int, m.bpm)), width = 56,
                      validator = valid_bpm, reset_on_defocus = false)

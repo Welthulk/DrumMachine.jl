@@ -3,7 +3,6 @@
 [![main](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FWelthulk%2FDrumMachine.jl%2Fmain%2FProject.toml&query=%24.version&label=main&color=orange)](https://github.com/Welthulk/DrumMachine.jl)
 [![Release](https://img.shields.io/github/v/release/Welthulk/DrumMachine.jl?label=release)](https://github.com/Welthulk/DrumMachine.jl/releases)
 [![CI](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/Welthulk/DrumMachine.jl/actions/workflows/CI.yml)
-[![Coverage](https://codecov.io/gh/Welthulk/DrumMachine.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Welthulk/DrumMachine.jl)
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://welthulk.github.io/DrumMachine.jl/dev/)
 [![Julia](https://img.shields.io/badge/Julia-1.13-9558B2?logo=julia&logoColor=white)](https://julialang.org)
 [![License](https://img.shields.io/github/license/Welthulk/DrumMachine.jl)](LICENSE)
@@ -113,6 +112,8 @@ Alle Funktionen stehen in [FEATURES.md](FEATURES.md), die Änderungen je Version
 Setup-Player, MIDI-Aufnahme und -Export. Dieselben Seiten gibt es online:
 [welthulk.github.io/DrumMachine.jl](https://welthulk.github.io/DrumMachine.jl/dev/).
 *Info* zeigt Version, Autor, Datum der letzten Änderung und die Lizenzen der Kits.
+
+![Metronom](docs/metronome-de.png)
 
 ![WAV-Editor](docs/wav-editor-de.png)
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (1.1.1)
+
+- Fixed the beat display of the metronome window: the dots were drawn on top of each other.
+- Fixed the *Song-Tempo* button of the metronome reaching past the panel.
+- Removed the TagBot workflow and the Codecov upload, which need repository secrets. Tags are set after registration.
+
 ## 1.1.0 (2026-11-19)
 
 - Added recording from an e-drum kit over MIDI, connected by USB without a MIDI interface. Button *● Aufnahme* and menu *MIDI* in the transport panel, description in `docs/midi.md`.

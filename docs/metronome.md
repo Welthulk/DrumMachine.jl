@@ -5,6 +5,8 @@ audio output as the drum machine but independently of the song: it can run alone
 playing groove (the two are not synchronized). Closing the window stops it. All settings are saved
 and come back the next time the window is opened.
 
+![Metronome](metronome.png)
+
 ## Display
 
 - The large number is the current tempo in BPM (quarter notes per minute).

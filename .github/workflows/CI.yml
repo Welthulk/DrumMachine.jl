@@ -1,5 +1,4 @@
-# Tests: Pkg.test() on Linux with Julia 1.13 (the version the package is developed with),
-# coverage to Codecov (needs the repository secret CODECOV_TOKEN).
+# Tests: Pkg.test() on Linux with Julia 1.13 (the version the package is developed with).
 name: CI
 on:
   push:
@@ -30,9 +29,3 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
-      - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v5
-        with:
-          files: lcov.info
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
