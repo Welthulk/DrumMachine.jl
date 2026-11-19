@@ -83,8 +83,8 @@ switches it off. Choosing silent bars while the play count is 0 sets it to 4.
 
 ## Tempo trainer
 
-*Tempo-Trainer: +* x *BPM alle* n *Takte bis* max *BPM*: after every n bars the tempo rises by x
-BPM until the maximum is reached; then it stays there. *0* switches it off. The slider and the
+*Tempo-Trainer (+0 = aus): +* x *BPM alle* n *Takte bis* max *BPM*: after every n bars the tempo
+rises by x BPM until the maximum is reached; then it stays there. *+0* switches it off. The slider and the
 display follow the rising tempo, stopping keeps the reached tempo.
 
 ## Keys
@@ -100,4 +100,5 @@ The keys work while no input field in the metronome window is being edited.
 ## Delay
 
 The click is heard after the audio buffer (`audio_latency`, 0.08 s by default, see the README).
-The display is delayed by the same amount so that the lit dot matches what is heard.
+The display is delayed by the output latency the sound card reports (PortAudio), which can differ a
+little from the requested buffer, so that the lit dot matches what is heard.

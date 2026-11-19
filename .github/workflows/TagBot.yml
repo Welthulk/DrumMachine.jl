@@ -1,10 +1,13 @@
 # Creates the git tag and GitHub release after a version has been registered in General.
 # With the secret DOCUMENTER_KEY (DocumenterTools.genkeys) the tag also starts the Docs workflow,
 # so every release gets its own documentation version.
+# Runs on the JuliaTagBot trigger comment, by hand, and every 6 hours in case the trigger is missing.
 name: TagBot
 on:
   issue_comment:
     types: [created]
+  schedule:
+    - cron: "23 */6 * * *"
   workflow_dispatch:
     inputs:
       lookback:
@@ -14,7 +17,7 @@ permissions:
   checks: read
   contents: write
   deployments: read
-  issues: read
+  issues: write
   discussions: read
   packages: read
   pages: read
@@ -24,7 +27,7 @@ permissions:
   statuses: read
 jobs:
   TagBot:
-    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    if: github.event_name != 'issue_comment' || github.actor == 'JuliaTagBot'
     runs-on: ubuntu-latest
     steps:
       - uses: JuliaRegistries/TagBot@v1

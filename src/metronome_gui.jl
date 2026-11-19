@@ -78,7 +78,7 @@ function metronome_figure(eng::Engine)
     Label(r4[1, 5], L("Takte"), color = C_TEXT2)
 
     r5 = ctl[5, 1] = GridLayout(halign = :left)
-    Label(r5[1, 1], L("Tempo-Trainer: +"), color = C_TEXT2, halign = :right)
+    Label(r5[1, 1], L("Tempo-Trainer (+0 = aus): +"), color = C_TEXT2, halign = :right)
     tstep_opts = ["0", "1", "2", "3", "4", "5", "10"]
     ts_m = Menu(r5[1, 2], options = tstep_opts, width = 56,
                 default = string(m.trainer_step) in tstep_opts ? string(m.trainer_step) : "0")
@@ -89,7 +89,7 @@ function metronome_figure(eng::Engine)
     Label(r5[1, 5], L("Takte bis"), color = C_TEXT2)
     tmax_tb = Textbox(r5[1, 6], stored_string = string(m.trainer_max), width = 56, validator = valid_bpm,
                       reset_on_defocus = false)
-    Label(r5[1, 7], L("BPM  (0 = aus)"), color = C_TEXT2)
+    Label(r5[1, 7], "BPM", color = C_TEXT2)
     rowgap!(ctl, 12)
 
     Label(fig[4, 1], status, halign = :left, tellwidth = false, color = C_TEXT2, fontsize = 13)

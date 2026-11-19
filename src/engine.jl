@@ -95,6 +95,9 @@ mutable struct Engine
     metro::Metronome
     pending::Vector{Tuple{Float64,Int,Int,Float32}}   # ornament strokes: (sample time, track, level, gain)
     player::Player                   # setup player (prepared songs), mixed in last
+    clock::HitClock                  # timing log for MIDI recording (see src/midi.jl)
+    hits::Union{Nothing,Vector{Tuple{Int,Int,Int,Float32}}}   # dry run: (sample, track, level, gain), no audio
+    rt::Threads.Atomic{Int}          # realtime priority the audio thread runs with, 0 = normal
 end
 
 function Engine(song::Song, kit::Kit)
@@ -106,12 +109,13 @@ function Engine(song::Song, kit::Kit)
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
                  Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview(), Metronome(),
-                 sizehint!(Tuple{Float64,Int,Int,Float32}[], 64), Player())
+                 sizehint!(Tuple{Float64,Int,Int,Float32}[], 64), Player(), HitClock(), nothing,
+                 Threads.Atomic{Int}(0))
     apply_fx!(eng)
     return eng
 end
 
-"Applies the FX choice and mix from the song to the effect state."
+"Applies the FX choice and mix from the song to the effect state (`render!` sets the echo delay from the tempo)."
 function apply_fx!(eng::Engine)
     k = findfirst(==(eng.song.fx), FX_NAMES)
     eng.fx.kind = something(k, 1)
@@ -176,6 +180,7 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true, gain::Float
         anysolo = any(x -> x.solo, eng.song.tracks)
         anysolo && !tp.solo && return
     end
+    eng.hits === nothing || (push!(eng.hits, (eng.samplepos, t, level, gain)); return)
     kit = eng.kit
     smp = pick_sample(eng.rng, kit.layers[t], level, eng.last[t])
     eng.last[t] = smp
@@ -209,6 +214,7 @@ function nth_sample(layers, r, k)
 end
 
 function click!(eng::Engine, accent::Bool)
+    eng.hits === nothing || (push!(eng.hits, (eng.samplepos, 0, accent ? 3 : 2, 1f0)); return)
     start_voice!(eng, accent ? eng.click_hi : eng.click_lo, accent ? 0.7f0 : 0.5f0, 0f0, 1.0, 0, 0)
 end
 
@@ -269,7 +275,8 @@ function swing_unit(song::Song, p::Union{Pattern,Nothing})
 end
 
 """
-Duration of step `s` (0-based) in samples, incl. swing. The bar length always stays the same.
+Duration of step `s` (0-based) in samples, incl. swing. The bar length always stays the same:
+with pattern `p`, an incomplete pair or group of three at the end of the bar is played straight.
 
 Uniform meaning of `song.swing`: position of the off-beat note within its group
 (50 % = middle/straight, 67 % = triplet, 75 % = dotted).
@@ -283,24 +290,24 @@ function step_samples(song::Song, s::Int, p::Union{Pattern,Nothing} = nothing)
     base = 60.0 / pattern_bpm(song, p) / spb * SR             # own tempo of the pattern, else the song's
     sw = clamp(song.swing, 0.5, 0.8)
     if spb in (3, 6)
+        p !== nothing && s >= p.steps - p.steps % 3 && return base   # incomplete last group
         g = 3base                                          # duration of a group of three
         return s % 3 == 2 ? (1 - sw) * g : sw * g / 2
     end
     (sw == 0.5 || !(spb in (2, 4, 8))) && return base
     # steps per swung note: an 8th is spb/2 steps, a 16th spb/4 (at least one step)
     n = max(1, swing_unit(song, p) == 16 ? spb ÷ 4 : spb ÷ 2)
+    p !== nothing && s >= p.steps - p.steps % 2n && return base     # incomplete last pair
     return 2base * (s % 2n < n ? sw : 1 - sw)              # first note of the pair longer
 end
 
-function resolve_pat(eng::Engine, p::Int)
-    p == -1 && return clamp(eng.edit_pat, 1, length(eng.song.patterns))
-    p == 0 && return 0
-    return clamp(p, 1, length(eng.song.patterns))
-end
+resolve_pat(eng::Engine, p::Int) = seq_pattern(p, eng.edit_pat, length(eng.song.patterns))
 
 function do_step!(eng::Engine)
     song = eng.song
     s = eng.step
+    s == 0 && log_bar!(eng.clock, eng.next_step_at, eng.seqpos, eng.pat)
+    log_step!(eng.clock, eng.next_step_at, s)
     if eng.pat == 0
         if s % song.steps_per_beat == 0
             click!(eng, s == 0)
@@ -392,6 +399,8 @@ function schedule_graces!(eng::Engine)
     end
 end
 
+const LEAD_IN = 0.1 * SR                # samples before step 1: room for its grace notes
+
 "Starts playback of sequence `seq` (see field docs) right away."
 function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
     eng.seq = seq
@@ -399,9 +408,11 @@ function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
     eng.seqpos = 1
     eng.pat = resolve_pat(eng, seq[1])
     eng.step = 0
-    eng.next_step_at = eng.samplepos + 0.1 * SR     # lead-in: room for grace notes of the first step
+    eng.next_step_at = eng.samplepos + LEAD_IN       # lead-in: room for grace notes of the first step
     eng.finished = false
     eng.playing = true
+    eng.clock.nb = 0
+    eng.clock.ns = 0
     empty!(eng.pending)
     schedule_graces!(eng)
     return eng
@@ -420,10 +431,35 @@ function stop!(eng::Engine)
     lock(eng.lock) do
         eng.playing = false
         eng.shown_step[] = -1
+        empty!(eng.pending)                  # no leftover ornament strokes after a stop
         for v in eng.voices
             v.active && v.fade == 0 && (v.fade = FADE_SAMPLES)
         end
     end
+end
+
+"""
+Next sequencer event as `(time, k)`: `k > 0` is the ornament stroke `eng.pending[k]`, `k = 0`
+the next step. After the end of a sequence only the remaining strokes count (time `Inf` once
+none are left), so the second stroke of a double or a buzz roll on the last step still plays.
+"""
+function next_event(eng::Engine)
+    tnext = eng.playing ? eng.next_step_at : Inf; k = 0
+    for (j, ev) in enumerate(eng.pending)
+        ev[1] < tnext && (tnext = ev[1]; k = j)
+    end
+    return tnext, k
+end
+
+"Plays event `k` from [`next_event`](@ref): an ornament stroke or the next step."
+function fire_event!(eng::Engine, k::Int)
+    if k > 0
+        ev = popat!(eng.pending, k)
+        trigger!(eng, ev[2], ev[3]; gain = ev[4])
+    else
+        do_step!(eng)
+    end
+    return
 end
 
 "Renders one block (frames × 2) – sample-accurate, steps may fall mid-block."
@@ -444,25 +480,13 @@ function render!(eng::Engine, out::Matrix{Float32})
     end
     i = 1
     while i <= N
-        if eng.playing
-            tnext = eng.next_step_at; k = 0          # next event: step or ornament stroke
-            for (j, ev) in enumerate(eng.pending)
-                ev[1] < tnext && (tnext = ev[1]; k = j)
-            end
-            due = tnext - eng.samplepos
-            if due <= 0
-                if k > 0
-                    ev = eng.pending[k]; deleteat!(eng.pending, k)
-                    trigger!(eng, ev[2], ev[3]; gain = ev[4])
-                else
-                    do_step!(eng)
-                end
-                continue
-            end
-            n = min(N - i + 1, ceil(Int, due))
-        else
-            n = N - i + 1
+        tnext, k = next_event(eng)                   # next step or ornament stroke
+        due = tnext - eng.samplepos
+        if due <= 0
+            fire_event!(eng, k)
+            continue
         end
+        n = isfinite(due) ? min(N - i + 1, ceil(Int, due)) : N - i + 1
         mix_voices!(eng, out, i, n)
         eng.samplepos += n
         i += n
@@ -472,6 +496,7 @@ function render!(eng::Engine, out::Matrix{Float32})
     end
     m = Float32(eng.song.master)
     fx = eng.fx
+    fx.echo.delay = echo_delay(eng.song.bpm, SR)     # echo on 8ths of the song tempo
     @inbounds for k in 1:N
         l, r = process(fx, out[k, 1], out[k, 2])
         if eng.song.mono                    # sum L+R on both channels (level ~ like stereo center)
@@ -484,7 +509,11 @@ function render!(eng::Engine, out::Matrix{Float32})
     end
     eng.preview.on && mix_preview!(eng.preview, out)
     metro_active(eng.metro) && mix_metro!(eng.metro, out)
-    player_active(eng.player) && mix_player!(eng.player, out)
+    if player_active(eng.player)
+        mix_player!(eng.player, out)
+    elseif eng.player.mout[] != 0           # MIDI clock keeps running: a manual start is timed at once
+        midi_clock!(eng.player, size(out, 1))
+    end
     return out
 end
 
@@ -617,6 +646,20 @@ function write_block!(stream, sink, buf::Matrix{Float32})
     return nothing
 end
 
+"Output latency of `stream` in s as reported by PortAudio, else the requested `fallback`."
+function stream_latency(stream, fallback::Real)
+    try
+        p = PortAudio.LibPortAudio.Pa_GetStreamInfo(stream.pointer_to)
+        if p != C_NULL
+            l = unsafe_load(p).outputLatency
+            l > 0 && return Float64(l)
+        end
+    catch e
+        @debug "stream latency not available" exception = e
+    end
+    return Float64(fallback)
+end
+
 """
     start_audio!(eng; device = nothing, latency = audio_latency())
 
@@ -635,6 +678,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
     metro_start!(warm.metro)
     wp = warm.player                         # player path with pause, beep, EQ and reverb
     wp.items = [zeros(Float32, 4BLOCK, 2)]; wp.cues = [BLOCK]; wp.delays = [0.01]; wp.beeps = [true]; wp.hall = 2
+    wp.mframe = [[1, 2BLOCK]]; wp.mmsg = [Int32[0x99, 0x89]]; wp.mchans = [0x0200]   # MIDI entry (no output open)
     player_eq!(wp, 1, 0, 800, 0); player_start!(wp, 1; pause = true)
     wbuf = zeros(Float32, BLOCK, 2)
     for _ in 1:200
@@ -644,7 +688,9 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
     stream = device === nothing ? PortAudio.PortAudioStream(0, 2; kw...) :
                                   PortAudio.PortAudioStream(device, 0, 2; kw...)
     eng.running = true
-    eng.metro.latency = latency
+    eng.clock.latency = stream_latency(stream, latency)    # what the sound card reports
+    eng.metro.latency = eng.clock.latency                # metronome display delay: the same
+    eng.player.mlat = 1000 * hit_delay(eng.clock.latency, 0)   # player MIDI: rendering to hearing, ms
     sink = direct_sink(stream, BLOCK)
     eng.task = Threads.@spawn begin
         buf = zeros(Float32, BLOCK, 2)
@@ -656,12 +702,14 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
                         rt_thread == 0 || set_thread_sched!(rt_thread, 0)   # the old thread back to normal
                         rt_thread == 0 && @info L("Audio-Thread läuft mit Echtzeit-Priorität {1}.", rt)
                         rt_thread = me
+                        eng.rt[] = rt
                     else
                         @warn L("Echtzeit-Priorität für den Audio-Thread nicht erlaubt – normale Priorität.")
-                        rt = 0
+                        rt = 0; eng.rt[] = 0
                     end
                 end
                 lock(eng.lock) do
+                    log_block!(eng.clock, time_ns(), eng.samplepos)
                     render!(eng, buf)
                 end
                 write_block!(stream, sink, buf)
@@ -670,7 +718,15 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
             @error "Audio-Thread beendet" exception = (e, catch_backtrace())
         finally
             rt_thread == 0 || set_thread_sched!(rt_thread, 0)
+            eng.rt[] = 0
             close(stream)
+            # also after an error: show the transport stopped and let start_audio! open it again
+            eng.running = false
+            lock(eng.lock) do
+                eng.playing = false
+                eng.shown_step[] = -1
+                empty!(eng.pending)
+            end
         end
     end
     return eng
@@ -688,48 +744,98 @@ end
 # ---------------------------------------------------------------------------
 
 """
+    start_offline!(eng; countin, repeats) -> eng
+
+Starts count-in + `repeats` × chain once, for the WAV and MIDI export. As in live playback, step 1
+comes after a lead-in of `LEAD_IN` samples, so the grace notes of a flam or drag on step 1 have
+room; the exports cut it off again (see [`offline_start`](@ref)). Events then come from
+[`next_event`](@ref) and [`fire_event!`](@ref), the same path as in `render!`.
+"""
+function start_offline!(eng::Engine; countin::Int, repeats::Int)
+    eng.samplepos = 0
+    start_seq!(eng, vcat(fill(0, countin), repeat(eng.song.chain, max(repeats, 1))), 0)
+    return eng
+end
+
+"""
+    export_pickup(eng) -> (samples, den)
+
+Pickup before step 1 in an export without loop: `(0, 0)` without grace notes before step 1;
+with a flam or drag on step 1 (no count-in) a 16th of the tempo of step 1, doubled until it
+holds the grace notes (`den` = note value 16, 8, ...). WAV and MIDI file both start that long
+before beat 1. Call it right after [`start_offline!`](@ref).
+"""
+function export_pickup(eng::Engine)
+    lead = eng.next_step_at - minimum(first, eng.pending; init = eng.next_step_at)
+    lead > 0 || return 0, 0
+    len, den = 60 / pattern_bpm(eng.song, current_pattern(eng)) * SR / 4, 16
+    while len < lead && den > 1
+        len *= 2; den ÷= 2
+    end
+    return round(Int, len), den
+end
+
+"""
+First sample of an export without loop (0-based engine time, negative if the pickup is longer
+than the lead-in): step 1, or with a flam or drag on step 1 the start of the pickup bar
+(see [`export_pickup`](@ref)). Call it right after [`start_offline!`](@ref).
+"""
+offline_start(eng::Engine) = round(Int, eng.next_step_at) - export_pickup(eng)[1]
+
+"""
     render_song(song, kit; repeats, countin, click, loop, tail) -> Matrix{Float32}
 
 Renders count-in + `repeats` × chain offline as a stereo matrix (samples × 2).
 
 `loop = true`: seamless loop. No count-in, the length matches the chain exactly, and the
-decay after the last bar (cymbals, reverb) is added to the beginning – so the file sounds
-as if played through when looped endlessly, with no gap and no cut-off reverb.
+decay after the last bar (cymbals, reverb) is added to the beginning and the grace notes of a
+flam or drag on step 1 go to the end – so the file sounds as if played through when looped
+endlessly, with no gap and no cut-off reverb.
+
+Without loop and without count-in, a flam or drag on step 1 starts the file with a pickup of a
+16th before beat 1 (longer for a long flam or drag at a fast tempo), the same as in the MIDI
+export (see [`export_pickup`](@ref)).
+
+`tail` is the decay in seconds after the last step (silence below -70 dB is trimmed); with the
+Echo effect it is at least as long as the repeats need (one 8th per repeat).
 """
 function render_song(song::Song, kit::Kit; repeats::Int = song.repeats, countin::Int = song.countin,
-                     click::Bool = song.click, loop::Bool = song.loop, tail::Real = loop ? 4.0 : 2.0)
+                     click::Bool = song.click, loop::Bool = song.loop,
+                     tail::Real = max(loop ? 4.0 : 2.0, song.fx == "Echo" ? fx_tail("Echo", song.bpm, SR) / SR : 0.0))
     loop && (countin = 0)
     s = copy(song)
     s.click = click
     eng = Engine(s, kit)
-    seq = vcat(fill(0, countin), repeat(s.chain, max(repeats, 1)))
-    start_seq!(eng, seq, 0)
-    eng.next_step_at = 0.0
-    empty!(eng.pending); schedule_graces!(eng)
+    start_offline!(eng; countin, repeats)
+    L = round(Int, eng.next_step_at)            # step 1 (after the lead-in)
+    a = loop ? L : offline_start(eng)           # first sample of the file
     blocks = Matrix{Float32}[]
     buf = zeros(Float32, BLOCK, 2)
     while !eng.finished
         render!(eng, buf)
         push!(blocks, copy(buf))
     end
-    songlen = round(Int, eng.next_step_at)      # end of the last step
-    for _ in 1:ceil(Int, tail * SR / BLOCK)
+    songend = round(Int, eng.next_step_at)      # end of the last step
+    for _ in 1:ceil(Int, tail * SR / BLOCK)     # decay; also plays the last ornament strokes
         render!(eng, buf)
         push!(blocks, copy(buf))
     end
     y = reduce(vcat, blocks)
     if loop
-        n = clamp(songlen, 1, size(y, 1))
-        out = y[1:n, :]
-        @inbounds for k in n+1:size(y, 1), c in 1:2      # fold the decay cyclically onto the beginning
-            out[mod1(k - n, n), c] += y[k, c]
+        # sample k of y is time k-1, i.e. loop position k-1-L: the decay after the end goes to the
+        # beginning, the grace notes of step 1 in the lead-in to the end
+        n = clamp(songend - L, 1, size(y, 1))
+        out = zeros(Float32, n, 2)
+        @inbounds for k in 1:size(y, 1), c in 1:2
+            out[mod1(k - L, n), c] += y[k, c]
         end
         return out
     end
     # Trim the decay after the song end once it is quieter than -70 dB
     last = findlast(>(10^(-70 / 20)), vec(maximum(abs, y; dims = 2)))
-    n = clamp(max(songlen, something(last, 0)), 1, size(y, 1))
-    return y[1:n, :]
+    n = clamp(max(songend, something(last, 0)), max(a + 1, 1), size(y, 1))
+    a >= 0 && return y[a+1:n, :]
+    return vcat(zeros(Float32, -a, 2), y[1:n, :])     # pickup longer than the lead-in
 end
 
 const TRANSLIT = Dict('ä' => "ae", 'ö' => "oe", 'ü' => "ue", 'Ä' => "Ae", 'Ö' => "Oe", 'Ü' => "Ue", 'ß' => "ss")

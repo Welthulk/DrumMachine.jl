@@ -1,108 +1,167 @@
-# Jazz swing in 5/4 (3+2), 35 bars, kit BlackPearl (in the repo)
-# Grid: 8th triplets, 15 steps per bar, quarter = 160
-# Swing 64 %: a bit straighter than exact triplets, as usual in fast jazz
-# Form: intro ride (2) | A (8) | B hi-hat + Cross-Stick (4) | A (4)
-#       | trading: 3 bars time, 1 bar drum solo (8) | A (8) | ending (1)
-# Shows: odd meter, ride pattern "spang-a-lang" with hi-hat pedal on 2 and 4,
-#        feathered bass drum (ghost notes on all quarters), snare comping on the "a",
-#        linear triplet solo, ride with EQ and panning
 bpm = 160.0
-chain = [8, 8,  1, 2, 3, 2, 2, 3, 2, 5,  4, 4, 4, 5,  1, 2, 3, 5,
-         2, 2, 2, 6, 2, 3, 2, 6,  1, 2, 3, 2, 2, 3, 2, 5,  7]
+chain = [8, 8, 1, 2, 3, 2, 2, 3, 2, 5, 4, 4, 4, 5, 1, 2, 3, 5, 2, 2, 2, 6, 2, 3, 2, 6, 1, 2, 3, 2, 2, 3, 2, 5, 7]
 click = false
 countin = 1
 fx = "Room"
 fxmix = 0.35
-kit = "BlackPearl"
+kit = "CrocellKit"
+loop = false
 master = 0.8
 mono = false
 name = "Jazz 5-4 Swing"
 repeats = 1
 steps_per_beat = 3
+swap_lr = false
 swing = 0.64
 swing_on = 0
 swing_version = 2
-#            1+a2+a3+a4+a5+a
-# 1: A with crash on the one
+
 [[pattern]]
 steps = 15
-    [pattern.rows]
-    Crash   = "X.............."
-    Ride    = "...x.xx..x.xx.x"
-    HHPedal = "...x.....x....."
-    Snare   = "........o..x..."
-    Kick    = "X..o..o..o..o.."
-# 2: A, basic groove: ride, hi-hat pedal on 2 and 4, feathered bass drum, comping
-[[pattern]]
-steps = 15
-    [pattern.rows]
-    Ride    = "X..x.xx..x.xx.x"
-    HHPedal = "...x.....x....."
-    Snare   = "........o..x..."
-    Kick    = "o..o..o..o..o.."
-# 3: A variation, different comping, bass drum "bomb" on the "a" of 4
-[[pattern]]
-steps = 15
-    [pattern.rows]
-    Ride    = "X..x.xx..x.xx.x"
-    HHPedal = "...x.....x....."
-    Snare   = "..o.....x.....o"
-    Kick    = "o..o..o..o.Xo.."
-# 4: B, closed hi-hat instead of ride, Cross-Stick on 4
-[[pattern]]
-steps = 15
-    [pattern.rows]
-    HiHat = "X..x.xx..x.xx.x"
-    Rim   = ".........x....."
-    Snare = ".....o........o"
-    Kick  = "o..o..o..o..o.."
-# 5: fill, triplets across snare and toms on 4 and 5
-[[pattern]]
-steps = 15
-    [pattern.rows]
-    Ride     = "X..x.xx........"
-    HHPedal  = "...x..........."
-    Snare    = ".........Xox..."
-    Tom      = "............xx."
-    FloorTom = "..............X"
-    Kick     = "o..o..o.......X"
-# 6: solo bar (trading): linear triplets snare - tom - bass drum, crash on the 5a
-[[pattern]]
-steps = 15
-    [pattern.rows]
-    Snare    = "X..x..X..x..xx."
-    Tom      = ".x..x.........."
-    FloorTom = ".......x..x...."
-    Kick     = "..x..x..x..x..X"
-    Crash    = "..............X"
-# 7: ending
-[[pattern]]
-steps = 15
+
     [pattern.rows]
     Crash = "X.............."
-    Ride  = "X.............."
-    Snare = "X.............."
-    Kick  = "X.............."
-# 8: intro, only ride and hi-hat pedal
+    HHPedal = "...x.....x....."
+    Kick = "X..o..o..o..o.."
+    Ride = "...x.xx..x.xx.x"
+    Snare = "........o..x..."
 [[pattern]]
 steps = 15
+
     [pattern.rows]
-    Ride    = "X..x.xx..x.xx.x"
     HHPedal = "...x.....x....."
+    Kick = "o..o..o..o..o.."
+    Ride = "X..x.xx..x.xx.x"
+    Snare = "........o..x..."
+[[pattern]]
+steps = 15
 
-[track.Ride]
-vol = 0.95
-pan = 0.25
-eq_high = 4.0
-eq_mid = -3.0
-eq_mid_freq = 630.0
+    [pattern.rows]
+    HHPedal = "...x.....x....."
+    Kick = "o..o..o..o.Xo.."
+    Ride = "X..x.xx..x.xx.x"
+    Snare = "..o.....x.....o"
+[[pattern]]
+steps = 15
 
-[track.Kick]
-vol = 0.8
+    [pattern.rows]
+    HiHat = "X..x.xx..x.xx.x"
+    Kick = "o..o..o..o..o.."
+    Rim = ".........x....."
+    Snare = ".....o........o"
+[[pattern]]
+steps = 15
 
-[track.Snare]
-vol = 0.95
+    [pattern.rows]
+    FloorTom = "..............X"
+    HHPedal = "...x..........."
+    Kick = "o..o..o.......X"
+    Ride = "X..x.xx........"
+    Snare = ".........Xox..."
+    Tom = "............xx."
+[[pattern]]
+steps = 15
+
+    [pattern.rows]
+    Crash = "..............X"
+    FloorTom = ".......x..x...."
+    Kick = "..x..x..x..x..X"
+    Snare = "X..x..X..x..xx."
+    Tom = ".x..x.........."
+[[pattern]]
+steps = 15
+
+    [pattern.rows]
+    Crash = "X.............."
+    Kick = "X.............."
+    Ride = "X.............."
+    Snare = "X.............."
+[[pattern]]
+steps = 15
+
+    [pattern.rows]
+    HHPedal = "...x.....x....."
+    Ride = "X..x.xx..x.xx.x"
 
 [track.Crash]
-vol = 0.8
-pan = -0.2
+mute = false
+pan = -0.20000000298023224
+pitch = 0.0
+solo = false
+swap_lr = true
+vol = 0.800000011920929
+
+[track.FloorTom]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HHOpen]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HHPedal]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.HiHat]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Kick]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 0.800000011920929
+
+[track.Ride]
+eq_high = 4.0
+eq_low = 0.0
+eq_mid = -3.0
+eq_mid_freq = 630.0
+mute = false
+pan = 0.25
+pitch = 0.0
+solo = false
+swap_lr = true
+vol = 0.949999988079071
+
+[track.RideBell]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Rim]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0
+
+[track.Snare]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 0.949999988079071
+
+[track.Tom]
+mute = false
+pan = 0.0
+pitch = 0.0
+solo = false
+vol = 1.0

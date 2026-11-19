@@ -1,11 +1,14 @@
 # Song file format
 
-A song is a plain [TOML](https://toml.io) file, by default in `songs/<name>.toml`. Everything the
+A song is a plain [TOML](https://toml.io) file, by default in `songs/<name>.toml` (for a package
+installed with Pkg in `~/.local/share/DrumMachine/songs/<name>.toml`). Everything the
 program knows about a song is stored there: tempo, grid, patterns, chain, kit, master effect, the
 per-track mixer and effects (EQ, chorus, flanger) and the export settings. The files are meant to be
 read and edited by hand.
 
-All keys are optional. A missing key gets the default listed below, so a minimal song is just:
+All keys are optional. A missing key gets the default listed below. Invalid values of `bpm`,
+`steps_per_beat`, `repeats` and `countin` are corrected on load (see the tables), so such a song
+still plays and exports. A minimal song is just:
 
 ```toml
 [[pattern]]
@@ -23,14 +26,14 @@ All keys are optional. A missing key gets the default listed below, so a minimal
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `name` | string | `"Neu"` | Song name, also used for the file names of save and export |
-| `bpm` | number | `100.0` | Tempo in beats per minute (GUI range 30–400) |
-| `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths, `8` = 32nds |
-| `swing` | number | `0.5` (`2/3` for triplet grids in files without `swing_version`) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8) |
+| `bpm` | number | `100.0` | Tempo in beats per minute, 30–400 (clamped on load; 0, negative or not a number gives `100`) |
+| `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths, `8` = 32nds. Any other value gives `4` |
+| `swing` | number | `0.5` (`2/3` for triplet grids in files without `swing_version`) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8). The bar length does not change: an incomplete pair (or triplet group) at the end of an odd bar, e.g. the 7th 8th of a 7/8 bar, is played straight |
 | `swing_on` | integer | `0` | What swings in a straight grid: `0` auto, `8` 8ths, `16` 16ths |
 | `swing_version` | integer | `1` | Written as `2` by current versions. Files without it that use a triplet grid and `swing = 0.5` are read as exact triplets (compatibility with v0.1) |
 | `chain` | array of integers | `[1]` | Pattern order for song mode and export, 1-based. Invalid numbers are dropped |
 | `kit` | string | `"CrocellKit"` | Kit name: a folder in `kits/` (e.g. `BlackPearl`) or `808 (Synth)` / `909 (Synth)`. If the kit is not installed, the program keeps the current kit |
-| `fx` | string | `"Clean"` | Master effect: `Clean`, `Room`, `Hall`, `Echo`, `Drive`, `Lo-Fi` |
+| `fx` | string | `"Clean"` | Master effect: `Clean`, `Room`, `Hall`, `Echo` (one 8th note at the song tempo), `Drive`, `Lo-Fi` |
 | `fxmix` | number | `0.25` | Amount of the master effect, 0–1 |
 | `master` | number | `0.8` | Master volume, 0–1.5 (soft limiter after it) |
 
@@ -38,12 +41,12 @@ All keys are optional. A missing key gets the default listed below, so a minimal
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `repeats` | integer | `8` | How often the chain is written into the WAV |
-| `countin` | integer | `1` | Count-in bars before the song (ignored with `loop`) |
+| `repeats` | integer | `8` | How often the chain is written into the WAV, 1–999 (clamped on load) |
+| `countin` | integer | `1` | Count-in bars before the song (ignored with `loop`), 0–4 (clamped on load) |
 | `click` | boolean | `false` | Mix a metronome click into the export |
 | `mono` | boolean | `false` | Mono output (playback and export) |
 | `swap_lr` | boolean | `false` | Swap left and right channel (playback and export) |
-| `loop` | boolean | `false` | Seamless loop export: no count-in, exactly whole bars, decay folded onto the start |
+| `loop` | boolean | `false` | Seamless loop export: no count-in, exactly whole bars, decay folded onto the start. Grace notes of a flam or drag on step 1 go to the end of the file |
 
 ## Patterns
 
@@ -76,8 +79,8 @@ Characters in a row:
 | `x` (also `*`) | normal |
 | `X` (also `#`) | accent |
 
-Rows of tracks without any note are left out when saving. A row longer than `steps` is cut off,
-a shorter one is filled with rests.
+Rows of tracks without any note are left out when saving. A row longer than `steps` is cut off
+(notes beyond `steps` are dropped on load), a shorter one is filled with rests.
 
 ### Ornaments
 
@@ -245,3 +248,22 @@ steps = 16
 vol = 0.9
 pan = 0.15
 ```
+
+## Drum-JSON import
+
+*JSON-Import …* (or pasting JSON text from the clipboard) converts compositions from browser drum
+machines (OneMotion format) into a song and saves it as `<name>.toml` in the song folder. One
+pattern per bar, identical bars share a pattern. The status line lists what could not be taken
+over (unknown sounds, merged tracks, delays).
+
+- Sound names go to the tracks by their name (kick, snare, hi-hat, tom, ride, crash, …). For the
+  hi-hat, names with *open* go to `HHOpen`, names with *pedal* or *foot* to `HHPedal`, all others
+  (e.g. *closed*) to `HiHat`. The slot variant 1 gives the open hi-hat, rim or ride bell, variant 2
+  the hi-hat pedal.
+- Velocity sets the level when the hits of a track differ: relative to the loudest hit of the
+  track, from 85 % an accent, below 45 % a ghost note.
+- `shuffle` is the swing ratio from 0.5 to 0.8 (values outside are clamped), or one of the
+  integer codes `0` straight, `1` triplet (0.67), `2` 0.6, `3` dotted (0.75).
+- A track with `repeat = n` repeats its first n slots, with their variants and flams.
+- A missing or `null` `name` or `kit` gives the file name (`JSON-Import` from the clipboard) and
+  CrocellKit.

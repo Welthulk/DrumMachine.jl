@@ -146,7 +146,7 @@ function clear!(r::Reverb)
     return r
 end
 
-"Ping-pong echo with tempo-dependent delay."
+"Ping-pong echo. `delay` in samples: the engine and the WAV editor set one 8th note of the tempo (see `echo_delay`)."
 mutable struct PingPong
     bufL::Vector{Float32}
     bufR::Vector{Float32}
@@ -170,8 +170,6 @@ PingPong() = PingPong(zeros(Float32, 2SR), zeros(Float32, 2SR), 1, SR ÷ 4, 0.45
     return dl, dr
 end
 
-clear!(p::PingPong) = (fill!(p.bufL, 0f0); fill!(p.bufR, 0f0); p.lp = 0f0; p)
-
 const FX_NAMES = ["Clean", "Room", "Hall", "Echo", "Drive", "Lo-Fi"]
 
 "State of the master effect. `kind` indexes `FX_NAMES`, `mix` ∈ [0,1]."
@@ -186,11 +184,6 @@ mutable struct FXState
     holdcnt::Int
 end
 FXState() = FXState(1, 0.3f0, Reverb(0.80, 0.35), Reverb(0.92, 0.2), PingPong(), 0f0, 0f0, 0)
-
-function clear!(fx::FXState)
-    clear!(fx.room); clear!(fx.hall); clear!(fx.echo)
-    return fx
-end
 
 @inline function process(fx::FXState, l::Float32, r::Float32)
     k = fx.kind

@@ -85,8 +85,8 @@ between 55 and 220 BPM is found, the field is left unchanged.
 
 ## Undo
 
-Every edit can be undone (*Rückgängig*, up to 30 steps) and redone (*Wiederholen*). An edit that
-fails leaves no undo step.
+Every edit can be undone (*Rückgängig*, up to 30 steps and 1 GB, so fewer steps for long files)
+and redone (*Wiederholen*). An edit that fails leaves no undo step.
 
 ## Keyboard
 

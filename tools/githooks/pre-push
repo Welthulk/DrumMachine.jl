@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Blocks a push if one of the commits to be pushed contains a file from the deny list
+# (public-deny.sh next to this file, .publicdeny). Every push is checked except the ones to the
+# private repo, so an unknown spelling of the public URL is checked too.
+# Install (copies into .git/hooks, so it stays active on every branch): tools/githooks/install.sh
+
+remote="$1"; url="$2"
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+    echo "pre-push: needs bash 4 or newer, push stopped." >&2; exit 1
+fi
+lib="$(dirname "$0")/public-deny.sh"
+if [ ! -f "$lib" ] || ! . "$lib"; then
+    echo "pre-push: $lib is missing, push stopped. Run tools/githooks/install.sh." >&2; exit 1
+fi
+is_private_url "$url" && exit 0
+load_deny || exit 1
+
+# Commits the target already has: asked from the repo itself, not from tracking refs.
+known=$(git ls-remote "$url" 2>/dev/null) || {
+    echo "pre-push: cannot read the refs of $url, push stopped." >&2; exit 1; }
+excl=()
+while read -r s _; do
+    [ -n "$s" ] && git cat-file -e "$s^{commit}" 2>/dev/null && excl+=("^$s")
+done <<< "$known"
+
+declare -A verdict                                  # path -> 1 denied / 0 allowed
+bad=0
+trees=" "
+while read -r lref lsha rref rsha; do
+    [[ $lsha =~ ^0+$ ]] && continue                          # deleting a ref
+    case $rref in
+        refs/heads/*|refs/tags/*) ;;
+        *) echo "pre-push: $rref: only branches and tags can be pushed here, push stopped." >&2; exit 1 ;;
+    esac
+    git cat-file -e "$lsha^{commit}" 2>/dev/null || {
+        echo "pre-push: $lref is not a commit (tree or blob), push stopped." >&2; exit 1; }
+    commits=$(git rev-list "$lsha" "${excl[@]}") || {
+        echo "pre-push: cannot list the commits of $lref, push stopped." >&2; exit 1; }
+    for c in $commits; do
+        t=$(git rev-parse "$c^{tree}")
+        [[ $trees == *" $t "* ]] && continue
+        trees+="$t "
+        if [ -n "$(git ls-tree --name-only "$t")" ] && \
+           ! git ls-tree --name-only "$t" | grep -qvE '^[0-9a-f]{2}([0-9a-f]{38})?$'; then
+            echo "pre-push: $lref contains a notes tree, push stopped." >&2; exit 1
+        fi
+        hits=()
+        while IFS= read -r -d '' f; do
+            if [ -z "${verdict[$f]+x}" ]; then
+                if is_denied "$f"; then verdict[$f]=1; else verdict[$f]=0; fi
+            fi
+            [ "${verdict[$f]}" = 1 ] && hits+=("$f")
+        done < <(git ls-tree -r --name-only -z "$t")
+        if [ ${#hits[@]} -gt 0 ]; then
+            [ $bad = 0 ] && echo "pre-push: not pushed, private files for $url:" >&2
+            echo "  $(git log -1 --format='%h %s' "$c")" >&2
+            for f in "${hits[@]:0:20}"; do
+                is_denied "$f"
+                printf '      %q   (%s)\n' "$f" "$DENIED_BY" >&2
+            done
+            [ ${#hits[@]} -gt 20 ] && echo "      ... ${#hits[@]} files" >&2
+            bad=1
+        fi
+    done
+done
+if [ $bad = 1 ]; then
+    echo "Publish with tools/publish.sh <branch> \"<message>\" (leaves these files out)." >&2
+    exit 1
+fi
+exit 0

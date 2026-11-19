@@ -353,21 +353,35 @@ end
 # Undo / redo
 # ---------------------------------------------------------------------------
 
-"Snapshot history: full copies of the audio, `limit` steps back."
+"""
+Snapshot history: full copies of the audio, at most `limit` steps and `maxbytes` bytes back
+(the newest step is always kept, so a single undo works on large files too).
+"""
 mutable struct History
     undo::Vector{Tuple{Matrix{Float32},String}}
     redo::Vector{Tuple{Matrix{Float32},String}}
     limit::Int
+    maxbytes::Int
 end
-History(limit::Integer = 30) = History([], [], limit)
+History(limit::Integer = 30; maxbytes::Integer = 1 << 30) = History([], [], limit, maxbytes)
 
-"Stores the state before an edit called `label`. Clears the redo stack."
-function snapshot!(h::History, w::Wave, label::AbstractString)
-    push!(h.undo, (copy(w.data), String(label)))
-    length(h.undo) > h.limit && popfirst!(h.undo)
+"""
+    snapshot!(h, data::Matrix{Float32}, label)
+    snapshot!(h, w::Wave, label)
+
+Stores the state before an edit called `label` and clears the redo stack. The matrix form keeps
+`data` itself (no copy); the `Wave` form copies `w.data`. Drops the oldest steps beyond
+`h.limit` or `h.maxbytes`.
+"""
+function snapshot!(h::History, data::Matrix{Float32}, label::AbstractString)
+    push!(h.undo, (data, String(label)))
     empty!(h.redo)
+    while length(h.undo) > 1 && (length(h.undo) > h.limit || sum(sizeof(first(s)) for s in h.undo) > h.maxbytes)
+        popfirst!(h.undo)
+    end
     return h
 end
+snapshot!(h::History, w::Wave, label::AbstractString) = snapshot!(h, copy(w.data), label)
 
 "Undoes the last edit; returns its label or `nothing`."
 function undo!(h::History, w::Wave)

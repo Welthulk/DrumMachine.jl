@@ -4,7 +4,6 @@ const MAXSTEPS = 32
 
 # Grid values: 0 = off, 1 = ghost note (soft), 2 = normal, 3 = accent
 const LEVEL_CHARS = ('.', 'o', 'x', 'X')
-const LEVEL_NAMES = ("aus", "Ghost", "normal", "Akzent")
 
 # Ornament of a hit: 0 = none, 1 = double stroke (two 32nds in the step), 2 = buzz roll,
 # 3 = flam (one grace note just before), 4 = drag/ruff (two grace notes just before)
@@ -225,7 +224,7 @@ function pattern_from_rows(rows::AbstractDict; steps::Union{Nothing,Int} = nothi
         t = track_index(String(id))
         t === nothing && (@warn L("Unbekannte Spur {1} ignoriert", id); continue)
         for (s, c) in enumerate(collect(str))
-            s > MAXSTEPS && break
+            s > n && break                     # a row longer than `steps` is cut off
             p.grid[t, s] = level_from_char(c)
         end
     end
@@ -324,6 +323,11 @@ function track_from_dict(tp::AbstractDict)
     return t
 end
 
+# Song settings from a hand-editable file: invalid values fall back to the default or are clamped
+# to the GUI range, so playback and export never get bpm = 0 or a negative count-in.
+_num(v, def) = v isa Real ? Float64(v) : def
+_int(v, def) = v isa Real && isfinite(v) && isinteger(v) ? Int(clamp(v, typemin(Int32), typemax(Int32))) : def
+
 function song_from_dict(d::AbstractDict)
     function pat(p)
         q = set_orns!(pattern_from_rows(get(p, "rows", Dict()); steps = get(p, "steps", 16)), get(p, "orn", Dict()))
@@ -333,12 +337,16 @@ function song_from_dict(d::AbstractDict)
     end
     pats = [pat(p) for p in get(d, "pattern", [])]
     isempty(pats) && push!(pats, Pattern(16))
-    s = Song(name = get(d, "name", "Neu"), bpm = get(d, "bpm", 100.0), swing = get(d, "swing", 0.5),   # i18n-ok: default song name
+    bpm = _num(get(d, "bpm", 100.0), 100.0)
+    bpm = bpm > 0 ? clamp(bpm, BPM_RANGE...) : 100.0
+    spb = _int(get(d, "steps_per_beat", 4), 4)
+    spb in (2, 3, 4, 6, 8) || (spb = 4)
+    s = Song(name = get(d, "name", "Neu"), bpm = bpm, swing = get(d, "swing", 0.5),   # i18n-ok: default song name
              swing_on = get(d, "swing_on", 0),
-             steps_per_beat = get(d, "steps_per_beat", 4), patterns = pats,
+             steps_per_beat = spb, patterns = pats,
              chain = Int.(get(d, "chain", [1])), kit = get(d, "kit", "CrocellKit"), fx = get(d, "fx", "Clean"),
-             fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = get(d, "repeats", 8),
-             countin = get(d, "countin", 1), click = get(d, "click", false),
+             fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = clamp(_int(get(d, "repeats", 8), 8), 1, 999),
+             countin = clamp(_int(get(d, "countin", 1), 1), 0, 4), click = get(d, "click", false),
              mono = get(d, "mono", false), swap_lr = get(d, "swap_lr", false),
              loop = get(d, "loop", false), orn = orn_tuning_from_dict(get(d, "ornaments", Dict())))
     # Up to v0.1: swing had no effect on triplet grids, so 0.5 (= exact triplets) was saved
@@ -362,7 +370,9 @@ Writes `song` as a TOML file (see the page *Song format*), creating missing fold
 """
 function save_song(path::AbstractString, s::Song)
     mkpath(dirname(abspath(path)))
-    open(io -> TOML.print(io, song_to_dict(s); sorted = true), path, "w")
+    tmp = path * ".tmp"                                 # write first, then replace: no truncated song
+    open(io -> TOML.print(io, song_to_dict(s); sorted = true), tmp, "w")
+    mv(tmp, path; force = true)
     return path
 end
 

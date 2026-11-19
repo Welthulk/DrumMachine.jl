@@ -60,6 +60,16 @@ interrupted build never leaves a half-finished kit behind.
 function build_kit(dest, name, sources; header::AbstractString, license::AbstractString,
                    choke = ("HiHat", "HHOpen", "HHPedal"), post = nothing, log = println)
     tmp = build_tmp(dest)
+    try
+        build_kit_files(tmp, name, sources; header, license, choke, post, log)
+    catch
+        rm(tmp; recursive = true, force = true)       # no half-built folder left behind
+        rethrow()
+    end
+    finish_build(tmp, dest, name; log)
+end
+
+function build_kit_files(tmp, name, sources; header, license, choke, post, log)
     refs = Dict{String,Float64}()
     for (k, (id, loaders)) in enumerate(sources)
         log(L("{1}: Instrument {2}/{3} ({4})", name, k, length(sources), id))
@@ -92,7 +102,6 @@ function build_kit(dest, name, sources; header::AbstractString, license::Abstrac
     end
     write_kit_toml(tmp, name, header, [(id, 0.0, refs[id], id in choke) for (id, _) in sources])
     write(joinpath(tmp, "LICENSE.txt"), license)
-    finish_build(tmp, dest, name; log)
 end
 
 """
@@ -115,19 +124,26 @@ function write_kit_toml(dir, name, header, tracks)
     write(joinpath(dir, "kit.toml"), String(take!(io)))
 end
 
-"Moves the finished kit from `tmp` to `dest` (replacing an older build)."
+"""
+Moves the finished kit from `tmp` to `dest`, replacing an older build. The old build is first
+renamed to `<dest>.old` and only then deleted, so `dest` is never a half-deleted kit.
+"""
 function finish_build(tmp, dest, name; log = println)
-    isdir(dest) && rm(dest; recursive = true)
+    old = normpath(dest) * ".old"
+    rm(old; recursive = true, force = true)
+    isdir(dest) && mv(dest, old)
     mv(tmp, dest)
+    rm(old; recursive = true, force = true)
     log(L("{1} fertig: {2}", name, normpath(dest)))
     return dest
 end
 
-"Fresh temporary build folder next to `dest`."
+"Fresh temporary build folder next to `dest` (removes leftovers of an interrupted build)."
 function build_tmp(dest)
     mkpath(dirname(normpath(dest)))
     tmp = normpath(dest) * ".building"
-    isdir(tmp) && rm(tmp; recursive = true)
+    rm(tmp; recursive = true, force = true)
+    rm(normpath(dest) * ".old"; recursive = true, force = true)
     mkpath(tmp)
     return tmp
 end
@@ -150,11 +166,32 @@ function fetch_file(url, file, label; log = println)
     return file
 end
 
-"Extracts `archive` (zip, rar, tar) into `dir` (only `patterns` if given) with bsdtar from LibArchive_jll."
+"""
+Extracts `archive` (zip, rar, tar) into `dir` (only `patterns` if given) with bsdtar from
+LibArchive_jll. bsdtar writes into a hidden temporary folder in `dir`; only after it succeeded are
+the files moved into place (merged with folders already there), so an interrupted or failed
+extraction never leaves half-written files that a later build would take as complete.
+"""
 function extract(archive, dir, patterns = String[])
     mkpath(dir)
-    Base.run(`$(bsdtar()) -xf $archive -C $dir $patterns`)
+    tmp = joinpath(dir, "." * basename(archive) * ".extracting")
+    rm(tmp; recursive = true, force = true)            # leftover of an interrupted extraction
+    mkpath(tmp)
+    try
+        Base.run(`$(bsdtar()) -xf $archive -C $tmp $patterns`)
+        merge_into!(tmp, dir)
+    finally
+        rm(tmp; recursive = true, force = true)
+    end
     return dir
+end
+
+"Moves the contents of folder `src` into `dst`; folders present in both are merged."
+function merge_into!(src, dst)
+    for e in readdir(src)
+        s, d = joinpath(src, e), joinpath(dst, e)
+        isdir(s) && isdir(d) ? merge_into!(s, d) : mv(s, d; force = true)
+    end
 end
 
 # ---------------------------------------------------------------------------
@@ -186,9 +223,10 @@ function build_crocell(; src = nothing, dest = joinpath(user_kit_dir(), "Crocell
     if src === nothing
         cache = cache_dir()
         src = joinpath(cache, "CrocellKit_Stereo_MIX")
-        if !isdir(joinpath(src, "Snare"))
+        if !all(i -> isdir(joinpath(src, i, "samples")), (i for (_, is) in CROCELL_MAP for i in is))
             rar = fetch_file(CROCELL_URL, joinpath(cache, "CrocellKit_Stereo_MIX.rar"), "CrocellKit"; log)
             log(L("{1} wird entpackt …", "CrocellKit"))
+            rm(src; recursive = true, force = true)    # incomplete: extract anew (moved in as a whole)
             extract(rar, cache)
         end
     end
@@ -282,9 +320,10 @@ function build_virtuosity(; src = nothing, dest = joinpath(user_kit_dir(), "Virt
     if src === nothing
         cache = cache_dir()
         src = joinpath(cache, "VirtuosityDrums")
-        if !isdir(joinpath(src, "Samples", "oh"))
+        if !all(m -> isdir(joinpath(src, "Samples", m)), VIRTUOSITY_MICS)
             zip = fetch_file(VIRTUOSITY_URL, joinpath(cache, basename(VIRTUOSITY_URL)), "VirtuosityDrums"; log)
             log(L("{1} wird entpackt …", "VirtuosityDrums"))
+            rm(src; recursive = true, force = true)    # incomplete: extract anew (moved in as a whole)
             extract(zip, src, ["Samples/$m/*" for m in VIRTUOSITY_MICS])
         end
     end
@@ -418,7 +457,7 @@ function build_avl(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.nam
     if src === nothing
         cache = cache_dir()
         src = joinpath(cache, replace(spec.zip, r"\.zip$" => ""))
-        if !isdir(src)
+        if !isdir(src)                                 # the folder is moved in only when complete
             zip = fetch_file(AVL_BASE * spec.zip, joinpath(cache, spec.zip), spec.name; log)
             log(L("{1} wird entpackt …", spec.name))
             extract(zip, cache)
@@ -427,6 +466,16 @@ function build_avl(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.nam
     sfz = only(f for f in readdir(src; join = true) if endswith(lowercase(f), ".sfz"))
     pans = sfz_pans(sfz)
     tmp = build_tmp(dest)
+    try
+        build_avl_files(tmp, spec, src, pans)
+    catch
+        rm(tmp; recursive = true, force = true)       # no half-built folder left behind
+        rethrow()
+    end
+    finish_build(tmp, dest, spec.name; log)
+end
+
+function build_avl_files(tmp, spec, src, pans)
     tracks = map(spec.map) do (id, prefixes)
         mkpath(joinpath(tmp, id))
         for (rr, p) in enumerate(prefixes)
@@ -450,7 +499,6 @@ function build_avl(spec; src = nothing, dest = joinpath(user_kit_dir(), spec.nam
         Changes by DrumMachine.jl: none to the audio. A selection of the original WAV files, renamed
         into one folder per track (<layer>-<round-robin>.wav); kit.toml written for DrumMachine.jl.
         """)
-    finish_build(tmp, dest, spec.name; log)
 end
 
 # ---------------------------------------------------------------------------
@@ -770,8 +818,15 @@ function missing_kits()
     return [k for k in DOWNLOADABLE_KITS if !all(in(have), k[5])]
 end
 
-"Downloadable kits that are only built on request (all of them unless `auto_kits` is on)."
-on_demand_kits() = [k for k in missing_kits() if !(k[4] && auto_kits_enabled())]
+"""
+Downloadable kits offered in the kit menu as "(download, size)": all missing ones, except kits
+marked `auto` that the automatic download (`auto_kits = true`) is building right now. A kit whose
+automatic download failed is offered again, so it can be retried from the menu.
+"""
+function on_demand_kits()
+    auto = auto_kits_enabled()
+    return [k for k in missing_kits() if !(auto && k[4] && kit_building(k[1]))]
+end
 
 """
 The automatic download is off by default: nothing is downloaded until a kit is chosen in the kit
@@ -780,25 +835,100 @@ menu. The setting `auto_kits = true` switches it on; the environment variable
 """
 auto_kits_enabled() = !haskey(ENV, "DRUMMACHINE_NO_KIT_DOWNLOAD") && get(load_settings(), "auto_kits", false) === true
 
-"Kits being built right now (so a kit is never built twice at the same time)."
+"Kits being built right now in this process (so a kit is never built twice at the same time)."
 const KITS_BUILDING = Set{String}()
 const KITS_BUILDING_LOCK = ReentrantLock()
 
-"Builds one downloadable kit (in the calling task); false if it is already being built."
+"Is kit `name` being built in this process right now? (Reads `KITS_BUILDING` under its lock.)"
+kit_building(name::AbstractString) = lock(() -> name in KITS_BUILDING, KITS_BUILDING_LOCK)
+
+"Lock files held by this process right now (see [`with_pidlock`](@ref))."
+const PIDLOCKS_HELD = Set{String}()
+const PIDLOCKS_HELD_LOCK = ReentrantLock()
+
+"""
+    with_pidlock(f, path) -> Bool
+
+Runs `f()` while holding the lock file `path`, which also guards against other processes (two
+app windows, or the app and a script in tools/). The file holds the process id; a file left by a
+process that no longer runs is taken over. Returns `false` without running `f` if a running
+process holds the lock, `true` after `f` ran.
+"""
+function with_pidlock(f, path)
+    path = abspath(path)
+    mkpath(dirname(path))
+    flags = Base.Filesystem.JL_O_WRONLY | Base.Filesystem.JL_O_CREAT | Base.Filesystem.JL_O_EXCL
+    for _ in 1:2
+        fd = try
+            Base.Filesystem.open(path, flags, 0o644)
+        catch e
+            e isa Base.IOError && e.code == Base.UV_EEXIST || rethrow()
+            nothing
+        end
+        if fd === nothing
+            pidlock_stale(path) || return false
+            rm(path; force = true)                      # left by a process that ended: take over
+            continue
+        end
+        lock(() -> push!(PIDLOCKS_HELD, path), PIDLOCKS_HELD_LOCK)
+        try
+            write(fd, string(getpid())); close(fd)
+            f()
+        finally
+            rm(path; force = true)
+            lock(() -> delete!(PIDLOCKS_HELD, path), PIDLOCKS_HELD_LOCK)
+        end
+        return true
+    end
+    return false
+end
+
+"""
+Is the lock file `path` left over? Yes if it is older than the last boot (the pid may belong to
+another process by now), if its process no longer runs, or if it has the pid of this process
+but this process does not hold it (left by an earlier process with the same pid).
+"""
+function pidlock_stale(path)
+    path = abspath(path)
+    mtime(path) < time() - Sys.uptime() && return true       # written before the last boot
+    pid = tryparse(Int, strip(try read(path, String) catch; "" end))
+    pid === nothing && return time() - mtime(path) > 60      # pid not written (yet): stale after a minute
+    pid == getpid() && return !lock(() -> path in PIDLOCKS_HELD, PIDLOCKS_HELD_LOCK)
+    return ccall(:uv_kill, Cint, (Cint, Cint), pid, 0) == Base.UV_ESRCH   # signal 0: does it exist?
+end
+
+"""
+    kit_lock(f, name) -> Bool
+
+Runs `f()` (download, extract, build of kit `name`) under a lock shared by all processes, so two
+processes never write the same `.part`, `.extracting` or `.building` files. `false` if another
+running process builds the kit.
+"""
+kit_lock(f, name::AbstractString) = with_pidlock(f, joinpath(cache_dir(), name * ".lock"))
+
+"""
+Builds one downloadable kit (in the calling task); false if it is already being built (in this
+or another process). `done(name)` is called after the attempt, also after an error, so the kit
+menu can be refreshed.
+"""
 function fetch_kit(kit, post::Function, done::Function)
     name, size, build, _ = kit
     lock(() -> name in KITS_BUILDING ? false : (push!(KITS_BUILDING, name); true), KITS_BUILDING_LOCK) || return false
-    post(L("Kit {1} wird geladen ({2}, läuft im Hintergrund) …", name, size))
+    ran = true
     try
-        build(; log = post)
-        done(name)
+        ran = kit_lock(name) do
+            post(L("Kit {1} wird geladen ({2}, läuft im Hintergrund) …", name, size))
+            build(; log = post)
+        end
+        ran || post(L("Kit {1} wird schon von einem anderen DrumMachine-Prozess geladen.", name))
     catch e
         post(L("Kit {1} konnte nicht geladen werden: {2}", name, sprint(showerror, e)))
         @warn L("Kit {1} konnte nicht geladen werden", name) exception = e
     finally
         lock(() -> delete!(KITS_BUILDING, name), KITS_BUILDING_LOCK)
+        done(name)
     end
-    return true
+    return ran
 end
 
 """
@@ -816,14 +946,17 @@ end
     auto_fetch_kits!(post, done) -> Union{Task,Nothing}
 
 Builds all missing kits marked `auto` one after another on a background thread. `post(msg)` gets
-progress and error messages, `done(name)` is called after each finished kit. Returns `nothing`
-if there is nothing to do or the automatic download is off (the default, see `auto_kits_enabled`).
+progress and error messages, `done(name)` is called after each kit (built or failed). A kit that
+was installed from the kit menu in the meantime is skipped. Returns `nothing` if there is nothing
+to do or the automatic download is off (the default, see `auto_kits_enabled`).
 """
 function auto_fetch_kits!(post::Function, done::Function)
     auto_kits_enabled() || return nothing
     todo = [k for k in missing_kits() if k[4]]
     isempty(todo) && return nothing
     return Threads.@spawn for k in todo
+        have = Set(e.name for e in kit_entries())
+        all(in(have), k[5]) && continue
         fetch_kit(k, post, done)
     end
 end

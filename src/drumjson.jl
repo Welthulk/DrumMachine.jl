@@ -3,9 +3,10 @@
 # Layout: per track a `sound` (e.g. "acme_hihat", the part before "_" names the kit) and per slot
 # (0-based across all bars) the velocity in `slot_volume` (0.01 … 1) and a sound variant in
 # `slot_variant` (0 = main sound; 1 = open hi-hat / rim / ride bell; 2 = hi-hat pedal). Song
-# settings: tempo, shuffle (0.5 = straight, 0.67 = triplet, as `song.swing`), beat_div (slots per
-# beat; 8 = 32nds, taken over as 16ths if no hit falls between), beats_per_bar, bars, kit,
-# effect_type, effect_amount.
+# settings: tempo, shuffle (0.5 = straight, 0.67 = triplet, as `song.swing`, range 0.5-0.8; integer
+# codes 0-3 = 0.5, 0.67, 0.6, 0.75), beat_div (slots per beat; 8 = 32nds, taken over as 16ths if no
+# hit falls between), beats_per_bar, bars, kit, effect_type, effect_amount. A track with `repeat = n`
+# repeats its first n slots (with their variants and flams).
 
 import JSON
 
@@ -17,7 +18,7 @@ function djson_track(sound::AbstractString, variant::Integer)
     contains(s, "kick") && return "Kick"
     if contains(s, "hihat") || contains(s, "hi_hat") || contains(s, "hat")
         contains(s, "open") && return "HHOpen"
-        (contains(s, "close") || contains(s, "ped")) && return "HHPedal"
+        (contains(s, "ped") || contains(s, "foot")) && return "HHPedal"   # "closed" = stick on the closed hat
         return v == 1 ? "HHOpen" : v == 2 ? "HHPedal" : "HiHat"
     end
     (contains(s, "rim") || contains(s, "stick") || contains(s, "clap")) && return "Rim"
@@ -60,6 +61,7 @@ function djson_fx(t)
 end
 
 getnum(d, k, def) = (v = get(d, k, def); v isa Real ? Float64(v) : Float64(def))
+getstr(d, k) = (v = get(d, k, ""); v isa AbstractString ? String(v) : "")   # JSON null etc. -> ""
 
 """
     import_drum_json(src; name = "") -> (song, notes)
@@ -123,9 +125,10 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
                 v > 0 ? (hits[s] = v) : delete!(hits, s)
             end
         end
+        srcslot(s) = string(rep > 0 ? s % rep : s)  # repeated slots take variant/flam of their source
         for (s, v) in hits
             0 <= s < nslots || continue
-            var = get(vars, string(s), 0); var = var isa Real ? round(Int, var) : 0
+            var = get(vars, srcslot(s), 0); var = var isa Real ? round(Int, var) : 0
             id = djson_track(snd, var)
             if id === nothing
                 push!(notes, L("Unbekannter Klang „{1}“ übersprungen", snd)); continue
@@ -133,11 +136,11 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
             k = track_index(id)
             st = s * factor
             grid[k, st+1] = max(grid[k, st+1], djson_level(v, vmax, varied))
-            isset(get(flams, string(s), nothing)) && (orng[k, st+1] = ORN_FLAM)
+            isset(get(flams, srcslot(s), nothing)) && (orng[k, st+1] = ORN_FLAM)
             haskey(params, id) || (params[id] = t)
             snd in get!(merged, id, String[]) || push!(merged[id], snd)
         end
-        any(s -> isset(get(delays, string(s), nothing)), keys(hits)) &&
+        any(s -> isset(get(delays, srcslot(s), nothing)), keys(hits)) &&
             push!(notes, L("Delays von „{1}“ nicht übernommen", snd))
         round(Int, getnum(t, "shift", 0)) != 0 && push!(notes, L("Verschiebung von „{1}“ nicht übernommen", snd))
     end
@@ -166,14 +169,15 @@ function import_drum_json(src::AbstractString; name::AbstractString = "")
     length(pats) > 24 && push!(notes, L("{1} verschiedene Takte – im Programm sind nur 24 Patterns bearbeitbar", length(pats)))
 
     sh = get(d, "shuffle", 0.5)
-    sh = sh isa Bool ? (sh ? 2 / 3 : 0.5) : sh isa Real ? Float64(sh) : 0.5
-    sh in (0, 1, 2, 3) && sh isa Integer && (sh = (0.5, 0.67, 0.6, 0.75)[Int(sh)+1])
-    swing = spb in (3, 6) ? 2 / 3 : clamp(sh, 0.5, 0.8)
-    nm = strip(String(get(d, "name", "")))
+    # Bool: triplet feel on/off; integer codes 0-3 (straight, triplet, light, dotted); otherwise the ratio
+    sh = sh isa Bool ? (sh ? 2 / 3 : 0.5) : sh isa Integer && 0 <= sh <= 3 ? (0.5, 0.67, 0.6, 0.75)[sh+1] :
+         sh isa Real ? Float64(sh) : 0.5
+    swing = spb in (3, 6) ? 2 / 3 : clamp(sh, 0.5, 0.8)        # 0.5-0.8 as the engine and song format
+    nm = strip(getstr(d, "name"))
     generic = isempty(nm) || lowercase(nm) == "drums"           # default name: use the file name
     nm = !isempty(name) ? name : !generic ? nm : isjson ? "JSON-Import" : splitext(basename(src))[1]
     song = Song(name = nm, bpm = bpm, swing = swing, swing_on = spb in (4, 8) ? 16 : 0, steps_per_beat = spb,
-                patterns = pats, chain = chain, kit = djson_kit(String(get(d, "kit", ""))),
+                patterns = pats, chain = chain, kit = djson_kit(getstr(d, "kit")),
                 fx = djson_fx(get(d, "effect_type", nothing)),
                 fxmix = clamp(0.25 * getnum(d, "effect_amount", 1), 0, 1), repeats = 4)
     for (id, t) in params

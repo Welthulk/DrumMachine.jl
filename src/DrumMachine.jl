@@ -17,6 +17,7 @@ include("lang/en_wavedit.jl")
 include("lang/en_aac.jl")
 include("lang/en_metro.jl")
 include("lang/en_player.jl")
+include("lang/en_midi.jl")
 include("dsp.jl")
 include("kit.jl")
 include("kitbuild.jl")
@@ -28,7 +29,9 @@ include("wavedit.jl")
 include("aac.jl")
 include("metronome.jl")
 include("player.jl")
+include("midi.jl")
 include("engine.jl")
+include("midifile.jl")
 include("gcpause.jl")
 include("drumjson.jl")
 include("gui.jl")
@@ -42,7 +45,7 @@ include("precompile.jl")
 export Song, Pattern, TrackParams, Kit, Engine,
        preset, PRESET_NAMES, pattern_from_rows, row_string, parse_chain,
        save_song, load_song, load_kit, synth_kit, available_kits, kit_entries, get_kit,
-       render_song, export_wav, ascii_filename, song_seconds,
+       render_song, export_wav, export_midi, ascii_filename, song_seconds,
        make_fill, FILL_STYLES, import_drum_json,
        Wave, load_wave, save_wave
 

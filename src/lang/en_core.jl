@@ -45,5 +45,8 @@ add_translations!(Dict{String,String}(
     "Instrument {1} fehlt in {2}" => "Instrument {1} missing in {2}",
     "{1} (laden, {2})" => "{1} (download, {2})",
     "Kit {1} wird schon geladen." => "Kit {1} is already being downloaded.",
+    "Kit {1} wird schon von einem anderen DrumMachine-Prozess geladen." =>
+        "Kit {1} is already being built by another DrumMachine process.",
+    "Kit-Ordner {1} wird ignoriert, {2} hat Vorrang" => "Kit folder {1} is ignored, {2} takes precedence",
     "Kit {1} konnte nicht geladen werden: {2}" => "Kit {1} could not be loaded: {2}",
 ))

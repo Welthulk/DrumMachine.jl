@@ -131,6 +131,9 @@ add_translations!(Dict{String,String}(
     "Überschrieben: {1}  ({2})" => "Overwritten: {1}  ({2})",
     "Gespeichert: {1}  ({2})" => "Saved: {1}  ({2})",
     "Geladen: {1}  ({2}) – Bearbeiten an, „Speichern“ überschreibt." => "Loaded: {1}  ({2}) – Edit on, “Save” overwrites.",
+    "Geladen: {1}  ({2}) – schreibgeschützt, „Speichern“ legt eine eigene Datei an." =>
+        "Loaded: {1}  ({2}) – read-only, “Save” creates your own file.",
+    "Speichern fehlgeschlagen: {1}" => "Saving failed: {1}",
     "Fehler beim Laden: {1}" => "Error loading: {1}",
     "Datei-Dialog geöffnet …" => "File dialog open …",
     "Kein Datei-Dialog gefunden – bitte zenity oder kdialog installieren." =>
@@ -147,7 +150,14 @@ add_translations!(Dict{String,String}(
         "WAV written: {1}  ({2} min, {3}, {4} BPM, {5}× chain, {6}, {7} s)",
     "nahtloser Loop" => "seamless loop",
     "Einzähler {1} Takt(e)" => "count-in {1} bar(s)",
+    "MIDI geschrieben: {1}  ({2} BPM, {3}× Kette, {4})" => "MIDI written: {1}  ({2} BPM, {3}× chain, {4})",
+    "ohne Einzähler" => "no count-in",
     "Export fehlgeschlagen: {1}" => "Export failed: {1}",
+    "Ein Takt hat keine genaue Taktart, die Taktstriche sind ab dort verschoben" =>
+        "A bar has no exact time signature, bar lines are shifted from there on",
+    "Audio lässt sich nicht starten: {1}" => "Audio cannot be started: {1}",
+    "Audio-Ausgabe beendet (Fehler, siehe Terminal). „Play“ startet sie neu." =>
+        "Audio output stopped (error, see terminal). “Play” starts it again.",
     "Loop-Export: ohne Einzähler, exakt ganze Takte, Ausklang auf den Anfang gefaltet. Am TD-27: SONG → [F2] SETUP → Loop Type = LOOP. Für ein einzelnes Pattern Kette „1“, Wiederholungen 1." =>
         "Loop export: no count-in, exact whole bars, decay folded onto the start. On the TD-27: SONG → [F2] SETUP → Loop Type = LOOP. For a single pattern use chain “1”, repeats 1.",
     "Links/Rechts getauscht (Wiedergabe und Export)." => "Left/right swapped (playback and export).",
@@ -165,6 +175,7 @@ add_translations!(Dict{String,String}(
     # documentation viewer (src/docs_view.jl)
     "Keine Dokumentation gefunden in {1}" => "No documentation found in {1}",
     "Auf GitHub lesen ↗" => "Read on GitHub ↗",
+    "Seite {1}/{2}" => "Page {1}/{2}",
     # Drum-JSON import
     "JSON-Import …" => "JSON import …",
     "Drum-JSON importieren" => "Import Drum-JSON",

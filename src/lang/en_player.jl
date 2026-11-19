@@ -21,8 +21,8 @@ add_translations!(Dict{String,String}(
     "Saal" => "Hall",
     "Kathedrale" => "Cathedral",
     "Lautstärke" => "Volume",
-    "Auto: Setup läuft mit Pausen und Beeps durch, Klick auf einen Song startet ab dort.\nManuell: Klick spielt den Song sofort, ohne Pause und Beep.\nDie Effekte der Songs bleiben erhalten, der Master wirkt zusätzlich.\nBeep/Einzähler: Countdown-Beeps und Einzähler der Songs; auf „aus“ läuft der Countdown nur in der Statuszeile.\nAusgang „Musik links, Beep rechts“: links zur PA, rechts auf den Kopfhörer." =>
-        "Auto: the setup runs through with pauses and beeps, clicking a song starts from there.\nManual: a click plays the song at once, without pause and beep.\nThe effects of the songs stay, the master is applied on top.\nBeep/count-in: countdown beeps and the songs' count-in; \"off\": the countdown runs only in the status line.\nOutput \"music left, beep right\": left to the PA, right to the headphones.",
+    "Auto: Setup läuft mit Pausen und Beeps durch, Klick auf einen Song startet ab dort.\nManuell: Klick spielt den Song sofort, ohne Pause und Beep.\nDie Effekte der Songs bleiben erhalten, der Master wirkt zusätzlich.\nBeep/Einzähler: Countdown-Beeps und Einzähler der Songs; auf „aus“ läuft der Countdown nur in der Statuszeile.\nAusgang „Musik links, Beep rechts“: links zur PA, rechts auf den Kopfhörer.\nMIDI-Ausgang: MIDI-Dateien im Setup spielen über dieses Gerät (USB), WAVs und Songs über die Soundkarte." =>
+        "Auto: the setup runs through with pauses and beeps, clicking a song starts from there.\nManual: a click plays the song at once, without pause and beep.\nThe effects of the songs stay, the master is applied on top.\nBeep/count-in: countdown beeps and the songs' count-in; \"off\": the countdown runs only in the status line.\nOutput \"music left, beep right\": left to the PA, right to the headphones.\nMIDI output: MIDI files in the setup play through this device (USB), WAVs and songs through the sound card.",
     "Beep/Einzähler" => "Beep/count-in",
     "Kein Setup geladen." => "No setup loaded.",
     "Die Songs werden noch vorbereitet …" => "The songs are still being prepared …",
@@ -33,7 +33,7 @@ add_translations!(Dict{String,String}(
     "SETUP-EDITOR" => "SETUP EDITOR",
     "Setup laden …" => "Load setup …",
     "Song hinzufügen …" => "Add song …",
-    "Dateien hinzufügen (TOML/WAV) …" => "Add files (TOML/WAV) …",
+    "Dateien hinzufügen (TOML/WAV/MIDI) …" => "Add files (TOML/WAV/MIDI) …",
     "Datei" => "File",
     "Noch leer: Songs aus der Liste oder Dateien hinzufügen, dann speichern." =>
         "Still empty: add songs from the list or files, then save.",
@@ -42,8 +42,8 @@ add_translations!(Dict{String,String}(
         "Pauses and beeps are set in the player in front of each song. Setups are stored in {1}",
     "Gespeichert: {1}" => "Saved: {1}",
     "Hinzugefügt: {1}" => "Added: {1}",
-    "Songs oder WAV-Dateien hinzufügen" => "Add songs or WAV files",
-    "Songs und Audio" => "Songs and audio",
+    "Songs, WAV- oder MIDI-Dateien hinzufügen" => "Add songs, WAV or MIDI files",
+    "Songs, Audio und MIDI" => "Songs, audio and MIDI",
     "{1} Dateien hinzugefügt." => "{1} files added.",
     "Datei nicht gefunden: {1}" => "File not found: {1}",
     "Setup erstellen …" => "Create setup …",
@@ -57,4 +57,16 @@ add_translations!(Dict{String,String}(
     "Stereo, Beep auf beiden" => "Stereo, beep on both",
     "Musik links, Beep rechts" => "Music left, beep right",
     "Musik rechts, Beep links" => "Music right, beep left",
+    "MIDI-Ausgang" => "MIDI output",
+    "MIDI-Ausgang aus." => "MIDI output off.",
+    "MIDI-Ausgang „{1}“ lässt sich nicht öffnen." => "MIDI output \"{1}\" cannot be opened.",
+    "MIDI-Ausgang „{1}“ antwortet nicht." => "MIDI output \"{1}\" does not respond.",
+    "MIDI-Ausgang „{1}“ nicht gefunden, im Menü MIDI-Ausgang wählen." =>
+        "MIDI output \"{1}\" not found, choose one in the menu MIDI output.",
+    "MIDI-Ausgang: {1}. MIDI-Dateien im Setup spielen über dieses Gerät." =>
+        "MIDI output: {1}. MIDI files in the setup play through this device.",
+    "MIDI-Datei, aber kein MIDI-Ausgang gewählt: läuft stumm" =>
+        "MIDI file, but no MIDI output chosen: plays silently",
+    "Echtzeit-Priorität {1}" => "realtime priority {1}",
+    "ohne Echtzeit-Priorität" => "no realtime priority",
 ))

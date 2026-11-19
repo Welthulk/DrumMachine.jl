@@ -17,7 +17,7 @@ function player_conf()
             hall, hall_mix = num("hall_mix", 0, 1, 0.25), beep = num("beep", 0, 1, 1),
             route = something(findfirst(==(get(d, "route", "")), PLAYER_ROUTES), 1),
             auto = get(d, "auto", true) !== false,
-            setlist = string(get(d, "setlist", "")))
+            setlist = string(get(d, "setlist", "")), midi_out = string(get(d, "midi_out", "")))
 end
 
 fmt_pause(x) = isinteger(x) ? string(Int(x)) : string(round(x, digits = 1))
@@ -38,6 +38,12 @@ function show_player(eng::Engine; standalone::Bool = false)
         pl.beepgain = Float32(conf.beep); pl.route = conf.route
     end
     ctx = player_context(eng; gain_db = conf.gain_db, eq = conf.eq)
+    ctx.midi_want[] = conf.midi_out                     # reopen the MIDI output of the last session
+    ctx.midi_outs[] = midi_outputs()
+    if !isempty(conf.midi_out)                          # a failure stays in the status line (midi_msg)
+        conf.midi_out in ctx.midi_outs[] ? player_midi_out!(ctx, conf.midi_out) :
+            (ctx.midi_msg[] = L("MIDI-Ausgang „{1}“ nicht gefunden, im Menü MIDI-Ausgang wählen.", conf.midi_out))
+    end
     name = conf.setlist
     path = setlist_path(name)
     isempty(name) || !isfile(path) || (ctx.sl[] = try load_setlist(path) catch; Setlist() end)
@@ -53,8 +59,11 @@ function show_player(eng::Engine; standalone::Bool = false)
             ctx.tick[]()
             sleep(1 / 10)
         end
-        lock(() -> player_stop!(pl), eng.lock)
-        save_player_conf(ctx)
+        ctx.gen[] += 1                                   # stops the background preparation
+        lock(() -> player_load!(pl, Setlist()), eng.lock)   # stops and drops all prepared audio
+        save_player_conf(ctx)                            # first: closing the MIDI output takes a while
+        try midi_out_close!(pl, eng.lock) catch e; @warn "MIDI output not closed" exception = e end
+        PLAYER_CTX[] === ctx && (PLAYER_CTX[] = nothing)     # the main window waits for this
         standalone && stop_audio!(eng)
     end
     return screen
@@ -62,14 +71,44 @@ end
 
 function save_player_conf(ctx)
     pl = ctx.eng.player
-    save_setting!("player", player_settings(pl, ctx.eq[], ctx.gain_db[], ctx.sl[].name))
+    save_setting!("player", player_settings(pl, ctx.eq[], ctx.gain_db[], ctx.sl[].name, ctx.midi_want[]))
 end
 
-"State of a player window: setup, preparation progress, master values, screen."
+"""
+    player_midi_out!(ctx, name) -> message
+
+Opens the MIDI output `name` for the player (`""` = off) after closing the open one, and keeps
+the choice for the settings. Never throws; the message is for the status line.
+"""
+function player_midi_out!(ctx, name::AbstractString)
+    eng = ctx.eng
+    fail() = (ctx.midi_msg[] = L("MIDI-Ausgang „{1}“ lässt sich nicht öffnen.", name))
+    try
+        midi_out_close!(eng.player, eng.lock)
+        ctx.midi_out[] = ""; ctx.midi_msg[] = ""
+        ctx.midi_want[] = String(name)
+        isempty(name) && return L("MIDI-Ausgang aus.")
+        p = open_midi_out(name)
+        p == C_NULL && return fail()
+        eng.player.merr[] = 0
+        eng.player.mout[] = UInt(p)                      # for the audio thread, now that it is open
+        ctx.midi_out[] = String(name)
+        return L("MIDI-Ausgang: {1}. MIDI-Dateien im Setup spielen über dieses Gerät.", name)
+    catch e
+        @warn "MIDI output" exception = e
+        return fail()
+    end
+end
+
+"State of a player window: setup, preparation progress, master values, MIDI output, screen."
 player_context(eng::Engine; gain_db::Real = 0.0, eq = (0.0, 0.0, EQ_MIDF_DEFAULT, 0.0)) =
     (eng = eng, sl = Ref(Setlist()), ready = Ref(Bool[]), dur = Ref(Float64[]), err = Ref(String[]),
      gen = Ref(0), preparing = Ref(0), gain_db = Ref(Float64(gain_db)), eq = Ref(NTuple{4,Float64}(eq)),
-     screen = Ref{Any}(nothing), tick = Ref{Function}(() -> nothing), editor = Ref{Any}(nothing))
+     screen = Ref{Any}(nothing), tick = Ref{Function}(() -> nothing), editor = Ref{Any}(nothing),
+     midi_out = Ref(""),              # open MIDI output
+     midi_want = Ref(""),             # chosen MIDI output (saved, also while the device is missing)
+     midi_outs = Ref(String[]),       # MIDI outputs found
+     midi_msg = Ref(""))              # why the chosen output is not open (stays in the status line)
 
 "Waits (at most `timeout` s) until the songs of the player are prepared."
 function wait_prepared(ctx; timeout::Real = 120)
@@ -87,7 +126,7 @@ function player_figures(eng::Engine, sl::Setlist)
     pfig, ptick! = with_theme(() -> player_figure(ctx), DM_THEME)
     ptick!()
     efig = with_theme(() -> setlist_editor_figure((sl = Ref(copy_setlist(sl)), screen = Ref{Any}(nothing),
-                                                    msg = Ref(""), on_saved = nothing)), DM_THEME)
+                                                    msg = Ref(""), on_saved = nothing, src = Ref(sl.name))), DM_THEME)
     return ctx, pfig, ptick!, efig
 end
 
@@ -96,23 +135,33 @@ function player_use!(ctx, sl::Setlist)
     eng = ctx.eng; pl = eng.player
     ctx.sl[] = sl
     n = length(sl.entries)
-    lock(() -> player_load!(pl, sl), eng.lock)
-    ctx.ready[] = fill(false, n); ctx.dur[] = zeros(n); ctx.err[] = fill("", n)
+    # The generation goes up before the new setup is loaded, and the worker writes only into its
+    # own arrays and checks the generation again under the lock: a render of the previous setup
+    # that finishes now can no longer fill an entry of this one.
     gen = (ctx.gen[] += 1)
+    ready = fill(false, n); dur = zeros(n); err = fill("", n)
+    lock(() -> player_load!(pl, sl), eng.lock)
+    ctx.ready[] = ready; ctx.dur[] = dur; ctx.err[] = err
     ctx.preparing[] = n
     Threads.@spawn for (i, e) in enumerate(sl.entries)
         ctx.gen[] == gen || return                       # another setup was loaded meanwhile
         try
-            y, cue = prepare_entry_cue(e)
-            ctx.gen[] == gen || return
-            lock(eng.lock) do
-                i <= length(pl.items) && (pl.items[i] = y; pl.cues[i] = cue)
+            y, cue, m = prepare_entry_cue(e)
+            ok = lock(eng.lock) do
+                ctx.gen[] == gen || return false
+                if i <= length(pl.items)
+                    pl.items[i] = y; pl.cues[i] = cue
+                    m === nothing || ((pl.mframe[i], pl.mmsg[i], pl.mchans[i]) = m)
+                end
+                true
             end
-            ctx.dur[][i] = size(y, 1) / SR
-            ctx.ready[][i] = true
+            ok || return
+            dur[i] = size(y, 1) / SR
+            ready[i] = true
         catch ex
-            ctx.err[][i] = sprint(showerror, ex)
+            err[i] = sprint(showerror, ex)
         end
+        ctx.gen[] == gen || return
         ctx.preparing[] = n - i
     end
     return ctx
@@ -164,6 +213,7 @@ function player_figure(ctx)
     Label(list[1, 3], "Beep", color = C_TEXT2)
     Label(list[1, 4], "Song", color = C_TEXT2, halign = :left)
     titles = [entry_title(e) for e in sl.entries[1:n]]
+    ismidi = [is_midi_file(e.path) for e in sl.entries]
     songbtns = Button[]; beepbtns = Button[]
     for i in 1:n
         e = sl.entries[i]
@@ -252,7 +302,41 @@ function player_figure(ctx)
         k = something(findfirst(==(s), route_opts), 1)
         lock(() -> (pl.route = k), eng.lock)
     end
-    Label(mbox[12, 1:3], L("Auto: Setup läuft mit Pausen und Beeps durch, Klick auf einen Song startet ab dort.\nManuell: Klick spielt den Song sofort, ohne Pause und Beep.\nDie Effekte der Songs bleiben erhalten, der Master wirkt zusätzlich.\nBeep/Einzähler: Countdown-Beeps und Einzähler der Songs; auf „aus“ läuft der Countdown nur in der Statuszeile.\nAusgang „Musik links, Beep rechts“: links zur PA, rechts auf den Kopfhörer."),
+    Label(mbox[12, 1], L("MIDI-Ausgang"), color = C_TEXT2, halign = :left)
+    midi_off = L("aus")
+    function out_opts(names)                          # off, the outputs found, the open one
+        o = vcat([midi_off], names)
+        isempty(ctx.midi_out[]) || ctx.midi_out[] in o || push!(o, ctx.midi_out[])
+        return o
+    end
+    out_cur() = isempty(ctx.midi_out[]) ? midi_off : ctx.midi_out[]
+    outmenu = Menu(mbox[12, 2:3], options = out_opts(ctx.midi_outs[]), default = out_cur(), width = 230)
+    out_sync = Ref(false)                             # menu is being set from code
+    function set_out_menu!()
+        o = out_opts(ctx.midi_outs[])
+        out_sync[] = true
+        try
+            o == outmenu.options[] || (outmenu.options[] = o)
+            k = something(findfirst(==(out_cur()), o), 1)
+            outmenu.i_selected[] == k || (outmenu.i_selected[] = k)
+        finally
+            out_sync[] = false
+        end
+    end
+    on(outmenu.is_open) do open                       # devices may be plugged in meanwhile
+        open || return
+        ctx.midi_outs[] = midi_outputs()
+        set_out_menu!()
+    end
+    on(outmenu.selection) do sel
+        (sel === nothing || out_sync[]) && return
+        name = sel == midi_off ? "" : sel
+        name == ctx.midi_out[] && name == ctx.midi_want[] && return   # "aus" also forgets a missing device
+        status[] = player_midi_out!(ctx, name)
+        save_player_conf(ctx)
+        set_out_menu!()
+    end
+    Label(mbox[13, 1:3], L("Auto: Setup läuft mit Pausen und Beeps durch, Klick auf einen Song startet ab dort.\nManuell: Klick spielt den Song sofort, ohne Pause und Beep.\nDie Effekte der Songs bleiben erhalten, der Master wirkt zusätzlich.\nBeep/Einzähler: Countdown-Beeps und Einzähler der Songs; auf „aus“ läuft der Countdown nur in der Statuszeile.\nAusgang „Musik links, Beep rechts“: links zur PA, rechts auf den Kopfhörer.\nMIDI-Ausgang: MIDI-Dateien im Setup spielen über dieses Gerät (USB), WAVs und Songs über die Soundkarte."),
           color = C_DIM, fontsize = 12, halign = :left, justification = :left, padding = (0, 0, 0, 14),
           word_wrap = true, width = 330)
     rowgap!(mbox, 6); colgap!(mbox, 8)
@@ -286,7 +370,8 @@ function player_figure(ctx)
     end
 
     # ---------------------------------------------------------------- display
-    last = Ref((-1, -1, -1, -1))
+    last = Ref{Any}(nothing)
+    rt_note(rt) = "   ·   " * (rt > 0 ? L("Echtzeit-Priorität {1}", rt) : L("ohne Echtzeit-Priorität"))
     function tick!()
         st = pl.shown_state[]; cur = pl.shown_cur[]
         ready = ctx.ready[]
@@ -297,15 +382,24 @@ function player_figure(ctx)
             key != last[] && (status[] = L("Nächster Song: {1} · {2} – Start in {3} s", cur, get(titles, cur, ""), secs))
         elseif st == 2
             t = pl.shown_pos[] / SR
-            key = (st, cur, floor(Int, t), 0)
-            key != last[] && (status[] = "▶ $cur · $(get(titles, cur, ""))   $(fmt_time(t)) / $(fmt_time(get(ctx.dur[], cur, 0.0)))")
+            midi = get(ismidi, cur, false)
+            merr = midi && pl.mout[] != 0 && pl.merr[] > 0          # writes fail: device unplugged?
+            key = (st, cur, floor(Int, t), merr)
+            if key != last[]
+                status[] = "▶ $cur · $(get(titles, cur, ""))   $(fmt_time(t)) / $(fmt_time(get(ctx.dur[], cur, 0.0)))" *
+                           (midi && pl.mout[] == 0 ? "   ·   " * L("MIDI-Datei, aber kein MIDI-Ausgang gewählt: läuft stumm") :
+                            merr ? "   ·   " * L("MIDI-Ausgang „{1}“ antwortet nicht.", ctx.midi_out[]) : "")
+            end
         else
             p = ctx.preparing[]
-            key = (st, p, 0, 0)
+            rt = eng.rt[]
+            mm = ctx.midi_msg[]
+            key = (st, p, rt, mm)
             if key != last[]
-                status[] = p > 0 ? L("Bereite die Songs vor … noch {1}", p) :
-                           isempty(sl.entries) ? L("Kein Setup geladen.") :
-                           L("Bereit: {1} – {2}", sl.name, pl.auto ? L("Auto") : L("Manuell"))
+                status[] = (p > 0 ? L("Bereite die Songs vor … noch {1}", p) :
+                            isempty(sl.entries) ? L("Kein Setup geladen.") :
+                            L("Bereit: {1} – {2}", sl.name, pl.auto ? L("Auto") : L("Manuell"))) * rt_note(rt) *
+                           (isempty(mm) ? "" : "   ·   " * mm)
             end
         end
         last[] = key
@@ -345,13 +439,54 @@ end
 copy_setlist(sl::Setlist) = Setlist(sl.name, [SetEntry(e.path, e.pause, e.beep) for e in sl.entries])
 
 """
+    keep_pause_beep!(sl, old) -> sl
+
+Copies pause and beep from the entries of `old` to the entries of `sl` with the same path, in
+order (a song that appears twice is matched first to first). Entries not in `old` stay as they are.
+"""
+function keep_pause_beep!(sl::Setlist, old::Setlist)
+    pool = Dict{String,Vector{SetEntry}}()
+    for e in old.entries
+        push!(get!(pool, e.path, SetEntry[]), e)
+    end
+    for e in sl.entries
+        q = get(pool, e.path, nothing)
+        (q === nothing || isempty(q)) && continue
+        o = popfirst!(q)
+        e.pause = o.pause; e.beep = o.beep
+    end
+    return sl
+end
+
+"""
+    keep_saved_pause_beep!(sl, src) -> sl
+
+Before the setup editor saves `sl`: pause and beep are set in the player, which saves them at
+once, so the editor's copy may be older. Takes them from the saved setup `src` (the one the
+editor copy came from), or from the file of the target name `sl.name` if `src` has no file.
+"""
+function keep_saved_pause_beep!(sl::Setlist, src::AbstractString)
+    for nm in (src, sl.name)
+        isempty(nm) && continue
+        p = setlist_path(nm)
+        isfile(p) || continue
+        old = try load_setlist(p) catch; nothing end
+        old === nothing || keep_pause_beep!(sl, old)
+        break
+    end
+    return sl
+end
+
+"""
     show_setlist_editor(sl = Setlist(); on_saved = nothing) -> screen
 
-Opens the setup editor: add songs (.toml) or audio files (.wav), change the order, save the setup.
+Opens the setup editor: add songs (.toml), audio files (.wav) or MIDI files (.mid), change the
+order, save the setup.
 `on_saved(sl)` is called after saving (the player then reloads the setup).
 """
 function show_setlist_editor(sl::Setlist = Setlist(); on_saved = nothing)
-    state = (sl = Ref(sl), screen = Ref{Any}(nothing), msg = Ref(""), on_saved = on_saved)
+    state = (sl = Ref(sl), screen = Ref{Any}(nothing), msg = Ref(""), on_saved = on_saved,
+             src = Ref(sl.name))                # saved setup the editor copy came from
     fig = with_theme(() -> setlist_editor_figure(state), DM_THEME)
     screen = display(GLMakie.Screen(; title = L("DrumMachine – Setup-Editor")), fig)
     state.screen[] = screen
@@ -381,7 +516,7 @@ function setlist_editor_figure(state)
     add = fig[2, 1] = GridLayout(halign = :left, tellwidth = false)
     songs = list_songs()
     songmenu = Menu(add[1, 1], options = vcat([L("Song hinzufügen …")], songs), width = 380)
-    filebtn = Button(add[1, 2], label = L("Dateien hinzufügen (TOML/WAV) …"))
+    filebtn = Button(add[1, 2], label = L("Dateien hinzufügen (TOML/WAV/MIDI) …"))
     colgap!(add, 8)
 
     list = fig[3, 1] = GridLayout(valign = :top, halign = :left, tellwidth = false)
@@ -426,16 +561,19 @@ function setlist_editor_figure(state)
     on(savebtn.clicks) do _
         nm = strip(something(nametb.displayed_string[], sl.name))
         isempty(nm) || (sl.name = String(nm))
+        keep_saved_pause_beep!(sl, state.src[])
         p = save_setlist(sl)
+        state.src[] = sl.name
         state.msg[] = L("Gespeichert: {1}", p); status[] = state.msg[]
         state.on_saved === nothing || state.on_saved(copy_setlist(sl))
     end
     on(newbtn.clicks) do _
-        state.sl[] = Setlist(); state.msg[] = ""; editor_rebuild!(state)
+        state.sl[] = Setlist(); state.src[] = ""; state.msg[] = ""; editor_rebuild!(state)
     end
     on(loadmenu.selection) do s
         s in names || return
-        state.sl[] = load_setlist(setlist_path(s)); state.msg[] = L("Geladen: {1}", s); editor_rebuild!(state)
+        state.sl[] = load_setlist(setlist_path(s)); state.src[] = s
+        state.msg[] = L("Geladen: {1}", s); editor_rebuild!(state)
     end
     on(songmenu.selection) do s
         s in songs || return
@@ -444,8 +582,8 @@ function setlist_editor_figure(state)
     end
     on(filebtn.clicks) do _
         @async begin
-            paths = pick_files(song_dir(); title = L("Songs oder WAV-Dateien hinzufügen"), exts = ("toml", "wav"),
-                               kind = L("Songs und Audio"))
+            paths = pick_files(song_dir(); title = L("Songs, WAV- oder MIDI-Dateien hinzufügen"),
+                               exts = ("toml", "wav", "WAV", "mid", "MID", "midi", "MIDI"), kind = L("Songs, Audio und MIDI"))
             if paths === nothing
                 status[] = L("Kein Datei-Dialog gefunden – bitte zenity oder kdialog installieren.")
             elseif !isempty(paths)
@@ -473,6 +611,12 @@ function player(; block::Bool = true)
     eng = Engine(Song(), synth_kit())                       # no GC pause: the player only plays finished audio
     start_audio!(eng; latency = max(audio_latency(), 0.15))   # no live input: a larger buffer is safer
     screen = show_player(eng; standalone = true)
-    block && (wait(screen); sleep(0.5))            # let the window task save the settings and stop the audio
+    if block
+        wait(screen)
+        t0 = time()          # the window task saves the settings, closes the MIDI output, stops the audio
+        while (PLAYER_CTX[] !== nothing || eng.task !== nothing) && time() - t0 < 5
+            sleep(0.05)
+        end
+    end
     return screen
 end

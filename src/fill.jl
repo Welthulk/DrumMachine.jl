@@ -2,7 +2,8 @@
 #
 # For the fill span (n steps, spb steps per beat) each style returns a list of
 # (step within the span, track ID, level). Everything else in the span is cleared,
-# the groove before it is kept. Works with any grid (16ths, triplets, 8ths).
+# the groove before it is kept. Works with any grid (16ths, triplets, 8ths). The span always
+# starts on a beat of the bar, so beatstart(i, spb) within the span matches the bar's beats.
 
 const _O, _N, _A = 0x01, 0x02, 0x03      # ghost note, normal, accent
 
@@ -79,12 +80,13 @@ const FILL_STYLES = [
     make_fill(p, steps_per_beat, style = 1) -> Pattern
 
 Copy of `p` whose last beats are replaced by the fill `FILL_STYLES[style]`
-(the style is chosen cyclically, so any integer is allowed).
+(the style is chosen cyclically, so any integer is allowed). The fill span starts on a beat;
+in a bar with a partial last beat (e.g. 7/8 with 14 steps) it also covers that partial beat.
 """
 function make_fill(p::Pattern, spb::Int, style::Integer = 1)
     _, beats, gen = FILL_STYLES[mod1(style, length(FILL_STYLES))]
-    n = min(beats * spb, p.steps)
-    off = p.steps - n
+    off = max(0, fld(p.steps - beats * spb, spb) * spb)   # span starts on a beat of the bar
+    n = p.steps - off
     q = copy(p)
     q.grid[:, off+1:p.steps] .= 0x00
     q.orn[:, off+1:p.steps] .= 0x00

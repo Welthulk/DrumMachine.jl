@@ -65,6 +65,7 @@ synth_kit
 ```@docs
 render_song
 export_wav
+export_midi
 ascii_filename
 Engine
 ```

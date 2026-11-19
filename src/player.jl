@@ -1,7 +1,9 @@
-# Setup player, audio part: plays prepared songs (rendered .toml songs or .wav files) one after
-# another, with a pause and optional countdown beeps before each song, through its own master
-# section (volume, 3-band EQ, reverb). The engine mixes it into its output after everything else,
-# so it shares the sound card with the main window; the audio thread does not allocate here.
+# Setup player, audio part: plays prepared songs (rendered .toml songs, .wav files or .mid files)
+# one after another, with a pause and optional countdown beeps before each song, through its own
+# master section (volume, 3-band EQ, reverb). The engine mixes it into its output after everything
+# else, so it shares the sound card with the main window; the audio thread does not allocate here.
+# A MIDI file plays as silence of its length; its events go out from the audio thread to the MIDI
+# output (see `midi_send!` in src/midi.jl), timed for the moment that block reaches the speaker.
 
 const PLAYER_HALLS = ["Aus", "Raum", "Saal", "Kathedrale"]   # i18n-ok: shown via Ls()
 # Output routing: stereo with beeps on both channels, or music in mono on one channel and the
@@ -43,14 +45,30 @@ mutable struct Player
     shown_cur::Threads.Atomic{Int}
     shown_pos::Threads.Atomic{Int}    # frames played of the current entry
     shown_wait::Threads.Atomic{Int}   # frames left in the pause
+    # MIDI entries: events per entry (frame from the entry start, PortMidi message), empty for audio
+    mframe::Vector{Vector{Int}}
+    mmsg::Vector{Vector{Int32}}
+    mchans::Vector{UInt16}            # channels used per entry (bit c = channel c + 1)
+    mi::Int                           # next event of the current entry
+    moff::UInt16                      # channels still waiting for All Notes Off
+    mout::Threads.Atomic{UInt}        # open MIDI output (PortMidi stream), 0 = none; set once fully open
+    mlat::Float64                     # ms from rendering a block to hearing it (set by start_audio!)
+    mclk::Float64                     # smoothed PortMidi time (ms) of frame 0 of the MIDI clock
+    mfr::Int                          # frames since frame 0 of the MIDI clock, -1 = not started
+    merr::Threads.Atomic{Int}         # failed MIDI writes since the output was opened (unplugged?)
 end
 
 Player() = Player(Matrix{Float32}[], Int[], Float64[], Bool[], true, 0, 0, 1, 0, 0, beep_sound(), 0, 1f0, 1,
                   1f0, TrackFX(), false, 1, 0.25f0,
                   [Reverb(0.80, 0.35), Reverb(0.92, 0.2), Reverb(0.97, 0.12)],
-                  Threads.Atomic{Int}(0), Threads.Atomic{Int}(0), Threads.Atomic{Int}(0), Threads.Atomic{Int}(0))
+                  Threads.Atomic{Int}(0), Threads.Atomic{Int}(0), Threads.Atomic{Int}(0), Threads.Atomic{Int}(0),
+                  Vector{Int}[], Vector{Int32}[], UInt16[], 1, 0x0000, Threads.Atomic{UInt}(0), 0.0, 0.0, -1,
+                  Threads.Atomic{Int}(0))
 
-player_active(pl::Player) = pl.state != 0 || pl.beeppos > 0 || pl.tail > 0
+player_active(pl::Player) = pl.state != 0 || pl.beeppos > 0 || pl.tail > 0 || pl.moff != 0
+
+"The current entry stops: its MIDI channels get All Notes Off (sent by `mix_player!`)."
+midi_end!(pl::Player) = (pl.state == 2 && 1 <= pl.cur <= length(pl.mchans) && (pl.moff |= pl.mchans[pl.cur]); pl)
 
 "Sets the EQ of the player (dB low, dB mid, mid frequency in Hz, dB high)."
 function player_eq!(pl::Player, low::Real, mid::Real, midf::Real, high::Real)
@@ -62,7 +80,8 @@ end
 "Starts entry `i`: with its pause (and beeps) if `pause`, otherwise immediately."
 function player_start!(pl::Player, i::Int; pause::Bool)
     1 <= i <= length(pl.items) || return pl
-    pl.cur = i; pl.pos = 1; pl.tail = 0
+    midi_end!(pl)
+    pl.cur = i; pl.pos = 1; pl.tail = 0; pl.mi = 1
     w = pause ? round(Int, max(pl.delays[i], 0) * SR) : 0
     if w > 0
         pl.state = 1; pl.wait = w
@@ -75,6 +94,7 @@ end
 
 "Stops the player at once (the reverb tail is cut as well)."
 function player_stop!(pl::Player)
+    midi_end!(pl)
     pl.state = 0; pl.tail = 0; pl.beeppos = 0
     foreach(clear!, pl.halls)
     pl.shown_state[] = 0
@@ -83,6 +103,7 @@ end
 
 "End of the current entry: next one in auto mode (skipping entries that are not ready), else idle."
 function player_next!(pl::Player)
+    midi_end!(pl)
     if pl.auto
         for j in pl.cur+1:length(pl.items)
             isempty(pl.items[j]) && continue
@@ -96,9 +117,26 @@ end
 
 @inline softclip(x::Float32) = abs(x) <= 0.8f0 ? x : copysign(0.8f0 + 0.2f0 * tanh((abs(x) - 0.8f0) / 0.2f0), x)
 
-"Adds the player to the engine output `out` (frames × 2)."
+"""
+Sends the MIDI events of the current entry that are due at its frame `pl.pos`; `k` is the frame
+in the block, `t0` the time the block is heard (see [`midi_clock!`](@ref)).
+"""
+@inline function midi_events!(pl::Player, k::Int, t0::Float64)
+    c = pl.cur
+    c <= length(pl.mframe) || return
+    fr = pl.mframe[c]
+    @inbounds while pl.mi <= length(fr) && fr[pl.mi] <= pl.pos
+        midi_send!(pl, pl.mmsg[c][pl.mi], t0 + (k - 1 - (pl.pos - fr[pl.mi])) * (1000 / SR)) || return
+        pl.mi += 1
+    end
+    return
+end
+
+"Adds the player to the engine output `out` (frames × 2). Also sends the MIDI events of the block."
 function mix_player!(pl::Player, out::Matrix{Float32})
     N = size(out, 1)
+    t0 = midi_clock!(pl, N)
+    pl.moff == 0 || midi_notes_off!(pl, t0)
     @inbounds for k in 1:N
         l = 0f0; r = 0f0; cue = 0f0
         if pl.state == 1                              # pause, with countdown beeps
@@ -111,6 +149,7 @@ function mix_player!(pl::Player, out::Matrix{Float32})
         elseif pl.state == 2
             d = pl.items[pl.cur]
             if pl.pos <= size(d, 1)
+                midi_events!(pl, k, t0)
                 if pl.pos <= pl.cues[pl.cur]          # count-in of the song: a cue like the beeps
                     cue = (d[pl.pos, 1] + d[pl.pos, 2]) * 0.5f0
                 else
@@ -119,6 +158,7 @@ function mix_player!(pl::Player, out::Matrix{Float32})
                 pl.pos += 1
             else
                 player_next!(pl)
+                pl.moff == 0 || midi_notes_off!(pl, t0 + (k - 1) * (1000 / SR))
             end
         elseif pl.tail > 0
             pl.tail -= 1

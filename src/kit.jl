@@ -143,7 +143,7 @@ end
 "Resample to `SR` (sinc, see `resample_sinc`)."
 resample(x::AbstractVector, fs::Real) = resample_sinc(x, fs, SR)
 
-"Load a WAV file as a `Sample` (mono or stereo; more channels are mixed down to stereo)."
+"Load a WAV file as a `Sample` (mono or stereo; with more than 2 channels only channels 1 and 2 are used, `stereo = false` sums all)."
 function load_sample(path; stereo::Bool = true)
     y, fs = WAV.wavread(path; format = "double")
     nch = size(y, 2)
@@ -261,7 +261,9 @@ cached_synth_kit() = (SYNTH_KIT[] === nothing && (SYNTH_KIT[] = synth_kit()); SY
     kit_entries(dirs = kit_dirs()) -> Vector{KitEntry}
 
 All kits without loading samples: WAV kits from the kit folders (alphabetical by folder, a folder
-name appears once; the package's own `kits/` wins), followed by the 808- and 909-style synth kits.
+name appears once; the package's own `kits/` wins, a hidden folder of the same name is reported
+once as a warning), followed by the 808- and 909-style synth kits. Temporary build folders
+(`*.building`, `*.old`) are skipped.
 """
 function kit_entries(dirs = kit_dirs())
     found = Dict{String,String}()                       # kit folder name => path
@@ -269,7 +271,11 @@ function kit_entries(dirs = kit_dirs())
         isdir(dir) || continue
         for d in sort(readdir(dir; join = true))
             isfile(joinpath(d, "kit.toml")) || continue
-            haskey(found, basename(d)) && continue
+            occursin(r"\.(building|old)$", d) && continue  # unfinished or replaced build
+            if haskey(found, basename(d))
+                @warn L("Kit-Ordner {1} wird ignoriert, {2} hat Vorrang", d, found[basename(d)]) _id = d maxlog = 1
+                continue
+            end
             found[basename(d)] = d
         end
     end

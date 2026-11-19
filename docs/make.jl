@@ -10,7 +10,7 @@ using Documenter, DrumMachine
 
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 const REPO = "https://github.com/Welthulk/DrumMachine.jl"
-const DOCS = ["song-format.md", "wav-editor.md", "metronome.md", "player.md"]
+const DOCS = ["song-format.md", "wav-editor.md", "metronome.md", "player.md", "midi.md"]
 const TOP = ["FEATURES.md", "PLATFORMS.md", "KITS.md", "CHANGELOG.md", "SUPPORT.md"]
 
 "Relative links that point outside the website go to GitHub, docs/x becomes x."
@@ -39,6 +39,7 @@ The program shows a short help (**?**) and these pages (*Docs*) itself. Installa
 | [WAV editor](wav-editor.md) | editing exported WAV files |
 | [Metronome](metronome.md) | the metronome window |
 | [Setup player](player.md) | playing songs on stage |
+| [MIDI recording and export](midi.md) | recording from an e-drum kit (Roland TD-27), MIDI file export |
 | [Kits](KITS.md) | sample kits, sources and licenses |
 | [Platforms](PLATFORMS.md) | Linux, Windows, macOS, required programs |
 | [Changelog](CHANGELOG.md) | changes per version |
@@ -76,6 +77,7 @@ makedocs(;
         "WAV editor" => "wav-editor.md",
         "Metronome" => "metronome.md",
         "Setup player" => "player.md",
+        "MIDI" => "midi.md",
         "Kits" => "KITS.md",
         "Platforms" => "PLATFORMS.md",
         "API" => "api.md",

@@ -1,0 +1,572 @@
+# MIDI input for recording from an e-drum kit: a thin PortMidi wrapper (PortMidi_jll), the note
+# map (Roland TD-27, General MIDI) and the pure functions that turn a hit into a grid cell. Also
+# the MIDI output of the setup player.
+#
+# Threads: a reader task polls the open input about every 1 ms and hands note-ons through a
+# Channel to the GUI, which writes them into the pattern on the main thread. The setup player
+# sends the events of a MIDI file from the audio thread. PortMidi is not thread-safe: every
+# PortMidi call holds the spin lock PM_LOCK, only for that one call; the audio thread only tries
+# it and sends later if it is taken, so it never waits. Opening, closing and listing devices also
+# hold MIDI_LOCK, so that PortMidi is not re-initialised in between.
+# For the timing the audio thread logs, per block, its position with `time_ns()` and the start of
+# every bar (`HitClock`, under `eng.lock`).
+
+import PortMidi_jll
+
+# ---------------------------------------------------------------------------
+# Note map, velocity
+# ---------------------------------------------------------------------------
+
+"Roland TD-27 factory note numbers (heads, rims, edges) -> track id."
+const TD27_NOTES = Dict(
+    36 => "Kick",
+    38 => "Snare", 40 => "Snare",                    # head, rim
+    37 => "Rim",                                     # cross stick
+    48 => "Tom", 50 => "Tom", 45 => "Tom", 47 => "Tom",   # tom 1 and 2, head and rim
+    43 => "FloorTom", 58 => "FloorTom",              # tom 3
+    46 => "HHOpen", 26 => "HHOpen",                  # hi-hat open bow, edge
+    42 => "HiHat", 22 => "HiHat",                    # hi-hat closed bow, edge
+    44 => "HHPedal",
+    49 => "Crash", 55 => "Crash", 57 => "Crash", 52 => "Crash",   # crash 1 and 2, bow and edge
+    51 => "Ride", 59 => "Ride",                      # ride bow, edge
+    53 => "RideBell",
+)
+"General MIDI drum notes not covered by the TD-27 table."
+const GM_NOTES = Dict(35 => "Kick", 39 => "Snare", 41 => "FloorTom")
+
+"""
+Settings for MIDI recording: note -> track index, velocity thresholds (below `ghost` = ghost
+note, from `accent` on = accent) and the user offset in ms (positive = hits count earlier).
+"""
+struct MidiConfig
+    map::Dict{Int,Int}
+    ghost::Int
+    accent::Int
+    offset_ms::Float64
+end
+
+"""
+    midi_note_map(settings) -> Dict{Int,Int}
+
+Note number -> track index: the TD-27 table, General MIDI as fallback, then the settings table
+`[midi_map]` ("note" = "TrackId") on top. A value that is no track id (e.g. "off") removes the note.
+"""
+function midi_note_map(settings::AbstractDict = load_settings())
+    m = Dict{Int,Int}()
+    for tab in (GM_NOTES, TD27_NOTES), (n, id) in tab
+        m[n] = track_index(id)
+    end
+    user = get(settings, "midi_map", nothing)
+    user isa AbstractDict || return m
+    for (k, v) in user
+        n = tryparse(Int, string(k))
+        (n === nothing || !(0 <= n <= 127)) && continue
+        t = track_index(string(v))
+        t === nothing ? delete!(m, n) : (m[n] = t)
+    end
+    return m
+end
+
+_setting(d, key, default, lo, hi) = (v = get(d, key, default); v isa Real ? clamp(v, lo, hi) : default)
+
+"MIDI settings from the settings file: `midi_map`, `midi_ghost`, `midi_accent`, `midi_offset_ms`."
+midi_config(settings::AbstractDict = load_settings()) =
+    MidiConfig(midi_note_map(settings), round(Int, _setting(settings, "midi_ghost", 45, 1, 127)),
+               round(Int, _setting(settings, "midi_accent", 105, 1, 128)),
+               Float64(_setting(settings, "midi_offset_ms", 0, -500, 500)))
+
+"Grid level of a hit: 1 (ghost) below `ghost`, 3 (accent) from `accent` on, else 2."
+velocity_level(v::Integer, ghost::Integer, accent::Integer) = v >= accent ? 3 : v < ghost ? 1 : 2
+velocity_level(v::Integer, c::MidiConfig) = velocity_level(v, c.ghost, c.accent)
+
+# ---------------------------------------------------------------------------
+# Timing: engine position at a given time, grid cell of a hit
+# ---------------------------------------------------------------------------
+
+"Start of a bar as played by the engine: sample time, position in the sequence, pattern (0 = count-in)."
+struct BarMark
+    start::Float64
+    seqpos::Int
+    pat::Int
+end
+
+"Start of a step as scheduled by the engine: sample time, step index (0-based)."
+struct StepMark
+    start::Float64
+    step::Int
+end
+
+const CLOCK_LEN = 64      # audio blocks kept (~0.7 s)
+const BARS_LEN = 8
+const STEPS_LEN = 128
+
+"""
+Timing log of the engine for MIDI recording, written by the audio thread under `eng.lock`:
+engine position at the start of each audio block with its `time_ns()`, the starts of the last
+bars and steps, and the output latency of the stream.
+"""
+mutable struct HitClock
+    t::Vector{UInt64}
+    pos::Vector{Int}
+    n::Int
+    bars::Vector{BarMark}
+    nb::Int
+    steps::Vector{StepMark}
+    ns::Int
+    latency::Float64              # s, from rendering a block to hearing it (without the block itself)
+end
+HitClock() = HitClock(zeros(UInt64, CLOCK_LEN), zeros(Int, CLOCK_LEN), 0, fill(BarMark(0.0, 0, 0), BARS_LEN), 0,
+                      fill(StepMark(0.0, 0), STEPS_LEN), 0, 0.0)
+
+"Logs the engine position `pos` at time `t` (start of an audio block). No allocation."
+function log_block!(c::HitClock, t::UInt64, pos::Int)
+    i = c.n % CLOCK_LEN + 1
+    @inbounds c.t[i] = t; c.pos[i] = pos
+    c.n += 1
+    return nothing
+end
+
+"Logs the start of a bar. No allocation."
+function log_bar!(c::HitClock, start::Float64, seqpos::Int, pat::Int)
+    @inbounds c.bars[c.nb % BARS_LEN + 1] = BarMark(start, seqpos, pat)
+    c.nb += 1
+    return nothing
+end
+
+"Logs the start of step `s` (0-based). No allocation."
+function log_step!(c::HitClock, start::Float64, s::Int)
+    @inbounds c.steps[c.ns % STEPS_LEN + 1] = StepMark(start, s)
+    c.ns += 1
+    return nothing
+end
+
+"Oldest first: the logged entries of ring `v` with `n` writes so far."
+ring_order(v::Vector, n::Int) = n <= length(v) ? v[1:n] : vcat(v[n%length(v)+1:end], v[1:n%length(v)])
+
+"Copy of the log (take `eng.lock` around it): block times, positions, bar starts, latency, step starts."
+clock_snapshot(c::HitClock) = (ring_order(c.t, c.n), ring_order(c.pos, c.n), ring_order(c.bars, c.nb), c.latency,
+                               ring_order(c.steps, c.ns))
+
+"""
+    heard_sample(ts, pos, t, delay) -> Float64 or nothing
+
+Engine position (samples) that could be heard at time `t` (`time_ns()`). `ts`/`pos` are the logged
+block starts. Each block gives the position at `t` by counting on at the sample rate from its own
+start; the median of these values is used, because the audio thread renders in bursts (the sound
+server takes several blocks at once) and single block times jitter by about one block. `delay` (s)
+is the time from rendering to hearing (output latency, one block, user offset) and is subtracted.
+"""
+function heard_sample(ts::AbstractVector{<:Integer}, pos::AbstractVector{<:Integer}, t::Integer, delay::Real)
+    isempty(ts) && return nothing
+    est = sort!([pos[k] + Float64(Int64(t) - Int64(ts[k])) / 1e9 * SR for k in eachindex(ts, pos)])
+    n = length(est)
+    mid = isodd(n) ? est[(n+1)÷2] : (est[n÷2] + est[n÷2+1]) / 2
+    return mid - delay * SR
+end
+
+"Rendering-to-hearing delay in s: output latency, one block, minus the user offset."
+hit_delay(latency::Real, offset_ms::Real) = latency + BLOCK / SR + offset_ms / 1000
+
+"Pattern index of a sequence entry: -1 = edit pattern, 0 = count-in."
+seq_pattern(entry::Int, edit_pat::Int, npat::Int) = entry == -1 ? clamp(edit_pat, 1, npat) : entry == 0 ? 0 : clamp(entry, 1, npat)
+
+"Pattern played in a bar of `pat` (0 = count-in: the first real pattern of the sequence)."
+function bar_pattern(song::Song, seq::Vector{Int}, edit_pat::Int, pat::Int)
+    n = length(song.patterns)
+    if pat == 0
+        k = findfirst(!=(0), seq)
+        return song.patterns[k === nothing ? 1 : seq_pattern(seq[k], edit_pat, n)]
+    end
+    return 1 <= pat <= n ? song.patterns[pat] : nothing
+end
+
+"Start of step `s` logged in `[lo, hi)`, else `t`."
+function logged_start(steps::AbstractVector{StepMark}, s::Int, lo::Real, hi::Real, t::Real)
+    i = findlast(m -> m.step == s && lo <= m.start < hi, steps)
+    return i === nothing ? t : steps[i].start
+end
+
+"""
+    record_step(song, seq, loop_from, edit_pat, bars, h, steps = []) -> (pattern, step, off) or nothing
+
+Grid cell for a hit heard at engine position `h` (samples): the nearest step of the bar playing
+then, with the real step times (swing, pattern tempo, grid); `off` is the distance of the hit
+from that step in samples (positive = late). A hit that rounds past the last step
+goes to step 1 of the next bar played. In a count-in bar a hit counts only if it rounds to step 1
+of the first real bar. `bars` are the logged bar starts, `steps` the logged step starts, oldest
+first; step times not logged yet are computed from the pattern. `seq`, `loop_from` and
+`edit_pat` as in the engine.
+"""
+function record_step(song::Song, seq::Vector{Int}, loop_from::Int, edit_pat::Int,
+                     bars::AbstractVector{BarMark}, h::Real, steps::AbstractVector{StepMark} = StepMark[])
+    k = findlast(b -> b.start <= h, bars)
+    k === nothing && return nothing
+    start, sp, pat = bars[k].start, bars[k].seqpos, bars[k].pat
+    stop = k < length(bars) ? bars[k+1].start : Inf  # logged steps of this bar lie in [start, stop)
+    logged = true                                    # later bars are not in the log
+    npat = length(song.patterns)
+    function next!()                              # move on to the bar after this one
+        sp = sp < length(seq) ? sp + 1 : loop_from
+        sp == 0 && return false                   # end of the sequence
+        pat = seq_pattern(seq[sp], edit_pat, npat)
+        return true
+    end
+    for _ in 1:4                                  # the log may lag behind by a bar or so
+        p = bar_pattern(song, seq, edit_pat, pat)
+        p === nothing && return nothing
+        t = start; best = 1; bt = t
+        for s in 0:p.steps-1                      # step starts; index p.steps+1 = next bar
+            t += step_samples(song, s, p)
+            if logged                             # as the engine timed it (the grid may change)
+                t = s + 1 < p.steps ? logged_start(steps, s + 1, start, stop, t) : isfinite(stop) ? stop : t
+            end
+            abs(h - t) < abs(h - bt) && (best = s + 2; bt = t)
+        end
+        if h >= t                                 # beyond this bar: look at the next one
+            start = t; logged = false
+            next!() || return nothing
+            continue
+        end
+        best <= p.steps && return pat == 0 ? nothing : (pat, best, h - bt)
+        next!() || return nothing
+        return pat == 0 ? nothing : (pat, 1, h - bt)
+    end
+    return nothing
+end
+
+"""
+    overdub!(p, t, s, level) -> Bool
+
+Adds a recorded hit: sets the cell if it is empty or softer, keeps a louder hit already there.
+`true` if the cell changed.
+"""
+function overdub!(p::Pattern, t::Int, s::Int, level::Integer)
+    old = p.grid[t, s]
+    level > old || return false
+    old == 0 && (p.orn[t, s] = 0x00)
+    p.grid[t, s] = UInt8(level)
+    return true
+end
+
+"Starts the current edit pattern in a loop with one count-in bar (record pressed while stopped)."
+record_play!(eng) = lock(() -> start_seq!(eng, [0, -1], 2), eng.lock)
+
+# ---------------------------------------------------------------------------
+# PortMidi
+# ---------------------------------------------------------------------------
+
+struct PmDeviceInfo
+    structVersion::Cint
+    interf::Cstring
+    name::Cstring
+    input::Cint
+    output::Cint
+    opened::Cint
+    is_virtual::Cint
+end
+
+struct PmEvent
+    message::Int32
+    timestamp::Int32
+end
+
+const libpm = PortMidi_jll.libportmidi
+const MIDI_LOCK = ReentrantLock()          # open, close, list devices (not in the audio thread)
+const PM_LOCK = Threads.SpinLock()         # held around each single PortMidi call
+const PM_READY = Ref(false)
+const PM_OPEN = Ref(0)                     # open streams (in and out); PortMidi is only re-initialised without any
+const PM_FILT = Int32(1 << 0x0E | 1 << 0x00 | 1 << 0x08)   # drop active sensing, sysex, clock
+const MIDI_OUT_LATENCY = 1                 # ms; > 0, so that PortMidi keeps to the timestamps
+
+"Runs `f` (a single PortMidi call) under PM_LOCK. Not for the audio thread, which uses `trylock`."
+function pm_locked(f)
+    lock(PM_LOCK)
+    try
+        return f()
+    finally
+        unlock(PM_LOCK)
+    end
+end
+
+"(Re)initialises PortMidi; with `fresh` newly plugged devices are found. Call under MIDI_LOCK and PM_LOCK."
+function pm_init!(fresh::Bool)
+    PortMidi_jll.is_available() || return false
+    if PM_READY[] && fresh && PM_OPEN[] == 0
+        ccall((:Pm_Terminate, libpm), Cint, ())
+        PM_READY[] = false
+    end
+    if !PM_READY[]
+        ccall((:Pm_Initialize, libpm), Cint, ()) == 0 || return false
+        PM_READY[] = true
+    end
+    return true
+end
+
+"""
+    midi_devices(; fresh = true) -> Vector of (id, name, input, output)
+
+All MIDI devices PortMidi knows. Empty if PortMidi or ALSA is not available.
+"""
+function midi_devices(; fresh::Bool = true)
+    out = Tuple{Int,String,Bool,Bool}[]
+    try
+        lock(MIDI_LOCK) do                   # the device infos stay valid while it is held
+            pm_locked(() -> pm_init!(fresh)) || return   # re-initialises only without open streams
+            for id in 0:pm_locked(() -> ccall((:Pm_CountDevices, libpm), Cint, ()))-1
+                p = pm_locked(() -> ccall((:Pm_GetDeviceInfo, libpm), Ptr{PmDeviceInfo}, (Cint,), id))
+                p == C_NULL && continue
+                d = unsafe_load(p)
+                d.name == C_NULL && continue
+                push!(out, (id, unsafe_string(d.name), d.input != 0, d.output != 0))
+            end
+        end
+    catch e
+        @debug "PortMidi not available" exception = e
+    end
+    return out
+end
+
+"""
+    midi_inputs() -> Vector{String}
+
+Names of the MIDI inputs. Re-initialises PortMidi (when no input is open) so newly plugged
+devices appear. Empty, without an error, if PortMidi or ALSA is not available.
+"""
+midi_inputs() = unique!([d[2] for d in midi_devices() if d[3]])
+
+"Names of the MIDI outputs, as [`midi_inputs`](@ref)."
+midi_outputs() = unique!([d[2] for d in midi_devices() if d[4]])
+
+"Starts the PortMidi clock (milliseconds) unless it runs. Call under PM_LOCK, before opening a stream."
+pt_start!() = (ccall((:Pt_Started, libpm), Cint, ()) == 0 && ccall((:Pt_Start, libpm), Cint, (Cint, Ptr{Cvoid}, Ptr{Cvoid}), 1, C_NULL, C_NULL); nothing)
+
+"Hit from the reader thread: receipt time (`time_ns()`), note number, velocity."
+const MidiHit = @NamedTuple{t::UInt64, note::Int, vel::Int}
+
+"An open MIDI input with its reader task."
+mutable struct MidiInput
+    name::String
+    stream::Ptr{Cvoid}
+    hits::Channel{MidiHit}
+    running::Threads.Atomic{Bool}
+    monitor::Threads.Atomic{Bool}        # also play the kit sound (through `pads`)
+    cfg::MidiConfig
+    pads::Channel{Tuple{Int,Int}}
+    task::Union{Task,Nothing}
+end
+
+"Puts `x` into channel `ch` unless it is full (never blocks the reader)."
+function try_put!(ch::Channel, x)
+    lock(ch) do
+        length(ch.data) < ch.sz_max && put!(ch, x)
+    end
+    return nothing
+end
+
+"""
+Note-on of a PortMidi message: `(note, velocity)` for status 0x90–0x9F with velocity > 0,
+`nothing` for everything else (velocity 0 is a note-off).
+"""
+function note_on(msg::Integer)
+    st = msg & 0xff
+    0x90 <= st <= 0x9f || return nothing
+    vel = (msg >> 16) & 0x7f
+    vel > 0 || return nothing
+    return (Int((msg >> 8) & 0x7f), Int(vel))
+end
+
+"""
+    open_midi(name; cfg = midi_config(), pads, monitor) -> MidiInput or nothing
+
+Opens the MIDI input `name` and starts its reader on a background thread. `pads` is the
+engine's pad channel for the monitor (kit sound per hit when `monitor[]`).
+"""
+function open_midi(name::AbstractString; cfg::MidiConfig = midi_config(),
+                   pads::Channel{Tuple{Int,Int}} = Channel{Tuple{Int,Int}}(64),
+                   monitor::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false))
+    devs = midi_devices(; fresh = PM_OPEN[] == 0)
+    k = findfirst(d -> d[3] && d[2] == name, devs)
+    k === nothing && return nothing
+    ref = Ref{Ptr{Cvoid}}(C_NULL)
+    err = lock(MIDI_LOCK) do
+        pm_locked(pt_start!)
+        e = pm_locked(() -> ccall((:Pm_OpenInput, libpm), Cint, (Ref{Ptr{Cvoid}}, Cint, Ptr{Cvoid}, Cint, Ptr{Cvoid}, Ptr{Cvoid}),
+                                  ref, devs[k][1], C_NULL, 256, C_NULL, C_NULL))
+        e == 0 && (PM_OPEN[] += 1; pm_locked(() -> ccall((:Pm_SetFilter, libpm), Cint, (Ptr{Cvoid}, Int32), ref[], PM_FILT)))
+        e
+    end
+    err == 0 || return nothing
+    m = MidiInput(String(name), ref[], Channel{MidiHit}(512), Threads.Atomic{Bool}(true), monitor, cfg, pads, nothing)
+    m.task = Threads.@spawn midi_reader(m)
+    return m
+end
+
+"Sleeps about 1 ms in a gc-safe call, so a garbage collection need not wait for this thread."
+function sleep_1ms()
+    @static if Sys.iswindows()
+        @ccall gc_safe = true Sleep(1::UInt32)::Cvoid
+    else
+        @ccall gc_safe = true usleep(1000::Cuint)::Cint
+    end
+    return nothing
+end
+
+"Reader task: polls the input about every 1 ms and passes on note-ons (see [`note_on`](@ref))."
+function midi_reader(m::MidiInput)
+    buf = Vector{PmEvent}(undef, 64)
+    try
+        while m.running[]
+            # explicit lock instead of a do-block: the closure would box `n` and allocate on every
+            # pass (about 160 KB/s while idle)
+            local n::Cint, now::UInt64, pt::Int32
+            lock(PM_LOCK)
+            try
+                n = ccall((:Pm_Read, libpm), Cint, (Ptr{Cvoid}, Ptr{PmEvent}, Cint), m.stream, buf, length(buf))
+            finally
+                unlock(PM_LOCK)
+            end
+            now = time_ns()
+            pt = ccall((:Pt_Time, libpm), Int32, ())            # the clock needs no lock
+            for i in 1:max(n, 0)
+                ev = buf[i]
+                nv = note_on(ev.message)
+                nv === nothing && continue
+                age = clamp(pt - ev.timestamp, 0, 1000)           # ms between arrival and this read
+                hit = (t = now - UInt64(age) * 1_000_000, note = nv[1], vel = nv[2])
+                try_put!(m.hits, hit)
+                if m.monitor[]
+                    t = get(m.cfg.map, hit.note, 0)
+                    t > 0 && try_put!(m.pads, (t, velocity_level(hit.vel, m.cfg)))
+                end
+            end
+            # PortMidi stamps ALSA input only when it is read: poll on this thread without relying
+            # on the event loop of the main thread (`sleep` could wake up much later)
+            n > 0 || (sleep_1ms(); yield())
+        end
+    catch e
+        @error "MIDI reader stopped" exception = (e, catch_backtrace())
+    end
+end
+
+"Stops the reader, then closes the input."
+function close_midi!(m::MidiInput)
+    m.running[] = false
+    m.task === nothing || try wait(m.task) catch end
+    m.task = nothing
+    lock(MIDI_LOCK) do
+        m.stream == C_NULL && return
+        pm_locked(() -> ccall((:Pm_Close, libpm), Cint, (Ptr{Cvoid},), m.stream))
+        m.stream = C_NULL
+        PM_OPEN[] = max(PM_OPEN[] - 1, 0)
+    end
+    return nothing
+end
+close_midi!(::Nothing) = nothing
+
+"All hits received since the last call (for the GUI)."
+function take_hits!(m::MidiInput)
+    out = MidiHit[]
+    while isready(m.hits)
+        push!(out, take!(m.hits))
+    end
+    return out
+end
+
+# ---------------------------------------------------------------------------
+# MIDI output of the setup player
+# ---------------------------------------------------------------------------
+
+"""
+    open_midi_out(name) -> Ptr (C_NULL if it cannot be opened)
+
+Opens the MIDI output `name` with a latency of `MIDI_OUT_LATENCY` ms, so that PortMidi (ALSA)
+sends each message at its timestamp. The same device may be open as input at the same time.
+"""
+function open_midi_out(name::AbstractString)
+    devs = midi_devices(; fresh = PM_OPEN[] == 0)
+    k = findfirst(d -> d[4] && d[2] == name, devs)
+    k === nothing && return C_NULL
+    ref = Ref{Ptr{Cvoid}}(C_NULL)
+    lock(MIDI_LOCK) do
+        pm_locked(pt_start!)
+        e = pm_locked(() -> ccall((:Pm_OpenOutput, libpm), Cint,
+                                  (Ref{Ptr{Cvoid}}, Cint, Ptr{Cvoid}, Cint, Ptr{Cvoid}, Ptr{Cvoid}, Cint),
+                                  ref, devs[k][1], C_NULL, 256, C_NULL, C_NULL, MIDI_OUT_LATENCY))
+        e == 0 ? (PM_OPEN[] += 1) : (ref[] = C_NULL)
+    end
+    return ref[]
+end
+
+"""
+    midi_out_close!(pl, lk)
+
+Closes the MIDI output of player `pl`: takes it away from the audio thread first, waits for the
+block that may still use it (`lk` is the engine lock, held while a block is rendered) and for the
+events already scheduled, then sends All Notes Off on all 16 channels and closes it.
+"""
+function midi_out_close!(pl::Player, lk)
+    p = Ptr{Cvoid}(pl.mout[])
+    p == C_NULL && return nothing
+    pl.mout[] = 0                                    # the audio thread sends nothing from now on
+    lock(() -> (pl.moff = 0x0000), lk)               # a block still using the output is finished
+    sleep(pl.mlat / 1000 + BLOCK / SR + 0.01)        # notes already scheduled are played
+    lock(MIDI_LOCK) do
+        for ch in 0:15                               # timestamp 0: at once
+            pm_locked(() -> ccall((:Pm_WriteShort, libpm), Cint, (Ptr{Cvoid}, Int32, Int32), p, 0, Int32(0xb0 | ch | 123 << 8)))
+        end
+        sleep(0.01)                                  # sent before the port goes away
+        pm_locked(() -> ccall((:Pm_Close, libpm), Cint, (Ptr{Cvoid},), p))
+        PM_OPEN[] = max(PM_OPEN[] - 1, 0)
+    end
+    return nothing
+end
+
+"""
+    midi_clock!(pl, N) -> Float64
+
+Called once per audio block by `mix_player!`: the PortMidi time (ms) at which the first frame of
+this block is heard, 0 without an output. The time of a block is smoothed over about 64 blocks,
+because the audio thread renders in bursts (the sound server takes several blocks at once); after
+a gap or a dropout of more than 50 ms the clock starts again. The heard time adds `pl.mlat`.
+"""
+function midi_clock!(pl::Player, N::Int)
+    pl.mout[] == 0 && (pl.mfr = -1; return 0.0)
+    now = Float64(ccall((:Pt_Time, libpm), Int32, ()))
+    x = now - pl.mfr * (1000 / SR)                   # frame 0 of the clock, by this block
+    if pl.mfr < 0 || abs(x - pl.mclk) > 50
+        pl.mfr = 0; pl.mclk = now
+    else
+        pl.mclk += (x - pl.mclk) / 64
+    end
+    t = pl.mclk + pl.mfr * (1000 / SR) + pl.mlat
+    pl.mfr += N
+    return t
+end
+
+"""
+Sends MIDI message `msg` to be heard at PortMidi time `t` (ms), from the audio thread: no
+allocation, never waits. `false` if PortMidi is busy in another thread (try again on a later
+frame; the timestamp still holds). Without an output, or if the output was opened after
+`midi_clock!` ran in this block (no time yet), the event is skipped; a failed write drops it and
+counts in `pl.merr`.
+"""
+@inline function midi_send!(pl::Player, msg::Int32, t::Float64)
+    p = pl.mout[]
+    (p == 0 || pl.mfr < 0) && return true
+    trylock(PM_LOCK) || return false
+    ts = max(unsafe_trunc(Int32, round(t)) - Int32(MIDI_OUT_LATENCY), Int32(1))   # 0 would mean "at once"
+    e = ccall((:Pm_WriteShort, libpm), Cint, (Ptr{Cvoid}, Int32, Int32), Ptr{Cvoid}(p), ts, msg)
+    unlock(PM_LOCK)
+    e == 0 || Threads.atomic_add!(pl.merr, 1)
+    return true
+end
+
+"All Notes Off (controller 123) at time `t` on the channels in `pl.moff`, from the audio thread. Busy: kept for the next block."
+function midi_notes_off!(pl::Player, t::Float64)
+    for ch in 0:15
+        pl.moff & (UInt16(1) << ch) == 0 && continue
+        midi_send!(pl, Int32(0xb0 | ch | 123 << 8), t) || return
+        pl.moff &= ~(UInt16(1) << ch)
+    end
+    return
+end

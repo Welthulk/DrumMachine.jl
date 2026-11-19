@@ -12,6 +12,7 @@ are very welcome: issues and pull requests are appreciated.
 |---|---|
 | GLMakie | window and graphics (needs OpenGL 3.3) |
 | PortAudio | sound output (brings its own PortAudio library) |
+| PortMidi_jll | MIDI input for recording from an e-drum kit (brings its own PortMidi library) |
 | WAV, FLAC_jll | reading samples, WAV export |
 | LibArchive_jll | unpacking the downloaded sample kits (bsdtar: zip and rar) |
 | FFMPEG_jll | AAC export in the WAV editor |
@@ -34,7 +35,9 @@ are very welcome: issues and pull requests are appreciated.
 - macOS: zenity is available via Homebrew; OpenGL is deprecated there but still
   available. The GC pause ends below 1 GB of free memory, which macOS often reports even when
   enough RAM is available.
+- MIDI recording uses PortMidi, which exists for all three systems; only Linux (ALSA) is tested.
 - `start_drum.sh --prio` and the realtime audio thread use Linux scheduling (`nice`, SCHED_FIFO);
   on other systems the program runs with normal priority.
-- Settings and songs are stored in `~/.config` and `~/.local/share` (XDG) on every system; the
-  usual places would be `%APPDATA%` on Windows and `~/Library/Application Support` on macOS.
+- Settings, built kits and the songs of an installed package are stored in `~/.config` and
+  `~/.local/share` (XDG) on every system; the usual places would be `%APPDATA%` on Windows and
+  `~/Library/Application Support` on macOS.

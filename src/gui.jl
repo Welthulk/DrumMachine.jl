@@ -6,16 +6,29 @@ const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))     # example songs
 
 """
 Folder for the user's songs and WAV exports: the package's `songs/` in a writable checkout (git
-clone), otherwise (package installed with Pkg, read-only) `~/.local/share/DrumMachine/songs`.
+clone, `Pkg.develop`), otherwise (package installed with Pkg) `~/.local/share/DrumMachine/songs`.
 `DRUMMACHINE_SONG_DIR` overrides it.
 """
 function song_dir()
     d = get(ENV, "DRUMMACHINE_SONG_DIR", "")
     if isempty(d)
-        d = dir_writable(SONG_DIR) ? SONG_DIR : joinpath(data_dir(), "songs")
+        d = songs_writable(SONG_DIR) ? SONG_DIR : joinpath(data_dir(), "songs")
     end
     mkpath(d)
     return d
+end
+
+"""
+True if the package's song folder `dir` may hold the user's songs: it is writable, not inside a
+depot's `packages/` folder and its shipped `.toml` files are writable. Pkg leaves the folders of an
+installed package writable but makes the files read-only, and replaces the folder on an update.
+"""
+function songs_writable(dir)
+    d = abspath(dir)
+    any(p -> startswith(d, joinpath(abspath(p), "packages") * Base.Filesystem.path_separator), DEPOT_PATH) &&
+        return false
+    dir_writable(d) || return false
+    return all(f -> !endswith(f, ".toml") || iswritable(joinpath(d, f)), readdir(d))
 end
 
 "True if files can be created in `dir`."
@@ -111,10 +124,13 @@ TRANSPORT
                         beim Abspielen bis zu x min an, gegen Knackser bei schnellen Tempi;
                         läuft bei Stop, nach Ablauf der Zeit oder unter 1 GB freiem Speicher
                         wieder (beim Ablauf mitten im Spielen ist ein Knackser möglich)
+  ● Aufnahme            Schläge vom E-Drum (MIDI, z. B. TD-27 per USB) ins laufende Pattern;
+                        im Stand: Pattern in Schleife mit einem Takt Einzähler. MIDI = Eingang,
+                        ↻ sucht neu, Mithören spielt den Kit-Klang mit (Docs → MIDI)
 
 RASTER & SWING
   Raster                16tel, 8tel-Triolen, 16tel-Triolen, 8tel oder 32tel
-  Swing                 Lage der Off-Beat-Note: 50 % gerade, 67 % Triole, 75 % punktiert
+  Swing                 Lage der Off-Beat-Note: 50 % gerade, 67 % Triole, 75 % punktiert, bis 80 %
   Auto / 8tel / 16tel   worauf im geraden Raster geswingt wird
 
 PATTERNS & KETTE
@@ -127,11 +143,12 @@ PATTERNS & KETTE
 
 WAV-EDITOR, METRONOM, PLAYER & DOCS
   WAV-Editor            exportierte WAVs schneiden, Fades, Effekte, Einzähler (eigenes Fenster)
-  Docs                  Dokumentation: Song-Dateiformat, WAV-Editor, Metronom, Player
+  Docs                  Dokumentation: Song-Dateiformat, WAV-Editor, Metronom, Player, MIDI
   Metronom              Klick mit Taktart, Unterteilung, Betonung, Klang, Lücken- und Tempo-Trainer
-  Player, Setup-Editor  Setup-Player für die Bühne: Songs und WAVs der Reihe nach abspielen,
-                        Auto mit Pausen und Countdown-Beeps oder Manuell per Klick, eigener
-                        Master (Lautstärke, EQ, Hall); allein: ./start_drum.sh --player
+  Player, Setup-Editor  Setup-Player für die Bühne: Songs, WAVs und MIDI-Dateien der Reihe nach
+                        abspielen, Auto mit Pausen und Countdown-Beeps oder Manuell per Klick,
+                        eigener Master (Lautstärke, EQ, Hall), MIDI-Ausgang für MIDI-Dateien;
+                        allein: ./start_drum.sh --player
 
 DATEI
   Neu / Duplizieren     neuer Groove bzw. Kopie, das Original bleibt erhalten
@@ -150,10 +167,11 @@ EXPORT
   Loop                  nahtlose Schleife ohne Einzähler, Datei „<Name> Loop.wav“;
                         am TD-27: SONG → [F2] SETUP → Loop Type = LOOP
   WAV exportieren       songs/<Name>.wav, 44,1 kHz, 16 Bit
+  MIDI                  songs/<Name>.mid für DAW oder MuseScore, Kanal 10, Noten wie TD-27
 
 START (im Terminal, Optionen kombinierbar)
   ./start_drum.sh       Hauptfenster, mit Sysimage für schnellen Start
-  --player              nur der Setup-Player (Bühne)
+  --player              nur der Setup-Player (Bühne), mit --prio
   --prio                hohe Priorität: nice -15, Audio-Thread in Echtzeit (70), kein Wert
                         nötig; einmalig: sudo groupadd -f pipewire &&
                         sudo usermod -aG pipewire \$USER, dann neu anmelden
@@ -191,10 +209,13 @@ TRANSPORT
                         x min, against crackles at fast tempos; resumes on stop, when the
                         time is up or below 1 GB of free memory (if the time runs out while
                         playing, a single crackle is possible)
+  ● Record              hits from an e-drum kit (MIDI, e.g. TD-27 by USB) into the playing
+                        pattern; when stopped: pattern in a loop with one count-in bar. MIDI =
+                        input, ↻ searches again, Monitor plays the kit sound too (Docs → MIDI)
 
 GRID & SWING
   Grid                  16ths, 8th triplets, 16th triplets, 8ths or 32nds
-  Swing                 position of the off-beat: 50 % straight, 67 % triplet, 75 % dotted
+  Swing                 position of the off-beat: 50 % straight, 67 % triplet, 75 % dotted, up to 80 %
   Auto / 8ths / 16ths   which subdivision swings in a straight grid
 
 PATTERNS & CHAIN
@@ -209,11 +230,12 @@ PATTERNS & CHAIN
 
 WAV EDITOR, METRONOME, PLAYER & DOCS
   WAV Editor            cut exported WAVs, fades, effects, count-in (own window)
-  Docs                  documentation: song file format, WAV editor, metronome, player
+  Docs                  documentation: song file format, WAV editor, metronome, player, MIDI
   Metronome             click with time signature, subdivision, accents, sound, gap and tempo trainer
-  Player, Setup editor  setup player for the stage: plays songs and WAVs in order, auto with
-                        pauses and countdown beeps or manual by click, own master (volume,
-                        EQ, reverb); on its own: ./start_drum.sh --player
+  Player, Setup editor  setup player for the stage: plays songs, WAVs and MIDI files in order,
+                        auto with pauses and countdown beeps or manual by click, own master
+                        (volume, EQ, reverb), MIDI output for MIDI files;
+                        on its own: ./start_drum.sh --player
 
 FILE
   New / Duplicate       new groove or copy, the original stays untouched
@@ -232,10 +254,11 @@ EXPORT
   Loop                  seamless loop without count-in, file “<name> Loop.wav”;
                         on the TD-27: SONG → [F2] SETUP → Loop Type = LOOP
   Export WAV            songs/<name>.wav, 44.1 kHz, 16 bit
+  MIDI                  songs/<name>.mid for a DAW or MuseScore, channel 10, TD-27 notes
 
 START (in the terminal, options can be combined)
   ./start_drum.sh       main window, with sysimage for a fast start
-  --player              only the setup player (stage)
+  --player              only the setup player (stage), with --prio
   --prio                high priority: nice -15, realtime audio thread (70), no value
                         needed; once: sudo groupadd -f pipewire &&
                         sudo usermod -aG pipewire \$USER, then log in again
@@ -244,12 +267,31 @@ START (in the terminal, options can be combined)
   If it crackles: GC pause, --prio or audio_latency = 0.15 in settings.toml
 """
 
+"""
+    last_change_date(dir) -> String
+
+Date of the last change as "YYYY-MM-DD": the last commit when running from a git checkout,
+otherwise the newest date in CHANGELOG.md (installed package). `""` if neither is found.
+"""
+function last_change_date(dir::AbstractString = normpath(joinpath(@__DIR__, "..")))
+    if isdir(joinpath(dir, ".git")) && Sys.which("git") !== nothing
+        d = try readchomp(pipeline(`git -C $dir log -1 --format=%cs`; stderr = devnull)) catch; "" end
+        occursin(r"^\d{4}-\d\d-\d\d$", d) && return d
+    end
+    f = joinpath(dir, "CHANGELOG.md")
+    isfile(f) || return ""
+    m = match(r"^## .*?(\d{4}-\d\d-\d\d)"m, read(f, String))
+    return m === nothing ? "" : String(m[1])
+end
+
 "Text of the info window (German / English)."
-function info_text(lang::Symbol = LANG[])
+function info_text(lang::Symbol = LANG[]; date::AbstractString = last_change_date())
     v = "DrumMachine.jl  " * app_version()
     lang == :en ? """
 $v
-Step sequencer for drum practice: enter grooves, preview them, export WAVs.
+Author: welthulk           Last change: $date
+
+Step sequencer for drum practice: enter grooves, preview them, export WAV or MIDI.
 With metronome, WAV editor and Drum-JSON import.
 
 Code: MIT license          $(REPO_URL)
@@ -276,7 +318,9 @@ GREETINGS
   (GLMakie, PortAudio.jl, WAV.jl, JSON.jl).
 """ : """
 $v
-Step-Sequencer zum Schlagzeug-Üben: Grooves eintragen, vorhören, als WAV exportieren.
+Autor: welthulk            Letzte Änderung: $date
+
+Step-Sequencer zum Schlagzeug-Üben: Grooves eintragen, vorhören, als WAV oder MIDI exportieren.
 Mit Metronom, WAV-Editor und Drum-JSON-Import.
 
 Code: MIT-Lizenz           $(REPO_URL)
@@ -542,7 +586,8 @@ function song_summary(s::Song)
     return L("{1} · {2} · Kette {3}", bpm, sw, chain_string(s.chain))
 end
 
-fmt_time(sec) = string(floor(Int, sec ÷ 60), ":", lpad(round(Int, sec % 60) % 60, 2, '0'))
+"Duration as `m:ss`, rounded to whole seconds (59.7 s gives \"1:00\")."
+fmt_time(sec) = ((m, s) = divrem(round(Int, sec), 60); string(m, ":", lpad(s, 2, '0')))
 
 """
     run(; song = nothing, block = true)
@@ -569,36 +614,74 @@ function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::B
     cur_tick = Ref{Function}(tick!)
     # switching the language rebuilds the window with the same engine (song and playback stay)
     session.rebuild[] = () -> begin
-        newfig, _, newtick! = build_gui(eng.song; eng, session)
+        newfig, _, newtick! = build_gui(eng.song; audio, eng, session)
         display(screen, newfig)
         cur_tick[] = newtick!
         fig = newfig
     end
     # with `auto_kits = true`: build missing sample kits in the background (messages go through
     # the session); otherwise a hint on the very first start that more kits are in the kit menu
-    post(msg) = (isready(session.kitmsg) && length(session.kitmsg.data) > 32) || put!(session.kitmsg, msg)
+    post = kit_post(session)
     if auto_fetch_kits!(post, _ -> (session.kits_changed[] = true)) === nothing &&
        firststart && !isempty(missing_kits())
         post(L("Weitere Kits: im Kit-Menü einen Eintrag „(laden, …)“ wählen, er wird dann heruntergeladen."))
     end
-    # playhead display (runs on the main thread)
+    # playhead display (runs on the main thread); an error in tick! is logged once and does not
+    # end the loop, and the cleanup (GC back on, MIDI and audio closed) always runs
+    done = Base.Event()
     @async begin
-        n = 0
-        while isopen(screen)
-            cur_tick[]()
-            (n += 1) % 1800 == 0 && save_session(eng, session)    # every ~30 s, only if changed
-            sleep(1 / 60)
+        n = 0; warned = false
+        try
+            while isopen(screen)
+                try
+                    cur_tick[]()
+                catch err
+                    warned || @error "GUI tick failed" exception = (err, catch_backtrace())
+                    warned = true
+                end
+                (n += 1) % 1800 == 0 && save_session(eng, session)    # every ~30 s, only if changed
+                sleep(1 / 60)
+            end
+        finally
+            try
+                try save_session(eng, session) catch end
+                gcpause_release!()
+                close_midi!(session.midi[]); session.midi[] = nothing
+                close_children!(session, eng)             # they share the engine stopped below
+                stop_audio!(eng)
+            finally
+                notify(done)
+            end
         end
-        save_session(eng, session)
-        gcpause_release!()
-        stop_audio!(eng)
     end
     if block
         wait(screen)
-        save_session(eng, session)
+        wait(done)                                        # child windows saved their settings
         return nothing
     end
     return fig, eng
+end
+
+"Message sink for the background kit download: never blocks, drops messages when the channel is full."
+kit_post(session) = msg -> try_put!(session.kitmsg, msg)
+
+"""
+Closes the windows opened from the main window that play through its audio engine (player,
+metronome) and gives their loops a moment to save their settings and stop. The setup editor and
+the WAV editor stay open, as they may hold unsaved edits and save without the engine; the WAV
+editor's playback is stopped.
+"""
+function close_children!(session, eng::Engine)
+    preview_stop!(eng)
+    wins = [w for w in (session.player_win[], session.metro_win[]) if w !== nothing && isopen(w)]
+    isempty(wins) && return
+    foreach(close, wins)
+    sleep(0.3)                                            # their loops tick every 1/60 to 0.1 s
+    t0 = time()                                           # the player may still close its MIDI output
+    while PLAYER_CTX[] !== nothing && time() - t0 < 2
+        sleep(0.05)
+    end
+    return
 end
 
 "Tempo typed into the BPM field: a number in the slider's range 30–400 (decimals are rounded)."
@@ -635,7 +718,10 @@ new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = 
                  kits_changed = Threads.Atomic{Bool}(false),
                  edit_path = Ref(""), edit_name = Ref(""),  # edit mode ("Bearbeiten"): file and its song name
                  edit_on = Ref(false),                    # the toggle itself (may be off with a file loaded)
-                 restore = Ref{Any}(nothing))             # state of the last session, applied once at start
+                 restore = Ref{Any}(nothing),             # state of the last session, applied once at start
+                 midi = Ref{Any}(nothing),                # open MIDI input (MidiInput), kept across rebuilds
+                 midi_monitor = Threads.Atomic{Bool}(false),   # MIDI hits also play the kit sound
+                 rec = Ref(false), rec_hits = Ref(0))      # recording on, hits written in this take
 
 # ---------------------------------------------------------------------------
 # Last session: song and GUI state are stored on exit (and every 30 s while they change) and
@@ -774,11 +860,11 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     Label(top[1, 3], L("Einzähler"), halign = :right, color = C_TEXT2)
     ci_toggle = Toggle(top[1, 4], active = false)
     Label(top[1, 5], "BPM", halign = :right, color = C_TEXT2)
-    bpm_sl = Slider(top[1, 6], range = 30:1:400, startvalue = song.bpm, width = 160)
+    bpm_sl = Slider(top[1, 6], range = 30:1:400, startvalue = round(Int, song.bpm), width = 160)
     bpm_tb = Textbox(top[1, 7], stored_string = string(round(Int, song.bpm)), width = 50,
                      validator = valid_bpm, reset_on_defocus = false)
     Label(top[1, 8], "Swing", halign = :right, color = C_TEXT2)
-    sw_sl = Slider(top[1, 9], range = 50:1:75, startvalue = round(Int, 100song.swing), width = 110)
+    sw_sl = Slider(top[1, 9], range = 50:1:80, startvalue = round(Int, 100song.swing), width = 110)
     sw_lab = Label(top[1, 10], "", width = 40, font = :bold)
     sw_opts = Ls(first.(SWING_OPTS))                # displayed options, mapped back by index
     sw_menu = Menu(top[1, 11], options = sw_opts, width = 95)
@@ -801,7 +887,17 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     fx_sl = Slider(top2[1, 10], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
     Label(top2[1, 11], "Master", halign = :right, color = C_TEXT2)
     mst_sl = Slider(top2[1, 12], range = 0:0.01:1.5, startvalue = song.master, width = 100)
-    rowgap!(tbox, 10)
+    top3 = tbox[3, 1] = GridLayout(halign = :left)
+    recbtn = Button(top3[1, 1], label = L("● Aufnahme"), width = 120, buttoncolor = session.rec[] ? C_MUTE : C_BTN)
+    Label(top3[1, 2], "MIDI", halign = :right, color = C_TEXT2)
+    midi_off = L("aus")
+    midi_menu = Menu(top3[1, 3], options = [midi_off], default = midi_off, width = 260)
+    midi_rf = Button(top3[1, 4], label = "↻", width = 34)
+    Label(top3[1, 5], L("Mithören"), halign = :right, color = C_TEXT2)
+    mon_toggle = Toggle(top3[1, 6], active = session.midi_monitor[])
+    Label(top3[1, 7], L("E-Drum per USB: „Aufnahme“ trägt die Schläge ins laufende Pattern ein (Docs → MIDI)"),
+          color = C_DIM, fontsize = 12)
+    rowgap!(tbox, 8)
 
     # ---------------------------------------------------------------- Patterns
     panel!(fig[3, 1])
@@ -854,7 +950,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         nb = Button(grid[r, 1], label = L(TRACKS[t][2]), width = 100)
         push!(namebtns, nb)
         on(nb.clicks) do _
-            put!(eng.pads, (t, 2))
+            try_put!(eng.pads, (t, 2))         # never blocks (nothing drains it once audio is gone)
             fx_track[] = t
             refresh_fx!()
         end
@@ -866,7 +962,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         Label(vbox[1, 3], lift(vol_label, vs.value), width = 54, halign = :right, fontsize = 12, color = C_TEXT2)
         colgap!(vbox, 4)
         push!(mutebtns, mb); push!(solobtns, sb); push!(volsls, vs)
-        ax = Axis(grid[r, 5]; height = 34, backgroundcolor = :transparent,
+        ax = Axis(grid[r, 5]; height = 32, backgroundcolor = :transparent,
                   xrectzoom = false, yrectzoom = false, xzoomlock = true, yzoomlock = true,
                   xpanlock = true, ypanlock = true, BARE_AXIS...)
         for k in (:rectanglezoom, :scrollzoom, :dragpan, :limitreset)
@@ -893,7 +989,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
                 nv = v == 0 ? 0x01 : v == 3 ? 0x01 : v + 0x01
             end
             p.grid[t, s] = nv
-            nv > 0 && !eng.playing && put!(eng.pads, (t, Int(nv)))
+            nv > 0 && !eng.playing && try_put!(eng.pads, (t, Int(nv)))
             refresh_row!(t)
             return Consume(true)
         end
@@ -998,11 +1094,12 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     expbtn = Button(bot2[1, 15], label = L("WAV exportieren"), buttoncolor = C_ACTIVE, labelcolor = C_BG,
                     buttoncolor_hover = C_LEVEL_H[2], labelcolor_hover = C_BG, labelcolor_active = C_BG,
                     font = :bold)
-    explab = Label(bot2[1, 16], "", color = C_TEXT2)
+    midibtn = Button(bot2[1, 16], label = "MIDI", font = :bold)
+    explab = Label(bot2[1, 17], "", color = C_TEXT2)
     rowgap!(fbox, 10)
 
     Label(fig[6, 1], status, halign = :left, tellwidth = false, color = C_TEXT2, fontsize = 13)
-    rowgap!(fig.layout, 12)
+    rowgap!(fig.layout, 8)
     colsize!(fig.layout, 1, Relative(1))      # full width, everything left-aligned
     on(_ -> show_help(), helpbtn.clicks)
     on(_ -> show_docs(), docsbtn.clicks)
@@ -1095,7 +1192,12 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             headtxt[] = count_labels(p.steps, eng.song.steps_per_beat)
             headpos[] = [Point2f(s - 0.5, 0.5) for s in 1:p.steps]
             k = findfirst(==(p.steps), STEP_OPTS)
-            k === nothing || steps_menu.i_selected[] == k || (steps_menu.i_selected[] = k)
+            if k === nothing                             # e.g. 11 steps from an import: show it, select
+                steps_menu.prompt[] = string(p.steps)    # nothing, so every choice fires (also "16")
+                steps_menu.i_selected[] == 0 || (steps_menu.i_selected[] = 0)
+            else
+                steps_menu.i_selected[] == k || (steps_menu.i_selected[] = k)
+            end
         end
         tstr = pattern_bpm_string(p)                     # own tempo of the pattern (only on a change)
         if !ptempo_tb.focused[] && ptempo_tb.displayed_string[] != tstr
@@ -1154,7 +1256,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     # reset all widgets from `eng.song` (after loading a song or preset)
     function refresh_all!()
         s = eng.song
-        set_close_to!(bpm_sl, s.bpm)
+        set_close_to!(bpm_sl, round(Int, s.bpm))   # same rounding as the guard in on(bpm_sl.value)
         set_close_to!(sw_sl, round(Int, 100s.swing))
         sw_menu.i_selected[] = something(findfirst(o -> o[2] == s.swing_on, SWING_OPTS), 1)
         raster_menu.i_selected[] = something(findfirst(o -> o[2] == s.steps_per_beat, RASTER_OPTS), 1)
@@ -1214,11 +1316,26 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         was && play!(eng)
     end
 
+    audio_dead = Ref(false)                    # the audio thread has ended (error, device gone)
+    # opens the sound card again after the audio thread ended; false if that fails
+    function audio_ok!()
+        (audio && !eng.running) || return true
+        try
+            start_audio!(eng)
+            audio_dead[] = false
+            return true
+        catch e
+            status[] = L("Audio lässt sich nicht starten: {1}", sprint(showerror, e))
+            return false
+        end
+    end
     function toggle_play()
         if eng.playing
             stop!(eng)
+            set_rec!(false)
             playbtn.label[] = "▶  Play"
         else
+            audio_ok!() || return
             eng.live_countin = ci_toggle.active[]
             play!(eng)
             playbtn.label[] = "■  Stop"
@@ -1245,7 +1362,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         v == eng.song.bpm || cur_pattern().bpm == 0 ||
             (status[] = L("Song-Tempo {1} BPM. Pattern {2} hat ein eigenes Tempo ({3} BPM, Feld „Tempo“ in der Pattern-Zeile) und bleibt dabei.",
                           round(Int, v), eng.edit_pat, round(Int, cur_pattern().bpm)))
-        eng.song.bpm = v; refresh_export_info!()
+        round(Int, eng.song.bpm) == v || (eng.song.bpm = v)   # loading 120.5 BPM keeps it
+        refresh_export_info!()
         str = string(v)
         bpm_tb.stored_string[] == str || (bpm_tb.stored_string[] = str)
         bpm_tb.focused[] || bpm_tb.displayed_string[] == str || (bpm_tb.displayed_string[] = str)
@@ -1256,7 +1374,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         bpm_sl.value[] == v || set_close_to!(bpm_sl, v)
     end
     on(sw_sl.value) do v
-        eng.song.swing = v == 67 ? 2 / 3 : v / 100       # 67 % = exact triplet
+        # 67 % = exact triplet; a song value that rounds to the slider position stays (0.625, 2/3)
+        round(Int, 100eng.song.swing) == v || (eng.song.swing = v == 67 ? 2 / 3 : v / 100)
         sw_lab.text[] = "$v%"
         refresh_export_info!()
     end
@@ -1283,9 +1402,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         if k === nothing                                  # "Name (download, size)": build in background
             d = findfirst(==(sel), kit_options()) - length(kitnames)
             name = dlkits[d][1]
-            post(msg) = (isready(session.kitmsg) && length(session.kitmsg.data) > 32) || put!(session.kitmsg, msg)
-            name in KITS_BUILDING ? (status[] = L("Kit {1} wird schon geladen.", name)) :
-                fetch_kit!(name, post, _ -> (session.kits_changed[] = true))
+            kit_building(name) ? (status[] = L("Kit {1} wird schon geladen.", name)) :
+                fetch_kit!(name, kit_post(session), _ -> (session.kits_changed[] = true))
             cur = findfirst(==(eng.song.kit), kitnames)   # keep playing with the current kit
             cur !== nothing && (kit_menu.i_selected[] = cur)
             return
@@ -1322,6 +1440,124 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(v -> (eng.song.fxmix = v; apply_fx!(eng)), fx_sl.value)
     on(v -> (eng.song.master = v), mst_sl.value)
 
+    # MIDI recording (src/midi.jl): the reader thread collects the hits, `tick!` writes them into
+    # the playing pattern here on the main thread
+    midi_cfg = Ref(midi_config())
+    midi_names() = audio ? midi_inputs() : String[]       # no MIDI without audio (precompile, tests)
+    midi_sync = Ref(false)                                # menu is being set from code
+    rec = session.rec                                     # kept across rebuilds (language switch)
+    rec_hits = session.rec_hits
+    function midi_options!(names)
+        cur = session.midi[]
+        opts = vcat([midi_off], names)
+        cur === nothing || cur.name in opts || push!(opts, cur.name)
+        midi_sync[] = true
+        try
+            opts == midi_menu.options[] || (midi_menu.options[] = opts)
+            k = cur === nothing ? 1 : something(findfirst(==(cur.name), opts), 1)
+            midi_menu.i_selected[] == k || (midi_menu.i_selected[] = k)
+        finally
+            midi_sync[] = false
+        end
+    end
+    function midi_open!(name)                             # "" = off; true if open
+        close_midi!(session.midi[]); session.midi[] = nothing
+        name == "" && return false
+        midi_cfg[] = midi_config()
+        session.midi[] = open_midi(name; cfg = midi_cfg[], pads = eng.pads, monitor = session.midi_monitor)
+        return session.midi[] !== nothing
+    end
+    on(midi_menu.is_open) do open                         # devices may be plugged in meanwhile
+        open && midi_options!(midi_names())
+    end
+    on(midi_menu.selection) do sel
+        (sel === nothing || midi_sync[]) && return
+        name = sel == midi_off ? "" : sel
+        cur = session.midi[]
+        cur === nothing && name == "" && return
+        ok = midi_open!(name)                             # a new choice; ↻ reopens the current input
+        (ok || name == "") && save_setting!("midi_device", name)
+        status[] = name == "" ? L("MIDI-Eingang aus.") :
+                   ok ? L("MIDI-Eingang: {1}. Jeder Schlag erscheint hier, „Aufnahme“ trägt ihn ins Pattern ein.", name) :
+                        L("MIDI-Eingang „{1}“ lässt sich nicht öffnen.", name)
+        ok || midi_options!(midi_names())
+    end
+    on(midi_rf.clicks) do _                               # search again, reread the settings
+        cur = session.midi[]
+        name = cur === nothing ? "" : cur.name
+        close_midi!(cur); session.midi[] = nothing
+        midi_cfg[] = midi_config()
+        names = midi_names()
+        name in names && midi_open!(name)
+        midi_options!(names)
+        status[] = isempty(names) ? L("Kein MIDI-Eingang gefunden (TD-27: USB-Treiber auf GENERIC stellen, siehe Docs → MIDI).") :
+                                    L("MIDI-Eingänge: {1}", join(names, ", "))
+    end
+    on(mon_toggle.active) do v
+        session.midi_monitor[] = v
+        status[] = v ? L("Mithören an: jeder Schlag spielt auch den Kit-Klang, verzögert um den Audio-Puffer.") :
+                       L("Mithören aus.")
+    end
+    function set_rec!(v::Bool)
+        rec[] == v && return
+        rec[] = v
+        recbtn.buttoncolor[] = v ? C_MUTE : C_BTN
+        if v
+            rec_hits[] = 0
+        else
+            status[] = L("Aufnahme beendet: {1} Schläge eingetragen.", rec_hits[])
+        end
+    end
+    on(recbtn.clicks) do _
+        rec[] && return set_rec!(false)
+        eng.playing || audio_ok!() || return
+        set_rec!(true)
+        if !eng.playing                                   # current pattern in a loop, one count-in bar
+            record_play!(eng)
+            playbtn.label[] = "■  Stop"
+        end
+        status[] = (eng.pat == 0 ? L("Einzähler …") * "  " : "") *
+                   (session.midi[] === nothing ? L("Aufnahme an, aber kein MIDI-Eingang gewählt (Menü MIDI).") :
+                    L("Aufnahme läuft: Schläge kommen ins laufende Pattern, Stop beendet die Aufnahme."))
+    end
+    # shows a MIDI hit and, while recording, writes it into the pattern that was heard
+    function midi_hit!(h)
+        cfg = midi_cfg[]
+        t = get(cfg.map, h.note, 0)
+        if t == 0
+            status[] = L("MIDI: Note {1} (Velocity {2}) ist keiner Spur zugeordnet, siehe [midi_map] in Docs → MIDI.", h.note, h.vel)
+            return
+        end
+        lv = velocity_level(h.vel, cfg)
+        msg = L("MIDI: {1} · Note {2} · Velocity {3}", L(TRACKS[t][2]), h.note, h.vel)
+        if rec[] && eng.playing
+            tgt = lock(eng.lock) do
+                ts, pos, bars, lat, steps = clock_snapshot(eng.clock)
+                hs = heard_sample(ts, pos, h.t, hit_delay(lat, cfg.offset_ms))
+                hs === nothing ? nothing : record_step(eng.song, eng.seq, eng.loop_from, eng.edit_pat, bars, hs, steps)
+            end
+            if tgt !== nothing
+                k, s, off = tgt
+                if overdub!(eng.song.patterns[k], t, s, lv)
+                    rec_hits[] += 1
+                    k == eng.edit_pat && refresh_row!(t)
+                end
+                ms = round(Int, 1000off / SR)
+                msg *= L("  →  Pattern {1}, Step {2} ({3} ms)", k, s, ms > 0 ? "+$ms" : string(ms))
+            end
+        end
+        status[] = msg
+    end
+    midi_msg = ""
+    if audio && session.midi[] === nothing                 # reopen the input of the last session
+        dev = string(get(load_settings(), "midi_device", ""))
+        if dev != ""
+            midi_msg = dev in midi_names() ? (midi_open!(dev) ? L("MIDI-Eingang: {1}", dev) : L("MIDI-Eingang „{1}“ lässt sich nicht öffnen.", dev)) :
+                       L("MIDI-Gerät „{1}“ nicht gefunden, im MIDI-Menü wählen oder ↻ drücken.", dev)
+        end
+    end
+    midi_options!(midi_names())
+
     # Tracks
     for t in 1:NTRACKS
         on(mutebtns[t].clicks) do _
@@ -1335,7 +1571,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             tp.swap = !tp.swap; refresh_tracks!()
             status[] = tp.swap ? L("{1}: links und rechts getauscht.", L(TRACKS[t][2])) :
                                  L("{1}: Stereo-Position wie im Kit.", L(TRACKS[t][2]))
-            !eng.playing && put!(eng.pads, (t, 2))
+            !eng.playing && try_put!(eng.pads, (t, 2))
         end
         on(volsls[t].value) do d                 # dB -> linear; unchanged position keeps the exact value
             tp = eng.song.tracks[t]
@@ -1436,8 +1672,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             s.chain = [i > k ? i - 1 : i for i in s.chain if i != k]
             isempty(s.chain) && push!(s.chain, 1)
             eng.edit_pat = clamp(k, 1, length(s.patterns))
-            eng.pat > length(s.patterns) && (eng.pat = eng.edit_pat)
-            eng.seq = [p > length(s.patterns) ? -1 : p for p in eng.seq]
+            # running sequence and bar: same remap as the chain, the deleted pattern becomes the
+            # edit pattern (-1); count-in (0) and edit pattern stay, the length too (seqpos, loop_from)
+            eng.seq = [p > k ? p - 1 : p == k ? -1 : p for p in eng.seq]
+            eng.pat > k ? (eng.pat -= 1) : eng.pat == k && (eng.pat = eng.edit_pat)
         end
         chain_tb.stored_string[] = chain_string(s.chain); chain_tb.displayed_string[] = chain_string(s.chain)
         refresh_grid!(); refresh_patbtns!(); refresh_export_info!()
@@ -1551,6 +1789,17 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         set_toggle!(edit_toggle, path != "")
         edit_lab.text[] = path == "" ? "" : basename(path)
     end
+    # after loading a song file: edit mode only if the file can be overwritten (the example songs
+    # of an installed package are read-only; "Speichern" then writes an own file into song_dir())
+    function loaded!(path)
+        if iswritable(path)
+            set_edit!(path)
+            status[] = L("Geladen: {1}  ({2}) – Bearbeiten an, „Speichern“ überschreibt.", path, song_summary(eng.song))
+        else
+            set_edit!("")
+            status[] = L("Geladen: {1}  ({2}) – schreibgeschützt, „Speichern“ legt eine eigene Datei an.", path, song_summary(eng.song))
+        end
+    end
     on(edit_toggle.active) do v
         session.edit_on[] = v                     # remembered: switched off stays off after a restart
         (v && edit_path[] == "") || return
@@ -1574,7 +1823,12 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             return
         end
         cancel_overwrite!()
-        save_song(path, eng.song)
+        try
+            save_song(path, eng.song)
+        catch e
+            status[] = L("Speichern fehlgeschlagen: {1}", sprint(showerror, e))
+            return
+        end
         set_edit!(path)
         load_menu.options[] = vcat(["—"], list_songs())
         status[] = own ? L("Überschrieben: {1}  ({2})", path, song_summary(eng.song)) :
@@ -1601,8 +1855,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         (sel === nothing || sel == "—") && return
         path = song_file(sel)
         try
-            set_song!(load_song(path)); set_edit!(path)
-            status[] = L("Geladen: {1}  ({2}) – Bearbeiten an, „Speichern“ überschreibt.", path, song_summary(eng.song))
+            set_song!(load_song(path)); loaded!(path)
         catch e
             status[] = L("Fehler beim Laden: {1}", sprint(showerror, e))
         end
@@ -1620,8 +1873,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
                 status[] = L("Kein Datei-Dialog gefunden – bitte zenity oder kdialog installieren.")
             elseif path != ""
                 last_dir[] = dirname(path)
-                set_song!(load_song(path)); set_edit!(path)
-                status[] = L("Geladen: {1}  ({2}) – Bearbeiten an, „Speichern“ überschreibt.", path, song_summary(eng.song))
+                set_song!(load_song(path)); loaded!(path)
             else
                 status[] = L("Laden abgebrochen.")
             end
@@ -1703,12 +1955,17 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         eng.song.mono = v
         status[] = v ? L("Mono: Wiedergabe und Export einkanalig.") : L("Stereo: Wiedergabe und Export zweikanalig.")
     end
+    exporting = Ref(false)                       # a WAV export is running (clicks meanwhile are ignored)
     on(expbtn.clicks) do _
+        exporting[] && return
         commit_fields!()
         s = eng.song
         path = joinpath(song_dir(), safe_song_name(s.name) * (s.loop ? " Loop" : "") * ".wav")
         status[] = L("Exportiere …")
-        try
+        exporting[] = true
+        # the render blocks the GUI: start it after a short pause, so the message shows first
+        @async try
+            sleep(0.05)
             t = @elapsed (path = export_wav(path, s, eng.kit))
             last_export[] = path
             warn = td27_name_warning(path)
@@ -1716,6 +1973,22 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
                          fmt_time(song_seconds(s)), s.mono ? "mono" : "stereo", s.bpm, s.repeats,
                          s.loop ? L("nahtloser Loop") : L("Einzähler {1} Takt(e)", s.countin), round(t, digits = 1)) *
                        (warn == "" ? "" : "  ⚠ TD-27: $warn")
+        catch e
+            status[] = L("Export fehlgeschlagen: {1}", sprint(showerror, e))
+        finally
+            exporting[] = false
+        end
+    end
+
+    on(midibtn.clicks) do _
+        commit_fields!()
+        s = eng.song
+        path = joinpath(song_dir(), safe_song_name(s.name) * (s.loop ? " Loop" : "") * ".mid")
+        try
+            export_midi(path, s)
+            status[] = L("MIDI geschrieben: {1}  ({2} BPM, {3}× Kette, {4})", path, s.bpm, s.repeats,
+                         s.loop ? L("ohne Einzähler") : L("Einzähler {1} Takt(e)", s.countin)) *
+                       (midi_bars_ok(s) ? "" : "  ⚠ " * L("Ein Takt hat keine genaue Taktart, die Taktstriche sind ab dort verschoben"))
         catch e
             status[] = L("Export fehlgeschlagen: {1}", sprint(showerror, e))
         end
@@ -1746,6 +2019,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         status[] = L("Letzte Sitzung: \"{1}\"  ({2})", eng.song.name, song_summary(eng.song)) *
                    (session.edit_on[] ? L(" – Bearbeiten: {1}", basename(edit_path[])) : "")
     end
+    isempty(midi_msg) || (status[] = status[] * "  ·  " * midi_msg)
 
     last = Ref((-2, -2, false, 0))
     function tick!()
@@ -1763,6 +2037,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         gc === :paused && (status[] = L("Speicherbereinigung angehalten für {1} min.", GCPAUSE.minutes))
         gc === :time && (status[] = L("GC-Pause abgelaufen – Speicherbereinigung läuft wieder."))
         gc === :memory && (status[] = L("Arbeitsspeicher knapp – Speicherbereinigung läuft wieder."))
+        m = session.midi[]
+        if m !== nothing && isready(m.hits)
+            foreach(midi_hit!, take_hits!(m))
+        end
+        rec[] && !eng.playing && set_rec!(false)
+        if audio && !eng.running && !audio_dead[]
+            audio_dead[] = true
+            status[] = L("Audio-Ausgabe beendet (Fehler, siehe Terminal). „Play“ startet sie neu.")
+        end
         st = eng.playing ? eng.shown_step[] : -1
         pt = eng.shown_pat[]
         sp = eng.shown_seqpos[]
@@ -1774,7 +2057,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
                 eng.edit_pat = pt
                 refresh_grid!()
             end
-            if sp != last[][4]
+            if sp != last[][4] && !rec[] && any(>(0), eng.seq)   # recording: keep the hit messages
                 seq = eng.seq
                 k = count(>(0), @view seq[1:min(sp, length(seq))])
                 status[] = L("Song: Takt {1} von {2} · Pattern {3}   (Kette: {4})", k, count(>(0), seq), pt, chain_string(eng.song.chain))
@@ -1785,7 +2068,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         refresh_patbtns!()
         if !eng.playing && last[][3]
             playbtn.label[] = "▶  Play"
-        elseif eng.playing && pt == 0
+        elseif eng.playing && pt == 0 && !rec[]
             set_if_changed!(status, L("Einzähler …"))
         end
         last[] = cur

@@ -15,8 +15,10 @@ we_bits_label(b::Integer) = b == 32 ? L("32 Bit Float") : L("{1} Bit", b)
 "Seconds as m:ss.mmm (or s.mmm below one minute)."
 function fmt_secs(t::Real)
     t < 60 && return string(round(t, digits = 3), " s")
-    m = floor(Int, t / 60)
-    return string(m, ":", lpad(string(round(t - 60m, digits = 3)), 6, '0'))
+    ms = round(Int, 1000t)                     # round once, so 59.9996 s never shows as 60 s
+    m, r = divrem(ms, 60_000)
+    s, f = divrem(r, 1000)
+    return string(m, ":", lpad(s, 2, '0'), ".", lpad(f, 3, '0'))
 end
 
 """
@@ -325,9 +327,7 @@ function wave_editor_figure(eng::Engine; wave::Union{Nothing,Wave} = nothing, la
             status[] = "$label: $(e isa ErrorException ? e.msg : sprint(showerror, e))"
             return false
         end
-        push!(hist.undo, (before, String(label)))
-        length(hist.undo) > hist.limit && popfirst!(hist.undo)
-        empty!(hist.redo)
+        snapshot!(hist, before, label)
         modified[] = true
         after === nothing ? (sel[] !== nothing && last(sel[]) > nf() && (sel[] = nothing)) : after(r)
         cursor[] = clamp(cursor[], 1, nf() + 1)
@@ -347,7 +347,7 @@ function wave_editor_figure(eng::Engine; wave::Union{Nothing,Wave} = nothing, la
         if ev.type == MouseEventTypes.leftdown
             if shift
                 a, b = sel[] === nothing ? (cursor[], cursor[]) : (first(sel[]), last(sel[]))
-                sel[] = min(a, f):max(b, f)
+                sel[] = min(a, f):min(max(b, f), nf())
             else
                 anchor[] = f; cursor[] = f; sel[] = nothing
                 playing() && preview_play!(eng, w[].data, w[].fs; from = min(f, nf()), loop = loop_toggle.active[])
@@ -496,7 +496,7 @@ function wave_editor_figure(eng::Engine; wave::Union{Nothing,Wave} = nothing, la
     on(bpmbtn.clicks) do _
         have() || return
         wv = w[]; r = work_range()
-        b = estimate_bpm(Wave(wv.data[r, :], wv.fs))
+        b = estimate_bpm(Wave(wv.data[clamp_range(wv, r), :], wv.fs))
         if b === nothing
             status[] = L("BPM nicht erkannt – bitte von Hand eingeben.")
         else

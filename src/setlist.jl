@@ -1,5 +1,5 @@
-# Setups (set lists) for the setup player: an ordered list of songs (.toml) and audio files
-# (.wav), each with the pause before it and whether countdown beeps announce it.
+# Setups (set lists) for the setup player: an ordered list of songs (.toml), audio files (.wav)
+# and MIDI files (.mid), each with the pause before it and whether countdown beeps announce it.
 #
 # File: <data dir>/setlists/<name>.toml (private, outside the repository)
 #     name = "Gig"
@@ -35,14 +35,15 @@ end
 entry_file(e::SetEntry) = isabspath(e.path) ? e.path : joinpath(song_dir(), e.path)
 
 is_audio_file(path::AbstractString) = lowercase(splitext(path)[2]) == ".wav"
+is_midi_file(path::AbstractString) = lowercase(splitext(path)[2]) in (".mid", ".midi")
 
 "Loop export of the drum machine (`<name> Loop.wav`): made to repeat endlessly, not for the player."
 is_loop_file(path::AbstractString) = occursin(r"(^|[\s_-])loop\.wav$"i, basename(path))
 
-"Title shown on the button: song name from the .toml, file name for audio files."
+"Title shown on the button: song name from the .toml, file name for audio and MIDI files."
 function entry_title(e::SetEntry)
     f = entry_file(e)
-    if !is_audio_file(f) && isfile(f)
+    if !is_audio_file(f) && !is_midi_file(f) && isfile(f)
         try
             n = get(TOML.parsefile(f), "name", "")
             n isa AbstractString && !isempty(n) && return String(n)
@@ -85,49 +86,57 @@ function kit_for_song(s::Song)
 end
 
 """
-    prepare_entry(e) -> Matrix{Float32}
-    prepare_entry_cue(e) -> (audio, count-in frames)
+    prepare_entry_cue(e) -> (audio, count-in frames, midi)
 
 Audio of an entry, stereo at the engine sample rate: a song is rendered like the WAV export
 (with its repeats, count-in and effects; never as a seamless loop), an audio file is read and
-resampled if necessary. Loop WAVs (`… Loop.wav`) are refused.
+resampled if necessary. Loop WAVs (`… Loop.wav`) are refused. `midi` is `nothing`, except for a
+MIDI file: its audio is silence of the file's length, `midi` = (frames, messages, channels) of
+its events (frame 1 = start of the entry, see [`read_midi_file`](@ref)).
 """
-prepare_entry(e::SetEntry) = first(prepare_entry_cue(e))
-
 function prepare_entry_cue(e::SetEntry)
     f = entry_file(e)
     isfile(f) || error(L("Datei nicht gefunden: {1}", f))
     is_loop_file(f) && error(L("Loop-WAV, im Player nicht verwendbar: {1}", basename(f)))
+    if is_midi_file(f)
+        m = read_midi_file(f)
+        m.length <= 3600 || error(L("MIDI-Datei länger als 60 min: {1}", basename(f)))   # silence would take > 1 GB
+        n = max(1, round(Int, m.length * SR))
+        frames = [clamp(round(Int, t * SR) + 1, 1, n) for t in m.times]
+        return zeros(Float32, n, 2), 0, (frames, m.msgs, midi_channels(m.msgs))
+    end
     if is_audio_file(f)
         w = load_wave(f)
         y = size(w.data, 2) == 1 ? hcat(w.data, w.data) : w.data[:, 1:2]
         if w.fs != SR
             y = hcat(resample_sinc(y[:, 1], w.fs, SR), resample_sinc(y[:, 2], w.fs, SR))
         end
-        return Matrix{Float32}(y), 0
+        return Matrix{Float32}(y), 0, nothing
     end
     s = load_song(f); s.loop = false                       # a loop song plays once, with its ending
     y = render_song(s, kit_for_song(s); loop = false)
     ci = round(Int, (song_seconds(s) - song_seconds(s; countin = 0)) * SR)   # count-in at the start
-    return y, clamp(ci, 0, size(y, 1))
+    return y, clamp(ci, 0, size(y, 1)), nothing
 end
 
-"Loads setup `sl` into the player: entries empty until `prepare_entry` filled them."
+"Loads setup `sl` into the player: entries empty until `prepare_entry_cue` filled them."
 function player_load!(pl::Player, sl::Setlist)
     player_stop!(pl)
     n = length(sl.entries)
     pl.items = [zeros(Float32, 0, 2) for _ in 1:n]
     pl.cues = zeros(Int, n)
+    pl.mframe = [Int[] for _ in 1:n]; pl.mmsg = [Int32[] for _ in 1:n]; pl.mchans = zeros(UInt16, n)
     pl.delays = [e.pause for e in sl.entries]
     pl.beeps = [e.beep for e in sl.entries]
     pl.cur = 0
     return pl
 end
 
-"Player master settings as stored in the settings file (table `player`)."
-function player_settings(pl::Player, eqv::NTuple{4,Float64}, gain_db::Real, last::AbstractString)
+"Player master settings as stored in the settings file (table `player`), with the MIDI output `midi_out`."
+function player_settings(pl::Player, eqv::NTuple{4,Float64}, gain_db::Real, last::AbstractString,
+                         midi_out::AbstractString = "")
     Dict{String,Any}("gain_db" => Float64(gain_db), "eq_low" => eqv[1], "eq_mid" => eqv[2],
                      "eq_midf" => eqv[3], "eq_high" => eqv[4], "hall" => PLAYER_HALLS[pl.hall],
                      "hall_mix" => Float64(pl.hallmix), "beep" => Float64(pl.beepgain), "route" => PLAYER_ROUTES[pl.route], "auto" => pl.auto,
-                     "setlist" => String(last))
+                     "setlist" => String(last), "midi_out" => String(midi_out))
 end
