@@ -28,7 +28,7 @@ sound card. PortAudio is installed by Julia itself.
    curl -fsSL https://install.julialang.org | sh
    ```
 
-2. **Install DrumMachine** from the Julia package registry (once the registration is merged):
+2. **Install DrumMachine** from the Julia package registry:
 
    ```bash
    julia -t auto -e 'using Pkg; Pkg.add("DrumMachine"); using DrumMachine; DrumMachine.run()'
