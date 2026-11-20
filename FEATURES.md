@@ -32,7 +32,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 - Count-in, click, tempo 30 to 400 BPM by slider or input field.
 - Metronome in its own window: time signatures up to 12/8 with accent groups, subdivisions, accents, 9 sounds (click, beep, woodblock, cowbell, claves, sticks and three kit sounds), gap trainer (play n bars, mute m bars), tempo trainer (+x BPM every n bars).
 
-## Recording from an e-drum kit and MIDI export
+## E-drum kit: recording, playing through the module, MIDI export
 
 - Hits from an e-drum module are recorded into a new song, connected by USB, no MIDI interface needed. Note table for the Roland TD-27, General MIDI as fallback, own assignments in `[midi_map]`.
 - *● Aufnahme* opens a recording window (tempo, grid, bar length 2/4 to 7/4, Start/Stop) readable from the kit. A click plays; recording begins with the first hit, so there is time to get to the kit, and ends after 8 s without a hit. The window shows the bar number and the bar being played.
@@ -43,6 +43,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 - Audio output latency is compensated, `midi_offset_ms` for fine tuning; the status line shows each hit's offset in ms.
 - MIDI input menu, opened again at the next start. *↻* searches for devices again and rereads the MIDI settings. Notes without a track show their number in the status line.
 - *Mithören* plays the kit sound of each hit, delayed by the audio buffer.
+- MIDI output (menu *Ausgang*): *Play* sends pattern or song in a loop to the module (channel 10, TD-27 notes, controller 4 before hi-hat notes) instead of the kit sound, timed like the sound card. *Pegel* scales the velocity (10 to 100 %), since the TD-27 does not take MIDI volume. MIDI clock with Start and Stop, so the module's click follows the tempo (TD-27: Sync Mode EXTERNAL). Saved as `midi_out_device` and `midi_out_level`; shared with the setup player.
 - Details: [docs/midi.md](docs/midi.md).
 
 ## Against crackles and dropouts

@@ -130,6 +130,10 @@ TRANSPORT
                         wird Takt für Takt in einen neuen Song aufgenommen, 8 s Pause beenden.
                         MIDI = Eingang (z. B. TD-27 per USB), ↻ sucht neu, Mithören spielt den
                         Kit-Klang mit (Docs → MIDI)
+  Ausgang, Pegel        MIDI-Ausgang: Play schickt Pattern oder Song in Schleife ans Modul
+                        (Kanal 10, Noten wie TD-27), der Kit-Klang schweigt. Dazu MIDI-Clock:
+                        der Klick des Moduls folgt dem Tempo (TD-27: Sync Mode EXTERNAL).
+                        Pegel = Anschlagstärke der gesendeten Noten (10–100 %)
   Einmessen             lädt und spielt das Pattern „Einmessen“, Fenster zeigt die Messung;
                         8 Takte einspielen, dann laut und leise wie notiert spielen; 6 s Pause
                         beenden; Ergebnisfenster: Grenzen pro Spur und Timing übernehmen
@@ -220,6 +224,10 @@ TRANSPORT
                         every bar is recorded into a new song, a pause of 8 s ends it. MIDI =
                         input (e.g. TD-27 by USB), ↻ searches again, Monitor plays the kit
                         sound too (Docs → MIDI)
+  Output, Level         MIDI output: Play sends pattern or song in a loop to the module
+                        (channel 10, TD-27 notes), the kit is silent. Also MIDI clock: the
+                        module's click follows the tempo (TD-27: Sync Mode EXTERNAL).
+                        Level = velocity of the notes sent (10–100 %)
   Calibrate             loads and plays the pattern "Einmessen", a window shows the take;
                         8 bars warm-up, then play loud and soft as written; a 6 s pause ends
                         it; result window: apply thresholds per track and timing
@@ -692,6 +700,8 @@ function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::B
                 gcpause_release!()
                 close_midi!(session.midi[]); session.midi[] = nothing
                 close_children!(session, eng)             # they share the engine stopped below
+                try seq_out_close!(eng.seqout, eng.lock) catch e; @warn "MIDI output not closed" exception = e end
+                session.midi_out[] = ""
                 stop_audio!(eng)
             finally
                 notify(done)
@@ -765,6 +775,8 @@ new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = 
                  restore = Ref{Any}(nothing),             # state of the last session, applied once at start
                  midi = Ref{Any}(nothing),                # open MIDI input (MidiInput), kept across rebuilds
                  midi_monitor = Threads.Atomic{Bool}(false),   # MIDI hits also play the kit sound
+                 midi_out = Ref(""),                      # open MIDI output of the sequencer (eng.seqout)
+                 midi_out_err = Ref(0),                   # write errors already reported
                  rec = Ref(false), rec_take = Ref{Any}(nothing),   # recording runs, its take (RecTake)
                  rec_win = Ref{Any}(nothing), rec_setup = Ref{Any}(nothing),   # recording window, its settings
                  rec_result = Ref{Any}(nothing),          # last result: (song, info, apply!, discard!)
@@ -947,12 +959,17 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     calbtn = Button(top3[1, 2], label = L("Einmessen"), width = 190, buttoncolor = session.cal[] ? C_MUTE : C_BTN)
     Label(top3[1, 3], "MIDI", halign = :right, color = C_TEXT2)
     midi_off = L("aus")
-    midi_menu = Menu(top3[1, 4], options = [midi_off], default = midi_off, width = 220)
+    midi_menu = Menu(top3[1, 4], options = [midi_off], default = midi_off, width = 190)
     midi_rf = Button(top3[1, 5], label = "↻", width = 34)
     Label(top3[1, 6], L("Mithören"), halign = :right, color = C_TEXT2)
     mon_toggle = Toggle(top3[1, 7], active = session.midi_monitor[])
-    Label(top3[1, 8], L("E-Drum per USB, Anleitung: Docs → MIDI"),
-          color = C_DIM, fontsize = 12)
+    Label(top3[1, 8], L("Ausgang"), halign = :right, color = C_TEXT2)
+    out_menu = Menu(top3[1, 9], options = [midi_off], default = midi_off, width = 170)
+    Label(top3[1, 10], L("Pegel"), halign = :right, color = C_TEXT2)
+    lvl0 = clamp(round(Int, get(load_settings(), "midi_out_level", 100)), 10, 100)
+    eng.seqout.gain = lvl0 / 100
+    lvl_sl = Slider(top3[1, 11], range = 10:5:100, startvalue = lvl0, width = 80)
+    lvl_lb = Label(top3[1, 12], "$lvl0 %", color = C_TEXT2, width = 44, halign = :left)
     rowgap!(tbox, 8)
 
     # ---------------------------------------------------------------- Patterns
@@ -1561,6 +1578,49 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         status[] = isempty(names) ? L("Kein MIDI-Eingang gefunden (TD-27: USB-Treiber auf GENERIC stellen, siehe Docs → MIDI).") :
                                     L("MIDI-Eingänge: {1}", join(names, ", "))
     end
+    # MIDI output (src/midi.jl, SeqOut): Play sends pattern or song to a drum module instead of the kit
+    out_names() = audio ? midi_outputs() : String[]
+    out_sync = Ref(false)
+    function out_options!(names)
+        cur = session.midi_out[]
+        opts = vcat([midi_off], names)
+        isempty(cur) || cur in opts || push!(opts, cur)
+        out_sync[] = true
+        try
+            opts == out_menu.options[] || (out_menu.options[] = opts)
+            k = isempty(cur) ? 1 : something(findfirst(==(cur), opts), 1)
+            out_menu.i_selected[] == k || (out_menu.i_selected[] = k)
+        finally
+            out_sync[] = false
+        end
+    end
+    function out_open!(name)                              # "" = off; true if open
+        ok = seq_out_open!(eng.seqout, eng.lock, name)
+        session.midi_out[] = ok ? String(name) : ""
+        session.midi_out_err[] = 0
+        return ok
+    end
+    on(out_menu.is_open) do open
+        open && out_options!(out_names())
+    end
+    on(out_menu.selection) do sel
+        (sel === nothing || out_sync[]) && return
+        name = sel == midi_off ? "" : sel
+        name == session.midi_out[] && return
+        ok = out_open!(name)
+        (ok || name == "") && save_setting!("midi_out_device", name)
+        status[] = name == "" ? L("MIDI-Ausgang aus, Play spielt wieder den Kit-Klang.") :
+                   ok ? L("MIDI-Ausgang: {1}. Play schickt Pattern und Song an dieses Gerät, der Kit-Klang schweigt. Klick des Moduls: Sync Mode EXTERNAL.", name) :
+                        L("MIDI-Ausgang „{1}“ lässt sich nicht öffnen.", name)
+        out_options!(out_names())
+    end
+    on(lvl_sl.value) do v
+        lvl_lb.text[] = "$v %"
+        eng.seqout.gain == v / 100 && return
+        eng.seqout.gain = v / 100
+        save_setting!("midi_out_level", v)
+        status[] = L("MIDI-Pegel {1} %: Anschlagstärke der gesendeten Noten, dein eigenes Spiel bleibt gleich laut.", v)
+    end
     on(mon_toggle.active) do v
         session.midi_monitor[] = v
         status[] = v ? L("Mithören an: jeder Schlag spielt auch den Kit-Klang, verzögert um den Audio-Puffer.") :
@@ -1819,6 +1879,15 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         end
     end
     midi_options!(midi_names())
+    if audio && isempty(session.midi_out[])                # reopen the output of the last session
+        dev = string(get(load_settings(), "midi_out_device", ""))
+        if dev != ""
+            m = dev in out_names() ? (out_open!(dev) ? L("MIDI-Ausgang: {1}", dev) : L("MIDI-Ausgang „{1}“ lässt sich nicht öffnen.", dev)) :
+                L("MIDI-Ausgang „{1}“ nicht gefunden, im Menü Ausgang wählen.", dev)
+            midi_msg = isempty(midi_msg) ? m : midi_msg * "  ·  " * m
+        end
+    end
+    out_options!(out_names())
 
     # Tracks
     for t in 1:NTRACKS
@@ -2304,6 +2373,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         gc === :paused && (status[] = L("Speicherbereinigung angehalten für {1} min.", GCPAUSE.minutes))
         gc === :time && (status[] = L("GC-Pause abgelaufen – Speicherbereinigung läuft wieder."))
         gc === :memory && (status[] = L("Arbeitsspeicher knapp – Speicherbereinigung läuft wieder."))
+        if !isempty(session.midi_out[]) && eng.seqout.merr[] > session.midi_out_err[]
+            session.midi_out_err[] = eng.seqout.merr[]
+            status[] = L("MIDI-Ausgang „{1}“ antwortet nicht.", session.midi_out[])
+        end
         m = session.midi[]
         if m !== nothing && isready(m.hits)
             foreach(midi_hit!, take_hits!(m))

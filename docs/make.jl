@@ -39,7 +39,7 @@ The program shows a short help (**?**) and these pages (*Docs*) itself. Installa
 | [WAV editor](wav-editor.md) | editing exported WAV files |
 | [Metronome](metronome.md) | the metronome window |
 | [Setup player](player.md) | playing songs on stage |
-| [MIDI recording and export](midi.md) | recording from an e-drum kit (Roland TD-27), MIDI file export |
+| [MIDI recording, output and export](midi.md) | recording from an e-drum kit (Roland TD-27), playing through the module, MIDI file export |
 | [Kits](KITS.md) | sample kits, sources and licenses |
 | [Platforms](PLATFORMS.md) | Linux, Windows, macOS, required programs |
 | [Changelog](CHANGELOG.md) | changes per version |

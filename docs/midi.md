@@ -1,9 +1,10 @@
-# MIDI recording and export
+# MIDI recording, output and export
 
 Hits from an electronic drum kit can be recorded straight into the patterns. The kit is connected
 by USB; a separate MIDI interface is not needed. The controls are in the third row of the
 transport panel: *● Aufnahme* (record), the *MIDI* input menu, *↻* (search again) and
-*Mithören* (monitor).
+*Mithören* (monitor). The same row has the MIDI output (*Ausgang*, *Pegel*): the module plays
+your patterns and songs with its own sounds, see *Playing through the module* below.
 
 The defaults are made for a Roland TD-27. Other modules work too if they send note-on messages;
 their notes may need a mapping (see *Note table* below).
@@ -168,6 +169,8 @@ midi_device = "TD-27 MIDI 1"     # example; the name as shown in the MIDI menu, 
 midi_ghost = 45                  # velocity below this: ghost note
 midi_accent = 105                # velocity from this on: accent
 midi_offset_ms = 0               # timing correction in ms, positive = hits count earlier
+midi_out_device = "TD-27 MIDI 1" # MIDI output of the main window, set by the menu Ausgang
+midi_out_level = 100             # velocity of the notes sent in %, set by the slider Pegel
 
 [midi_levels]                    # per track: [ghost below, accent from]; set by Einmessen
 HiHat = [36, 66]
@@ -194,6 +197,32 @@ show about `+15 ms`, set `midi_offset_ms = 15`; for `-10 ms` set `-10`.
 
 A smaller `audio_latency` makes playing along easier, as long as there are no dropouts (see the
 README, *Against crackles and dropouts*).
+
+## Playing through the module
+
+The *Ausgang* menu lists the MIDI outputs (*aus* = off). With an output chosen, *Play* sends the
+pattern (pattern mode, in a loop) or the chain (song mode, in a loop) to the module instead of
+playing the kit, so you hear it in the headphones of the module and can play along.
+
+- Channel 10, notes as in the MIDI file export (Kick 36, Snare 38, … Crash 49), controller 4
+  before each hi-hat note. Ghost note, normal and accent get velocity 35, 90 and 120, scaled by
+  the track volume, ornaments and *Human*. Each note ends after 30 ms (drum modules ignore that).
+- Mute and solo work as usual. Count-in and click of DrumMachine still come from the sound card.
+- *Pegel* (10 to 100 %) scales the velocity of all notes sent. The TD-27 does not take MIDI
+  volume (controller 7), so this is the way to make the playback quieter than your own playing.
+  Lower velocities also pick softer samples on the module.
+- MIDI clock: on *Play* the output gets a Start, then 24 clock ticks per beat in the tempo of the
+  pattern (swing does not move the beats), and a Stop at the end. The click of the TD-27 follows
+  it when *SYSTEM → MIDI → SYNC*, *Sync Mode* is set to *EXTERNAL*; switch the click on at the
+  module and set its volume there. The time signature of that click is set at the module.
+- The notes are timed for the moment the sound card plays the same point, so the module and
+  DrumMachine (click, other windows) stay in time.
+- Your own hits through the MIDI input are not sent back to the module. With *Mithören* on they
+  also play the kit sound of DrumMachine.
+- The choice is saved as `midi_out_device` and opened again at the next start; the level is
+  saved as `midi_out_level`. The setup player can use the same output at the same time.
+- If the module stops answering (unplugged), the status line says so. Choose *aus* and the
+  output again after plugging it back in.
 
 ## MIDI file export
 

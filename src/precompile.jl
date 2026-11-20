@@ -20,6 +20,10 @@ function precompile_windows(song, kit; show = (fig, tick!) -> tick!())
     render!(eng, zeros(Float32, BLOCK, 2))
     show(mfig, mtick!)
     metro_stop!(eng.metro)
+    eng.seqout.sent = Tuple{Float64,Int32}[]                # sequencer through the MIDI output
+    start_seq!(eng, [-1], 1)
+    for _ in 1:20; render!(eng, zeros(Float32, BLOCK, 2)); end
+    stop!(eng); eng.seqout.sent = nothing
     cfg = midi_config(Dict{String,Any}())                   # calibration: live view and result
     take = CalTake(0.0, 1.0)
     for i in 1:40; cal_add!(take, 1.0 + 0.1i, isodd(i) ? 4 : 2, 30 + 2i, isodd(i) ? 3 : 2, 10.0); end

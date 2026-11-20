@@ -97,6 +97,7 @@ mutable struct Engine
     humsched::Bool                   # hits of the next step are already in `humpend` (human timing)
     humpend::Vector{Tuple{Float64,Int,Int,Float32}}   # hits shifted by `song.human`, like `pending`
     player::Player                   # setup player (prepared songs), mixed in last
+    seqout::SeqOut                   # MIDI output of the main window: hits go to a drum module
     clock::HitClock                  # timing log for MIDI recording (see src/midi.jl)
     hits::Union{Nothing,Vector{Tuple{Int,Int,Int,Float32}}}   # dry run: (sample, track, level, gain), no audio
     rt::Threads.Atomic{Int}          # realtime priority the audio thread runs with, 0 = normal
@@ -112,7 +113,7 @@ function Engine(song::Song, kit::Kit)
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
                  Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview(), Metronome(),
                  sizehint!(Tuple{Float64,Int,Int,Float32}[], 64), false,
-                 sizehint!(Tuple{Float64,Int,Int,Float32}[], NTRACKS), Player(), HitClock(), nothing,
+                 sizehint!(Tuple{Float64,Int,Int,Float32}[], NTRACKS), Player(), SeqOut(), HitClock(), nothing,
                  Threads.Atomic{Int}(0))
     apply_fx!(eng)
     return eng
@@ -184,6 +185,10 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true, gain::Float
         anysolo && !tp.solo && return
     end
     eng.hits === nothing || (push!(eng.hits, (eng.samplepos, t, level, gain)); return)
+    if seq && seq_on(eng.seqout)              # MIDI output: the drum module plays it, not the kit
+        seq_note!(eng.seqout, eng.samplepos, t, round(Int, MIDI_OUT_VEL[level] * gain * tp.vol * eng.seqout.gain))
+        return
+    end
     kit = eng.kit
     smp, g = pick_sample(eng.rng, kit.pools[t][level], eng.last[t])
     eng.last[t] = smp
@@ -308,6 +313,16 @@ function do_step!(eng::Engine)
     else
         p = song.patterns[eng.pat]
         steps = p.steps
+    end
+    if seq_on(eng.seqout) && s % song.steps_per_beat == 0 && s < steps   # MIDI clock of this beat
+        e = min(s + song.steps_per_beat, steps)
+        d = 0.0
+        for j in s:e-1
+            d += step_samples(song, j, p)
+        end
+        seq_beat!(eng.seqout, eng.next_step_at, d, 24 * (e - s) ÷ song.steps_per_beat)
+    end
+    if eng.pat != 0
         if s < steps
             for t in 1:NTRACKS
                 lv = p.grid[t, s+1]
@@ -425,6 +440,11 @@ const LEAD_IN = 0.1 * SR                # samples before step 1: room for its gr
 
 "Starts playback of sequence `seq` (see field docs) right away."
 function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
+    o = eng.seqout
+    if o.started                                     # restart: the module's click starts again too
+        seq_write!(o, Int32(0xfc), o.t0 + (eng.samplepos - o.pos0) * (1000 / SR))
+        o.started = false; o.clk_left = 0
+    end
     eng.seq = seq
     eng.loop_from = loop_from
     eng.seqpos = 1
@@ -492,11 +512,12 @@ end
 "Renders one block (frames × 2) – sample-accurate, steps may fall mid-block."
 function render!(eng::Engine, out::Matrix{Float32})
     fill!(out, 0f0)
+    N = size(out, 1)
+    seq_block!(eng.seqout, eng.samplepos, N, eng.playing)
     while isready(eng.pads)
         t, lv = take!(eng.pads)
         t == 0 ? click!(eng, true) : trigger!(eng, t, lv; seq = false)
     end
-    N = size(out, 1)
     for t in 1:NTRACKS                       # track effects: prepare buses
         tp = eng.song.tracks[t]
         eng.fxon[t] = has_trackfx(tp)
@@ -506,11 +527,13 @@ function render!(eng::Engine, out::Matrix{Float32})
         update_eq!(eng.trackfx[t], tp.eq_low, tp.eq_mid, tp.eq_midf, tp.eq_high)
     end
     i = 1
+    o = eng.seqout
     while i <= N
         tnext, k = next_event(eng)                   # next step or ornament stroke
+        o.clk_left > 0 && o.clk_next < tnext && (tnext = o.clk_next; k = typemin(Int))   # MIDI clock tick
         due = tnext - eng.samplepos
         if due <= 0
-            fire_event!(eng, k)
+            k == typemin(Int) ? seq_tick!(o, eng.samplepos) : fire_event!(eng, k)
             continue
         end
         n = isfinite(due) ? min(N - i + 1, ceil(Int, due)) : N - i + 1
@@ -703,6 +726,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
     warm = Engine(copy(eng.song), eng.kit)
     start_seq!(warm, [1], 1)
     metro_start!(warm.metro)
+    warm.seqout.sent = sizehint!(Tuple{Float64,Int32}[], 4096)   # MIDI output path, nothing sent
     wp = warm.player                         # player path with pause, beep, EQ and reverb
     wp.items = [zeros(Float32, 4BLOCK, 2)]; wp.cues = [BLOCK]; wp.delays = [0.01]; wp.beeps = [true]; wp.hall = 2
     wp.mframe = [[1, 2BLOCK]]; wp.mmsg = [Int32[0x99, 0x89]]; wp.mchans = [0x0200]   # MIDI entry (no output open)
@@ -718,6 +742,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
     eng.clock.latency = stream_latency(stream, latency)    # what the sound card reports
     eng.metro.latency = eng.clock.latency                # metronome display delay: the same
     eng.player.mlat = 1000 * hit_delay(eng.clock.latency, 0)   # player MIDI: rendering to hearing, ms
+    eng.seqout.mlat = eng.player.mlat
     logev("audio started"; device = something(device, "default"), latency_set = latency,
           latency_reported = round(eng.clock.latency; digits = 4), block = BLOCK, rate = SR)
     sink = direct_sink(stream, BLOCK)

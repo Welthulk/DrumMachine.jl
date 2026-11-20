@@ -100,7 +100,10 @@ into a new song. *Einmessen* sets the
 loud and soft thresholds per pad from a groove you play along with. The note table is made
 for the Roland TD-27; on Linux it has to be in USB driver mode GENERIC. Details, note table and
 settings: [docs/midi.md](docs/midi.md). The *MIDI* button in the export row writes the song as a MIDI
-file, e.g. for a DAW or MuseScore. The setup player plays MIDI files through a MIDI output, e.g.
+file, e.g. for a DAW or MuseScore. With an output chosen in the *Ausgang* menu, *Play* sends
+pattern or song in a loop to the module, which plays them with its own sounds; *Pegel* sets the
+velocity, a MIDI clock drives the module's click (TD-27: Sync Mode EXTERNAL). The setup player
+plays MIDI files through a MIDI output, e.g.
 back to the drum module ([docs/player.md](docs/player.md)).
 
 ## Features
@@ -132,7 +135,7 @@ kits with sources, licenses and sizes, the gain per kit, the automatic download
 `~/.config/DrumMachine/settings.toml` stores the language chosen in the header
 (`language = "en"` or `"de"`), `auto_kits` (see [KITS.md](KITS.md)), the gain per kit
 (`[kit_gain]`), `audio_latency` (see above), the GC pause in minutes (`gc_pause`), an own folder for songs and exports (`song_dir`), the MIDI recording
-(`midi_device`, `[midi_map]`, `midi_ghost`, `midi_accent`, `[midi_levels]`, `midi_offset_ms`, see
+(`midi_device`, `midi_out_device`, `midi_out_level`, `[midi_map]`, `midi_ghost`, `midi_accent`, `[midi_levels]`, `midi_offset_ms`, see
 [docs/midi.md](docs/midi.md)), the setup player's last setup, mode, master settings and MIDI output
 (`[player]`), the metronome (`[metronome]`) and the last session (`[session]`).
 

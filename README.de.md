@@ -102,7 +102,10 @@ neuen Song aufgenommen. *Einmessen* stellt die Grenzen
 für laut und leise pro Pad nach einem mitgespielten Groove ein. Die Notentabelle ist für das
 Roland TD-27 gemacht; unter Linux muss es im USB-Treibermodus GENERIC laufen. Einzelheiten,
 Notentabelle und Einstellungen: [docs/midi.md](docs/midi.md) (englisch). Der Button *MIDI* in der
-Export-Zeile schreibt den Song als MIDI-Datei, z. B. für eine DAW oder MuseScore. Der
+Export-Zeile schreibt den Song als MIDI-Datei, z. B. für eine DAW oder MuseScore. Im Menü
+*Ausgang* gewählt, schickt *Play* Pattern oder Song in Schleife ans Modul, das sie mit seinen
+eigenen Sounds spielt; *Pegel* regelt die Anschlagstärke, eine MIDI-Clock führt den Klick des
+Moduls (TD-27: Sync Mode EXTERNAL). Der
 Setup-Player spielt MIDI-Dateien über einen MIDI-Ausgang ab, z. B. zurück ans Modul
 ([docs/player.md](docs/player.md), englisch).
 
@@ -137,7 +140,7 @@ Größen, der Gain pro Kit, der automatische Download (`auto_kits = true`) und K
 `~/.config/DrumMachine/settings.toml` speichert die in der Kopfzeile gewählte Sprache
 (`language = "en"` oder `"de"`), `auto_kits` (siehe [KITS.md](KITS.md)), den Gain pro Kit
 (`[kit_gain]`), `audio_latency` (siehe oben), die GC-Pause in Minuten (`gc_pause`), einen eigenen Ordner für Songs und Exporte (`song_dir`), die MIDI-Aufnahme
-(`midi_device`, `[midi_map]`, `midi_ghost`, `midi_accent`, `[midi_levels]`, `midi_offset_ms`, siehe
+(`midi_device`, `midi_out_device`, `midi_out_level`, `[midi_map]`, `midi_ghost`, `midi_accent`, `[midi_levels]`, `midi_offset_ms`, siehe
 [docs/midi.md](docs/midi.md), englisch), beim Setup-Player das letzte Setup, den Modus, die
 Master-Einstellungen und den MIDI-Ausgang (`[player]`), das Metronom (`[metronome]`) und die letzte
 Sitzung (`[session]`).

@@ -95,7 +95,15 @@ add_translations!(Dict{String,String}(
         "Calibrate: the pattern is playing. After the first hit {1} bars of warm-up, then it measures; a pause of {2} s ends the measurement.",
     "Einmessen: erst einen MIDI-Eingang wählen (Menü MIDI)." =>
         "Calibrate: choose a MIDI input first (menu MIDI).",
-    "E-Drum per USB, Anleitung: Docs → MIDI" => "E-drum by USB, how-to: Docs → MIDI",
+    "Pegel" => "Level",
+    "MIDI-Pegel {1} %: Anschlagstärke der gesendeten Noten, dein eigenes Spiel bleibt gleich laut." =>
+        "MIDI level {1} %: velocity of the notes sent, your own playing stays as loud.",
+    "MIDI-Ausgang aus, Play spielt wieder den Kit-Klang." => "MIDI output off, Play uses the kit sound again.",
+    "MIDI-Ausgang: {1}. Play schickt Pattern und Song an dieses Gerät, der Kit-Klang schweigt. Klick des Moduls: Sync Mode EXTERNAL." =>
+        "MIDI output: {1}. Play sends pattern and song to this device, the kit is silent. Click of the module: Sync Mode EXTERNAL.",
+    "MIDI-Ausgang: {1}" => "MIDI output: {1}",
+    "MIDI-Ausgang „{1}“ nicht gefunden, im Menü Ausgang wählen." =>
+        "MIDI output \"{1}\" not found, choose one in the menu Output.",
     "Kein MIDI-Eingang gefunden (TD-27: USB-Treiber auf GENERIC stellen, siehe Docs → MIDI)." =>
         "No MIDI input found (TD-27: set the USB driver to GENERIC, see Docs → MIDI).",
     "MIDI: {1} · Note {2} · Velocity {3}" => "MIDI: {1} · note {2} · velocity {3}",

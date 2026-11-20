@@ -1,10 +1,11 @@
 # MIDI input for recording from an e-drum kit: a thin PortMidi wrapper (PortMidi_jll), the note
 # map (Roland TD-27, General MIDI) and the pure functions that turn a hit into a grid cell. Also
-# the MIDI output of the setup player.
+# the MIDI output of the setup player (MIDI files) and of the main window (`SeqOut`: the
+# sequencer plays a drum module instead of the kit).
 #
 # Threads: a reader task polls the open input about every 1 ms and hands note-ons through a
 # Channel to the GUI, which writes them into the pattern on the main thread. The setup player
-# sends the events of a MIDI file from the audio thread. PortMidi is not thread-safe: every
+# and the sequencer send their notes from the audio thread. PortMidi is not thread-safe: every
 # PortMidi call holds the spin lock PM_LOCK, only for that one call; the audio thread only tries
 # it and sends later if it is taken, so it never waits. Opening, closing and listing devices also
 # hold MIDI_LOCK, so that PortMidi is not re-initialised in between.
@@ -797,18 +798,29 @@ function take_hits!(m::MidiInput)
     end
     return out
 end
+# ---------------------------------------------------------------------------
+# MIDI output: setup player (MIDI files) and main window (the sequencer plays a drum module)
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# MIDI output of the setup player
-# ---------------------------------------------------------------------------
+# PortMidi opens a device only once: the player and the main window share the stream of a device
+const OUT_STREAMS = Dict{String,Tuple{Ptr{Cvoid},Int}}()    # name -> (stream, users), under MIDI_LOCK
 
 """
     open_midi_out(name) -> Ptr (C_NULL if it cannot be opened)
 
 Opens the MIDI output `name` with a latency of `MIDI_OUT_LATENCY` ms, so that PortMidi (ALSA)
-sends each message at its timestamp. The same device may be open as input at the same time.
+sends each message at its timestamp. The same device may be open as input at the same time. If
+the output is open already (player and main window), its stream is shared; each user closes it
+with [`release_midi_out!`](@ref).
 """
 function open_midi_out(name::AbstractString)
+    shared = lock(MIDI_LOCK) do
+        s = get(OUT_STREAMS, name, nothing)
+        s === nothing && return C_NULL
+        OUT_STREAMS[name] = (s[1], s[2] + 1)
+        return s[1]
+    end
+    shared == C_NULL || return shared
     devs = midi_devices(; fresh = PM_OPEN[] == 0)
     k = findfirst(d -> d[4] && d[2] == name, devs)
     k === nothing && return C_NULL
@@ -817,11 +829,37 @@ function open_midi_out(name::AbstractString)
         pm_locked(pt_start!)
         e = pm_locked(() -> ccall((:Pm_OpenOutput, libpm), Cint,
                                   (Ref{Ptr{Cvoid}}, Cint, Ptr{Cvoid}, Cint, Ptr{Cvoid}, Ptr{Cvoid}, Cint),
-                                  ref, devs[k][1], C_NULL, 256, C_NULL, C_NULL, MIDI_OUT_LATENCY))
-        e == 0 ? (PM_OPEN[] += 1) : (ref[] = C_NULL)
+                                  ref, devs[k][1], C_NULL, 1024, C_NULL, C_NULL, MIDI_OUT_LATENCY))
+        e == 0 ? (PM_OPEN[] += 1; OUT_STREAMS[String(name)] = (ref[], 1)) : (ref[] = C_NULL)
     end
     logev(ref[] == C_NULL ? "MIDI output cannot be opened" : "MIDI output opened"; name)
     return ref[]
+end
+
+"""
+    release_midi_out!(p, chans)
+
+Sends All Notes Off (controller 123) at once on the channels `chans` (bit c = channel c + 1) of
+stream `p` and closes it when no other user has it open.
+"""
+function release_midi_out!(p::Ptr{Cvoid}, chans::UInt16)
+    lock(MIDI_LOCK) do
+        for ch in 0:15                               # timestamp 0: at once
+            chans & (UInt16(1) << ch) == 0 && continue
+            pm_locked(() -> ccall((:Pm_WriteShort, libpm), Cint, (Ptr{Cvoid}, Int32, Int32), p, 0, Int32(0xb0 | ch | 123 << 8)))
+        end
+        k = findfirst(s -> s[1] == p, OUT_STREAMS)
+        if k !== nothing && OUT_STREAMS[k][2] > 1
+            OUT_STREAMS[k] = (p, OUT_STREAMS[k][2] - 1)
+            return
+        end
+        k === nothing || delete!(OUT_STREAMS, k)
+        sleep(0.01)                                  # sent before the port goes away
+        pm_locked(() -> ccall((:Pm_Close, libpm), Cint, (Ptr{Cvoid},), p))
+        PM_OPEN[] = max(PM_OPEN[] - 1, 0)
+        logev("MIDI output closed")
+    end
+    return nothing
 end
 
 """
@@ -837,16 +875,47 @@ function midi_out_close!(pl::Player, lk)
     pl.mout[] = 0                                    # the audio thread sends nothing from now on
     lock(() -> (pl.moff = 0x0000), lk)               # a block still using the output is finished
     sleep(pl.mlat / 1000 + BLOCK / SR + 0.01)        # notes already scheduled are played
-    lock(MIDI_LOCK) do
-        for ch in 0:15                               # timestamp 0: at once
-            pm_locked(() -> ccall((:Pm_WriteShort, libpm), Cint, (Ptr{Cvoid}, Int32, Int32), p, 0, Int32(0xb0 | ch | 123 << 8)))
-        end
-        sleep(0.01)                                  # sent before the port goes away
-        pm_locked(() -> ccall((:Pm_Close, libpm), Cint, (Ptr{Cvoid},), p))
-        PM_OPEN[] = max(PM_OPEN[] - 1, 0)
-    end
+    release_midi_out!(p, 0xffff)
     return nothing
 end
+
+"""
+    SeqOut()
+
+MIDI output of the main window: while it is open, the sequencer sends its hits as notes on
+channel 10 (notes `MIDI_OUT_NOTES`, velocity from level, ornament, track volume and `gain`)
+instead of playing the kit, so a drum module plays the pattern or song with its own sounds. While
+playing it also sends MIDI clock (24 per beat) after a Start, so the click of the module follows
+the tempo (TD-27: Sync Mode EXTERNAL); Stop when playback ends. The audio thread times each
+message for the moment the sound card plays the same point (as the player does).
+"""
+mutable struct SeqOut
+    mout::Threads.Atomic{UInt}       # open stream (PortMidi), 0 = off; set once fully open
+    mlat::Float64                    # ms from rendering a block to hearing it (set by start_audio!)
+    mclk::Float64                    # MIDI clock as in `Player` (see `midi_clock!`)
+    mfr::Int
+    merr::Threads.Atomic{Int}        # dropped or failed writes since the output was opened
+    t0::Float64                      # PortMidi time (ms) at which the current block is heard
+    pos0::Int                        # engine sample position at the start of the block
+    last::Float64                    # timestamp of the last message: kept non-decreasing
+    offat::Vector{Float64}           # per track: time (ms) of the pending note-off, < 0 = none
+    gain::Float64                    # velocity factor (level of the module against your own playing)
+    started::Bool                    # Start sent, clock running
+    clk_next::Float64                # engine sample of the next clock tick
+    clk_dt::Float64                  # samples between ticks in the current beat
+    clk_left::Int                    # ticks left in the current beat
+    sent::Union{Nothing,Vector{Tuple{Float64,Int32}}}   # tests, warm-up: messages kept, not sent
+end
+
+SeqOut() = SeqOut(Threads.Atomic{UInt}(0), 0.0, 0.0, -1, Threads.Atomic{Int}(0), 0.0, 0, 0.0,
+                  fill(-1.0, NTRACKS), 1.0, false, 0.0, 0.0, 0, nothing)
+
+"The sequencer plays through the MIDI output (or records its messages in a test)."
+seq_on(o::SeqOut) = o.mout[] != 0 || o.sent !== nothing
+
+const SEQ_CH = 9                          # channel 10
+const SEQ_NOTE_MS = 30.0                  # note length; ends earlier if the same note comes again
+const SEQ_TRIES = 2000                    # tries for PM_LOCK before a message is dropped
 
 """
     midi_clock!(pl, N) -> Float64
@@ -856,7 +925,7 @@ this block is heard, 0 without an output. The time of a block is smoothed over a
 because the audio thread renders in bursts (the sound server takes several blocks at once); after
 a gap or a dropout of more than 50 ms the clock starts again. The heard time adds `pl.mlat`.
 """
-function midi_clock!(pl::Player, N::Int)
+function midi_clock!(pl::Union{Player,SeqOut}, N::Int)
     pl.mout[] == 0 && (pl.mfr = -1; return 0.0)
     now = Float64(ccall((:Pt_Time, libpm), Int32, ()))
     x = now - pl.mfr * (1000 / SR)                   # frame 0 of the clock, by this block
@@ -877,7 +946,7 @@ frame; the timestamp still holds). Without an output, or if the output was opene
 `midi_clock!` ran in this block (no time yet), the event is skipped; a failed write drops it and
 counts in `pl.merr`.
 """
-@inline function midi_send!(pl::Player, msg::Int32, t::Float64)
+@inline function midi_send!(pl::Union{Player,SeqOut}, msg::Int32, t::Float64)
     p = pl.mout[]
     (p == 0 || pl.mfr < 0) && return true
     trylock(PM_LOCK) || return false
@@ -896,4 +965,113 @@ function midi_notes_off!(pl::Player, t::Float64)
         pl.moff &= ~(UInt16(1) << ch)
     end
     return
+end
+
+"Sends `msg` of the sequencer at time `t` (ms, not before the previous message); PortMidi busy: tries again, then drops it."
+function seq_write!(o::SeqOut, msg::Int32, t::Float64)
+    t = max(t, o.last); o.last = t
+    o.sent === nothing || (push!(o.sent, (t, msg)); return)
+    for _ in 1:SEQ_TRIES
+        midi_send!(o, msg, t) && return
+    end
+    Threads.atomic_add!(o.merr, 1)
+    return
+end
+
+"""
+Start of an audio block at engine position `pos` (`N` frames): sets the MIDI time of the block
+and sends the note-offs that are due by then.
+"""
+function seq_block!(o::SeqOut, pos::Int, N::Int, playing::Bool)
+    o.pos0 = pos
+    o.t0 = o.sent === nothing ? midi_clock!(o, N) : pos * (1000 / SR)
+    seq_on(o) || return
+    if o.started && !playing                         # playback ended: Stop, no more clock
+        seq_write!(o, Int32(0xfc), o.t0)
+        o.started = false; o.clk_left = 0
+    end
+    for t in eachindex(o.offat)
+        0 <= o.offat[t] <= o.t0 || continue
+        seq_write!(o, Int32(0x80 | SEQ_CH | MIDI_OUT_NOTES[t] << 8), o.offat[t])
+        o.offat[t] = -1.0
+    end
+    return
+end
+
+"""
+Note of track `t` with velocity `vel` at engine position `pos` (in the block of `seq_block!`).
+Before a hi-hat note, controller 4 sets the opening as Roland modules expect: 127 closed, 0 open.
+"""
+function seq_note!(o::SeqOut, pos::Int, t::Int, vel::Int)
+    ts = o.t0 + (pos - o.pos0) * (1000 / SR)
+    n = MIDI_OUT_NOTES[t]
+    if o.offat[t] >= 0                               # the same note again: end the previous one
+        seq_write!(o, Int32(0x80 | SEQ_CH | n << 8), ts)
+        o.offat[t] = -1.0
+    end
+    cc = n == 46 ? 0 : (n == 42 || n == 44) ? 127 : -1
+    cc >= 0 && seq_write!(o, Int32(0xb0 | SEQ_CH | 4 << 8 | cc << 16), ts)
+    seq_write!(o, Int32(0x90 | SEQ_CH | n << 8 | clamp(vel, 1, 127) << 16), ts)
+    o.offat[t] = ts + SEQ_NOTE_MS
+    return
+end
+
+"""
+Beat of `n` clock ticks starting at engine sample `at`, `d` samples long (from `do_step!`): the
+first beat after the start of playback also sends Start, so the module's click starts on it.
+"""
+function seq_beat!(o::SeqOut, at::Float64, d::Float64, n::Int)
+    if !o.started
+        seq_write!(o, Int32(0xfa), o.t0 + (at - o.pos0) * (1000 / SR))
+        o.started = true
+    end
+    o.clk_next = at; o.clk_dt = d / max(n, 1); o.clk_left = n
+    return
+end
+
+"Sends the clock tick due at engine sample `pos`."
+function seq_tick!(o::SeqOut, pos::Int)
+    seq_write!(o, Int32(0xf8), o.t0 + (pos - o.pos0) * (1000 / SR))
+    o.clk_next += o.clk_dt; o.clk_left -= 1
+    return
+end
+
+"""
+    seq_out_close!(o, lk)
+
+Closes the MIDI output of the main window: takes it away from the audio thread, waits for the
+block in progress (`lk` = engine lock) and the notes already scheduled, then sends All Notes Off
+on channel 10 and closes the stream (if the player does not use it as well).
+"""
+function seq_out_close!(o::SeqOut, lk)
+    p = Ptr{Cvoid}(o.mout[])
+    p == C_NULL && return nothing
+    lock(lk) do                                      # Stop for the module's click, at once
+        o.started && seq_write!(o, Int32(0xfc), o.t0)
+        o.started = false; o.clk_left = 0
+        o.mout[] = 0
+        fill!(o.offat, -1.0)
+    end
+    sleep(o.mlat / 1000 + BLOCK / SR + SEQ_NOTE_MS / 1000 + 0.01)
+    release_midi_out!(p, UInt16(1) << SEQ_CH)
+    return nothing
+end
+
+"""
+    seq_out_open!(o, lk, name) -> Bool
+
+Opens the MIDI output `name` for the sequencer after closing the open one (`""` = off).
+"""
+function seq_out_open!(o::SeqOut, lk, name::AbstractString)
+    seq_out_close!(o, lk)
+    isempty(name) && return false
+    p = open_midi_out(name)
+    p == C_NULL && return false
+    lock(lk) do
+        o.merr[] = 0; o.last = 0.0; o.mfr = -1; o.started = false; o.clk_left = 0
+        fill!(o.offat, -1.0)
+        o.mout[] = UInt(p)
+    end
+    logev("sequencer MIDI output"; name)
+    return true
 end

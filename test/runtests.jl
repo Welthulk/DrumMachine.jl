@@ -816,6 +816,32 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         _, _, bm, _, sm = D.clock_snapshot(eng.clock)
         @test [(x.seqpos, x.pat) for x in bm] == [(1, 0), (2, 1)] && bm[2].start - bm[1].start ≈ SR
         @test sm[1] == D.StepMark(bm[1].start, 0) && sm[17] == D.StepMark(bm[2].start, 0)
+        # MIDI output of the sequencer (messages kept instead of sent): notes on channel 10 with
+        # CC 4 before the hi-hat, note-off after 30 ms or before the same note, kit silent, pads still sound
+        so = Song(bpm = 120, patterns = [Pattern(16)])
+        g = so.patterns[1].grid; g[D.track_index("Kick"), 1] = 3; g[D.track_index("HHOpen"), 1:2] .= 2
+        so.tracks[D.track_index("Kick")].vol = 0.5f0
+        eng = D.Engine(so, syn); eng.seqout.sent = Tuple{Float64,Int32}[]
+        D.start_seq!(eng, [-1], 1)
+        quiet = true
+        for _ in 1:60
+            D.render!(eng, buf); quiet &= all(iszero, buf)
+        end
+        ev = [(round(t, digits = 1), m & 0xff, (m >> 8) & 0xff, m >> 16) for (t, m) in eng.seqout.sent]
+        t1 = D.LEAD_IN / SR * 1000; t2 = t1 + 125
+        notes = filter(e -> e[2] != 0xf8, ev)
+        @test quiet && notes[1:6] == [(t1, 0xfa, 0, 0), (t1, 0x99, 36, 60), (t1, 0xb9, 4, 0), (t1, 0x99, 46, 90),
+                                      (t1 + 30, 0x89, 36, 0), (t1 + 30, 0x89, 46, 0)]
+        @test (t2, 0x99, 46, 90) in ev && issorted(first.(ev))
+        # MIDI clock: 24 ticks per beat from the Start on; level scales the velocity; Stop after playback
+        @test count(e -> e[2] == 0xf8 && e[1] < t1 + 500 - 1, ev) == 24 && (t1 + 500, 0xf8, 0, 0) in ev
+        eng.seqout.gain = 0.5; empty!(eng.seqout.sent); D.start_seq!(eng, [-1], 1)
+        for _ in 1:12; D.render!(eng, buf); end
+        D.stop!(eng); D.render!(eng, buf)
+        m = [(x & 0xff, (x >> 8) & 0xff, x >> 16) for (_, x) in eng.seqout.sent]
+        @test m[1] == (0xfc, 0, 0) && (0x99, 36, 30) in m && count(==((0xfc, 0, 0)), m) == 2
+        put!(eng.pads, (D.track_index("Snare"), 2)); D.render!(eng, buf)
+        @test !all(iszero, buf)
         # devices: never throws (CI has no ALSA sequencer); loopback through "Midi Through" if present
         ins = D.midi_inputs()
         @test ins isa Vector{String}
@@ -844,6 +870,10 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             for _ in 1:200
                 append!(hits, D.take_hits!(mi)); isempty(hits) || break; sleep(0.005)
             end
+            so = D.SeqOut()                                      # main window on the same port: stream shared
+            @test D.seq_out_open!(so, ReentrantLock(), "Midi Through Port-0") && so.mout[] == UInt(p) && D.PM_OPEN[] == 2
+            D.seq_out_close!(so, ReentrantLock())
+            @test so.mout[] == 0 && D.PM_OPEN[] == 2
             D.midi_out_close!(pl, ReentrantLock())
             D.close_midi!(mi)
             @test [(h.note, h.vel) for h in hits] == [(38, 97)] && take!(pads) == (2, 2) && !isready(pads)
