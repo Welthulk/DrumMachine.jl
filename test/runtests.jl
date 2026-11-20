@@ -12,6 +12,8 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
     end
     bp = get_kit(only(filter(e -> e.name == "BlackPearl", es)))   # by name, not by sort position
     @test all(length(l) == 5 for l in bp.layers)
+    t1, t2 = DrumMachine.track_index("Tom"), DrumMachine.track_index("Tom2")   # no tom 2 recorded:
+    @test length(bp.layers[t2][3][1]) ≈ length(bp.layers[t1][3][1]) * 2^(3 / 12) rtol = 0.01   # tom 1, 3 semitones lower
     syn = syns[1]                         # 808 synth: one sample per level, deterministic, cheap
 
     @testset "Presets & Pattern-Text" begin
@@ -511,7 +513,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test_throws ErrorException D.build_kit(joinpath(dir, "Z"), "Z", ["Kick" => [() -> error("x")]];
                                                     header = "", license = "", log = _ -> nothing)
             @test !isdir(joinpath(dir, "Z.building")) && !isdir(joinpath(dir, "Z"))   # failed build leaves nothing
-            @test any(occursin("11/11", m) for m in msgs) && occursin("CrocellKit", msgs[end])
+            @test any(occursin("12/12", m) for m in msgs) && occursin("CrocellKit", msgs[end])
             withenv("DRUMMACHINE_KIT_DIR" => joinpath(dir, "kits")) do      # found in the user kit dir
                 @test joinpath(dir, "kits") in D.kit_dirs()
                 # listing reads no samples; a kit is loaded once and then taken from the cache
@@ -563,11 +565,15 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
 
     @testset "Song-Ordner" begin
         D = DrumMachine
-        withenv("DRUMMACHINE_SONG_DIR" => nothing) do   # git checkout: songs/ as before; Pkg install: data dir
-            @test D.song_dir() == (D.songs_writable(D.SONG_DIR) ? D.SONG_DIR : joinpath(D.data_dir(), "songs"))
-        end
         @test !D.songs_writable(joinpath(DEPOT_PATH[1], "packages", "DrumMachine", "AbCd1", "songs"))   # Pkg install
         mktempdir() do dir
+            withenv("DRUMMACHINE_SONG_DIR" => nothing, "XDG_CONFIG_HOME" => joinpath(dir, "cfg")) do
+                # git checkout: songs/ as before; Pkg install: data dir
+                @test D.song_dir() == (D.songs_writable(D.SONG_DIR) ? D.SONG_DIR : joinpath(D.data_dir(), "songs"))
+                D.save_setting!("song_dir", joinpath(dir, "mine"))          # own folder from the settings
+                @test D.song_dir() == joinpath(dir, "mine") && isdir(D.song_dir())
+                withenv(() -> @test(D.song_dir() == joinpath(dir, "own")), "DRUMMACHINE_SONG_DIR" => joinpath(dir, "own"))
+            end
             withenv("DRUMMACHINE_SONG_DIR" => joinpath(dir, "own")) do   # e.g. installed read-only
                 @test D.song_dir() == joinpath(dir, "own") && isdir(D.song_dir())
                 save_song(joinpath(D.song_dir(), "Mein Groove.toml"), preset("Rock: 8tel"))
@@ -636,21 +642,120 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         @test step_samples(z, 0) == step_samples(z, 1) > step_samples(z, 2) == step_samples(z, 3)
         @test step_samples(z, 0) + step_samples(z, 1) ≈ 0.6 * 0.25SR
         @test sum(step_samples(z, k) for k in 0:31) ≈ 2SR
+        # Human: 0 = exact grid; 1 = each hit at most ±10 ms and ±3 dB off, early and late
+        h = preset("Rock: 16tel"); h.bpm = 120
+        bytrack(x) = sort(x[1]; by = e -> (e[2], e[1]))
+        exact = bytrack(DrumMachine.song_hits(h; repeats = 1, countin = 0, click = false))
+        h.human = 1.0
+        hum = bytrack(DrumMachine.song_hits(h; repeats = 1, countin = 0, click = false))
+        @test length(hum) == length(exact) && all(a[2:3] == b[2:3] for (a, b) in zip(hum, exact))
+        dt = [(a[1] - b[1]) / SR * 1000 for (a, b) in zip(hum, exact)]
+        @test all(abs.(dt) .<= 10.05) && any(dt .< -1) && any(dt .> 1)
+        @test all(10^(-3 / 20) - 1e-4 <= a[4] <= 10^(3 / 20) + 1e-4 for a in hum) && any(a[4] != 1 for a in hum)
+        @test all(e[4] == 1 for e in exact)
+    end
+
+    @testset "Log" begin
+        D = DrumMachine
+        mktempdir() do dir
+            f = joinpath(dir, "log", "drummachine.log")
+            D.logev("not written")                                         # no program logger: nothing
+            l = D.start_log!(path = f, max = 2000)
+            try
+                @test D.LOGGER[] === l && D.start_log!(path = f) === l      # only once
+                D.logev("kit loaded"; name = "X", seconds = 0.5)
+                @warn "something odd" value = 3
+                try error("boom") catch e; @error "it failed" exception = (e, catch_backtrace()) end
+                txt = read(f, String)
+                @test occursin("INFO   start: program", txt) && occursin("version=", txt)
+                @test occursin("INFO   kit loaded  name=X  seconds=0.5", txt)
+                @test occursin(r"WARN   something odd  value=3  \(runtests.jl:\d+\)", txt)
+                @test occursin("ERROR  it failed", txt) && occursin("boom", txt)
+                for i in 1:60; D.logev("event $i"; pad = "x"^40); end           # beyond 2000 bytes
+                @test isfile(f * ".1") && filesize(f) < 2000 && occursin("event 60", read(f, String))
+            finally
+                D.stop_log!()
+            end
+            @test D.LOGGER[] === nothing && !(D.global_logger() isa D.DMLogger)
+            @test !isempty(D.info_text(:de)) && occursin("drummachine.log", D.info_text(:en))
+        end
     end
 
     @testset "MIDI" begin
         D = DrumMachine
         id(m, n) = haskey(m, n) ? D.TRACK_IDS[m[n]] : nothing
         m = D.midi_note_map(Dict{String,Any}())                  # TD-27 table, GM as fallback
-        @test [id(m, n) for n in (36, 38, 40, 37, 47, 58, 26, 22, 44, 52, 59, 53, 35, 41, 60)] ==
-              ["Kick", "Snare", "Snare", "Rim", "Tom", "FloorTom", "HHOpen", "HiHat", "HHPedal", "Crash",
-               "Ride", "RideBell", "Kick", "FloorTom", nothing]
+        @test [id(m, n) for n in (36, 38, 40, 37, 47, 58, 26, 22, 44, 52, 59, 53, 35, 41, 60, 48)] ==
+              ["Kick", "Snare", "Snare", "Rim", "Tom2", "FloorTom", "HHOpen", "HiHat", "HHPedal", "Crash",
+               "Ride", "RideBell", "Kick", "FloorTom", nothing, "Tom"]
         m = D.midi_note_map(Dict("midi_map" => Dict("38" => "Rim", "60" => "Crash", "36" => "off", "x" => "Kick")))
         @test id(m, 38) == "Rim" && id(m, 60) == "Crash" && id(m, 36) === nothing && id(m, 40) == "Snare"
-        c = D.midi_config(Dict("midi_ghost" => 30, "midi_accent" => 100, "midi_offset_ms" => 12))
-        @test [D.velocity_level(v, c) for v in (1, 29, 30, 99, 100, 127)] == [1, 1, 2, 2, 3, 3]
+        hh, sn, kk = D.track_index("HiHat"), D.track_index("Snare"), D.track_index("Kick")
+        c = D.midi_config(Dict("midi_ghost" => 30, "midi_accent" => 100, "midi_offset_ms" => 12,
+                               "midi_levels" => Dict("HiHat" => [36, 66], "Snare" => [50, 40], "x" => [1, 2])))
+        @test [D.velocity_level(v, c, sn) for v in (1, 29, 30, 99, 100, 127)] == [1, 1, 2, 2, 3, 3]
+        @test [D.velocity_level(v, c, hh) for v in (35, 36, 65, 66)] == [1, 2, 2, 3]   # own thresholds
         d = D.midi_config(Dict{String,Any}())
         @test (d.ghost, d.accent, d.offset_ms, c.offset_ms) == (45, 105, 0.0, 12.0)
+        # calibration: hi-hat played loud/soft as on the TD-27 (edge 66-127, bow 33-60), snare with
+        # ghosts, kick only normal, toms too few hits
+        cal = vcat([(hh, v, 3) for v in 66:4:126], [(hh, v, 2) for v in 33:2:60], [(hh, 13, 2)],
+                   [(sn, v, 2) for v in 46:3:82], [(sn, v, 1) for v in (23, 27, 31, 36)],
+                   [(kk, v, 2) for v in 38:3:83], [(D.track_index("Tom"), 120, 2)])
+        new = D.calibrate_levels(cal, d)
+        @test sort!(collect(keys(new))) == sort!([hh, sn, kk])
+        @test new[hh][1] <= 33 && 61 <= new[hh][2] <= 66                    # soft = normal, loud = accent
+        @test 37 <= new[sn][1] <= 46 && new[sn][2] == 105 && new[kk] == (38, 105)
+        mis(t) = count(h -> h[1] == t && D.velocity_level(h[2], new[t]...) != h[3], cal)
+        @test mis(hh) <= 1 && mis(sn) == 0 && mis(kk) == 0
+        @test D.level_boundary([10, 20, 30], [70, 80]) == 48                # gap: middle of the medians 20 and 75
+        # whole take: hits 20 ms late -> offset +20; a stray hit far off does not count for the levels
+        late = [(h..., 20.0 + isodd(i)) for (i, h) in enumerate(cal)]
+        lv, off, med = D.calibrate(vcat(late, [(sn, 127, 1, 140.0)]), c)
+        @test 20 <= med <= 21 && off == round(12 + med; digits = 1)         # 12 ms set before
+        @test delete!(copy(lv), D.track_index("HHOpen")) == D.calibrate_levels(cal, c)
+        @test D.calibrate(cal[1:10] .|> h -> (h..., 2.0), d)[2] === nothing   # too few hits, too small
+        @test lv[D.track_index("HHOpen")] == lv[hh]                         # one cymbal: both hi-hat tracks
+        ep = preset("Einmessen").patterns[1]                                 # open hi-hat counts where the hi-hat is
+        @test D.cal_target(ep, D.track_index("HHOpen"), 1) == (hh, 3) && D.cal_target(ep, sn, 1) === nothing
+        # a take: wait for the first hit, warm-up, measuring, ends after a pause or without any hit
+        tk = D.CalTake(100.0, 24.0)
+        @test D.cal_phase(tk, 150) == :wait && D.cal_end_reason(tk, 150) === nothing
+        @test D.cal_end_reason(tk, 100 + D.CAL_WAIT_S + 1) == :timeout
+        D.cal_add!(tk, 200, hh, 100, 3, 10.0)                                # first hit: warm-up
+        @test D.cal_phase(tk, 210) == :warmup && D.cal_end_reason(tk, 222) === nothing
+        for i in 0:39; D.cal_add!(tk, 225 + 0.2i, isodd(i) ? hh : sn, 60, 2, 15.0); end
+        @test count(h -> h.measured, tk.hits) == 40 && !tk.hits[1].measured
+        @test D.cal_end_reason(tk, 233 + D.CAL_IDLE_S - 1) === nothing && D.cal_end_reason(tk, 233 + D.CAL_IDLE_S + 1) == :pause
+        res = D.cal_result(tk, d)
+        @test length(res.hits) == 40 && res.offset == 15.0 && D.cal_hit_rate(res.hits, sn, (45, 105)) == 1
+        @test D.bar_seconds(preset("Einmessen"), preset("Einmessen").patterns[1]) == 3.0   # 4/4 at 80 BPM
+        # recording into a new song: bar and step from the engine position, equal bars share a pattern
+        rt = D.RecTake(120, 4, 16, 1000.0, 50.0)                          # step = 5512.5 samples
+        sl = rt.steplen
+        @test D.rec_cell(rt, 1000 + 17sl + 100) == (1, 2, 1000 * 100 / SR) && D.rec_cell(rt, 1000 - 0.4sl)[1:2] == (0, 1)
+        @test D.rec_add!(rt, 51, 1000 - 3sl, hh, 90, 3) === nothing && rt.t_first == 0   # before the first bar
+        @test D.rec_phase(rt) == :wait && D.rec_end_reason(rt, 50 + D.CAL_WAIT_S + 1) == :timeout
+        groove(bar) = [(bar * 16 + s, hh, isodd(s ÷ 2) ? 3 : 2) for s in 0:2:14]
+        for b in 2:5, (g, t, l) in vcat(groove(b), b == 4 ? [(b * 16 + 12, sn, 2)] : Tuple{Int,Int,Int}[])
+            D.rec_add!(rt, 60 + b, 1000 + g * sl + 30, t, 70, l)
+        end
+        D.rec_add!(rt, 66, 1000 + (5 * 16 + 4) * sl, hh, 120, 1)            # same cell again, softer: louder stays
+        @test D.rec_phase(rt) == :rec && D.rec_bars(rt) == 4 && D.rec_end_reason(rt, 66 + D.REC_IDLE_S + 1) == :pause
+        song, info = D.rec_song(rt; name = "R", kit = "BlackPearl")
+        @test song.chain == [1, 1, 2, 1] && length(song.patterns) == 2 && song.patterns[1].steps == 16
+        @test song.patterns[1].grid[hh, 1:2:16] == UInt8[2, 3, 2, 3, 2, 3, 2, 3] && song.patterns[2].grid[sn, 13] == 2
+        @test (info.bars, info.patterns, info.merged) == (4, 2, 0) && song.bpm == 120 && song.kit == "BlackPearl"
+        song1, info1 = D.rec_song(rt; name = "R", kit = "X", maxpat = 1)
+        @test song1.chain == [1, 1, 1, 1] && info1.merged == 1               # too many patterns: nearest one
+        @test D.rec_steps(D.RecSetup(100, 8, 7)) == 32 && D.rec_steps(D.RecSetup(100, 3, 4)) == 12
+        mktempdir() do dir
+            withenv("XDG_CONFIG_HOME" => dir) do
+                D.save_setting!("midi_levels", Dict("Crash" => [20, 90]))
+                c2 = D.save_midi_levels!(Dict(hh => (30, 64)))
+                @test c2.levels[hh] == (30, 64) && c2.levels[D.track_index("Crash")] == (20, 90) && c2.levels[sn] == (45, 105)
+            end
+        end
         msg(st, n, v) = Int32(st) | Int32(n) << 8 | Int32(v) << 16
         @test D.note_on(msg(0x99, 38, 100)) == (38, 100)
         @test D.note_on(msg(0x99, 38, 0)) === D.note_on(msg(0x89, 38, 64)) === D.note_on(msg(0xB0, 4, 50)) === nothing
@@ -711,12 +816,6 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         _, _, bm, _, sm = D.clock_snapshot(eng.clock)
         @test [(x.seqpos, x.pat) for x in bm] == [(1, 0), (2, 1)] && bm[2].start - bm[1].start ≈ SR
         @test sm[1] == D.StepMark(bm[1].start, 0) && sm[17] == D.StepMark(bm[2].start, 0)
-        # overdub keeps the louder hit
-        p = Pattern(16); p.orn[2, 5] = 0x03
-        @test D.overdub!(p, 2, 5, 2) && p.orn[2, 5] == 0                 # stale ornament cleared
-        @test !D.overdub!(p, 2, 5, 1) && p.grid[2, 5] == 2
-        p.orn[2, 5] = 0x03
-        @test D.overdub!(p, 2, 5, 3) && p.grid[2, 5] == 3 && p.orn[2, 5] == 3
         # devices: never throws (CI has no ALSA sequencer); loopback through "Midi Through" if present
         ins = D.midi_inputs()
         @test ins isa Vector{String}
@@ -794,7 +893,7 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
             @test length(g) == 2 && g[2][1] == B + 960 && 0 < g[2][1] - g[1][1] < 100 && g[1][3] < g[2][3]
             m = D.midi_note_map(Dict{String,Any}()); c = D.midi_config(Dict{String,Any}())
             @test [m[k] for k in D.MIDI_OUT_NOTES] == 1:NTRACKS                       # recording reads them back
-            @test [D.velocity_level(v, c) for v in D.MIDI_OUT_VEL] == [1, 2, 3]
+            @test [D.velocity_level(v, c, 1) for v in D.MIDI_OUT_VEL] == [1, 2, 3]
             s.swing = 2 / 3; s.patterns[1].bpm = 120; s.tracks[2].mute = true          # swing, tempo, mute
             n, tp, _, _ = smf(export_midi(f, s; repeats = 1, countin = 0))
             @test tp == [(0, 120.0)] && [x[1] for x in n if x[2] == 42][1:2] == [0, 640] && !any(x -> x[2] == 38, n)
@@ -901,14 +1000,32 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
         end
         # never the same recording twice in a row, as long as there is more than one
         mk() = DrumMachine.Sample(rand(Float32, 10))
-        layers = [[mk(), mk()], [mk(), mk(), mk()], [mk()]]
+        pool = [(mk(), 1f0) for _ in 1:3]
         rng = DrumMachine.MersenneTwister(1)
         prev = DrumMachine.Sample(Float32[])
         for _ in 1:200
-            s = DrumMachine.pick_sample(rng, layers, 2, prev)
+            s, _ = DrumMachine.pick_sample(rng, pool, prev)
             @test s !== prev
             prev = s
         end
+        # even levels (regression: a normal hit from a wide layer was as loud as an accent):
+        # one loudness per level, accent >= normal + 6 dB, ghost <= normal - 8 dB
+        lvl(pool) = [DrumMachine.attack_db(s) + 20log10(g) for (s, g) in pool]
+        function even(k::DrumMachine.Kit)
+            for p in k.pools
+                db = lvl.(p)
+                all(d -> maximum(d) - minimum(d) < 0.01, db) || return false
+                (db[3][1] >= db[2][1] + 5.99 && db[1][1] <= db[2][1] - 7.99) || return false
+            end
+            return true
+        end
+        @test even(bp) && even(DrumMachine.synth_kit())        # flat kits: accent is raised
+        amp(db...) = [DrumMachine.Sample(fill(Float32(10^(d / 20)), 2000)) for d in db]
+        wide = [amp(-30, -26), amp(-22, -20), amp(-17, -15, -13), amp(-11, -9, -6), amp(-4, -2, 0)]
+        k = DrumMachine.Kit("wide", [wide for _ in 1:NTRACKS], zeros(Float32, NTRACKS), ones(Float32, NTRACKS),
+                            zeros(Int, NTRACKS), (1f0, 1f0, 1f0))
+        @test even(k)
+        @test length(k.pools[1][2]) == 4          # normal (-17 … -6, median -12): only -15 … -9 used
     end
 
     @testset "Metronom" begin
@@ -1032,12 +1149,12 @@ using DrumMachine: NTRACKS, SR, step_samples, MAXSTEPS
     end
 
     @testset "Speichern/Laden" begin
-        s = preset("Funk: Ghost Notes"); s.tracks[2].mute = true; s.bpm = 97; s.swing_on = 8; s.mono = true
+        s = preset("Funk: Ghost Notes"); s.tracks[2].mute = true; s.bpm = 97; s.swing_on = 8; s.mono = true; s.human = 0.35
         mktempdir() do d
             f = save_song(joinpath(d, "x.toml"), s)
             s2 = load_song(f)
             @test s2.patterns[1].grid == s.patterns[1].grid
-            @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8 && s2.mono
+            @test s2.tracks[2].mute && s2.bpm == 97 && s2.swing_on == 8 && s2.mono && s2.human == 0.35
             # old file (no swing_version) with triplets and 0.5 -> exact triplets
             d = DrumMachine.song_to_dict(preset("Blues: Jump / Swing"))
             d["swing"] = 0.5; delete!(d, "swing_version")

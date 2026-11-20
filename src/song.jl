@@ -141,6 +141,7 @@ mutable struct Song
     swap_lr::Bool                # swap left and right channel (playback and export)
     loop::Bool                   # export as seamless loop (no count-in, tail folded onto the start)
     orn::OrnTuning               # timing of flam, drag and buzz roll
+    human::Float64               # 0 = exact, 1 = full spread of level and timing per hit
 end
 
 "Neutral swing value per grid: straight for 8ths/16ths, exact triplet for triplet grids."
@@ -149,17 +150,18 @@ default_swing(steps_per_beat) = steps_per_beat in (3, 6) ? 2 / 3 : 0.5
 function Song(; name = "Neu", bpm = 100.0, swing = nothing, swing_on = 0, steps_per_beat = 4,   # i18n-ok: default song name
               patterns = [Pattern(16)], chain = [1], kit = "CrocellKit", fx = "Clean",
               fxmix = 0.25, master = 0.8, repeats = 8, countin = 1, click = false, mono = false,
-              swap_lr = false, loop = false, orn = OrnTuning())
+              swap_lr = false, loop = false, orn = OrnTuning(), human = 0.0)
     swing_on in (0, 8, 16) || error(L("swing_on muss 0 (Auto), 8 oder 16 sein"))
     swing = something(swing, default_swing(steps_per_beat))
     Song(name, bpm, swing, swing_on, steps_per_beat, patterns, chain,
-         [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono, swap_lr, loop, orn)
+         [TrackParams() for _ in 1:NTRACKS], kit, fx, fxmix, master, repeats, countin, click, mono, swap_lr, loop, orn,
+         clamp(Float64(human), 0.0, 1.0))
 end
 
 function Base.copy(s::Song)
     Song(s.name, s.bpm, s.swing, s.swing_on, s.steps_per_beat, copy.(s.patterns), copy(s.chain),
          copy.(s.tracks), s.kit, s.fx, s.fxmix, s.master, s.repeats, s.countin, s.click, s.mono, s.swap_lr, s.loop,
-         copy(s.orn))
+         copy(s.orn), s.human)
 end
 
 beats_per_bar(s::Song, p::Pattern) = max(1, cld(p.steps, s.steps_per_beat))
@@ -251,6 +253,7 @@ function song_to_dict(s::Song)
         "name" => s.name, "bpm" => s.bpm, "swing" => s.swing, "swing_on" => s.swing_on, "swing_version" => 2, "steps_per_beat" => s.steps_per_beat,
         "chain" => s.chain, "kit" => s.kit, "fx" => s.fx, "fxmix" => s.fxmix, "master" => s.master,
         "repeats" => s.repeats, "countin" => s.countin, "click" => s.click, "mono" => s.mono, "swap_lr" => s.swap_lr, "loop" => s.loop,
+        "human" => s.human,
         "pattern" => [pattern_to_dict(p) for p in s.patterns],
         "track" => Dict(TRACK_IDS[t] => track_to_dict(tp) for (t, tp) in enumerate(s.tracks)),
     )
@@ -348,7 +351,8 @@ function song_from_dict(d::AbstractDict)
              fxmix = get(d, "fxmix", 0.25), master = get(d, "master", 0.8), repeats = clamp(_int(get(d, "repeats", 8), 8), 1, 999),
              countin = clamp(_int(get(d, "countin", 1), 1), 0, 4), click = get(d, "click", false),
              mono = get(d, "mono", false), swap_lr = get(d, "swap_lr", false),
-             loop = get(d, "loop", false), orn = orn_tuning_from_dict(get(d, "ornaments", Dict())))
+             loop = get(d, "loop", false), orn = orn_tuning_from_dict(get(d, "ornaments", Dict())),
+             human = clamp(_num(get(d, "human", 0.0), 0.0), 0.0, 1.0))
     # Up to v0.1: swing had no effect on triplet grids, so 0.5 (= exact triplets) was saved
     if s.steps_per_beat in (3, 6) && s.swing == 0.5 && get(d, "swing_version", 1) < 2
         s.swing = 2 / 3
@@ -373,6 +377,7 @@ function save_song(path::AbstractString, s::Song)
     tmp = path * ".tmp"                                 # write first, then replace: no truncated song
     open(io -> TOML.print(io, song_to_dict(s); sorted = true), tmp, "w")
     mv(tmp, path; force = true)
+    logev("song saved"; path, name = s.name)
     return path
 end
 
@@ -385,7 +390,11 @@ safe_song_name(name::AbstractString) = replace(strip(name), r"[^\w\-äöüÄÖÜ
 Reads a song from a TOML file written by [`save_song`](@ref) or by hand. Missing keys get their
 default values.
 """
-load_song(path::AbstractString) = song_from_dict(TOML.parsefile(path))
+function load_song(path::AbstractString)
+    s = song_from_dict(TOML.parsefile(path))
+    logev("song loaded"; path, name = s.name)
+    return s
+end
 
 "Chain from text like \"1 1 1 2\" or \"1x3 2\" (= 1 1 1 2)."
 function parse_chain(str::AbstractString, npat::Int)

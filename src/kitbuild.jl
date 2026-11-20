@@ -22,12 +22,12 @@ const MAX_RR = 4
 
 # Maximum length per track in seconds (the decay is faded out after that)
 const MAXLEN = Dict("Kick" => 1.2, "Snare" => 1.2, "Rim" => 0.6, "HiHat" => 0.6, "HHOpen" => 2.5,
-                    "HHPedal" => 0.6, "Tom" => 2.5, "FloorTom" => 3.0, "Ride" => 5.0,
+                    "HHPedal" => 0.6, "Tom" => 2.5, "Tom2" => 2.8, "FloorTom" => 3.0, "Ride" => 5.0,
                     "RideBell" => 4.0, "Crash" => 5.0)
 
 # Balance: level of a "normal" hit (layers 3-4) relative to the snare in dB.
 const BALANCE_DB = Dict("Kick" => 0.0, "Snare" => 0.0, "Rim" => -6.0, "HiHat" => -8.0,
-                        "HHOpen" => -6.0, "HHPedal" => -12.0, "Tom" => -2.0, "FloorTom" => -2.0,
+                        "HHOpen" => -6.0, "HHPedal" => -12.0, "Tom" => -2.0, "Tom2" => -2.0, "FloorTom" => -2.0,
                         "Ride" => -6.0, "RideBell" => -6.0, "Crash" => -4.0)
 const SNARE_NORMAL_PEAK = 0.3      # target level of a normal snare hit
 
@@ -207,6 +207,7 @@ const CROCELL_MAP = [
     "HHOpen"   => ["HihatOpen"],
     "HHPedal"  => ["HihatPedal"],
     "Tom"      => ["Tom1"],
+    "Tom2"     => ["Tom2"],
     "FloorTom" => ["FTom1"],
     "Ride"     => ["RideR"],
     "RideBell" => ["RideRBell"],
@@ -653,7 +654,7 @@ const DG_KITS = [
     (name = "DRSKit", url = DG_URL * "DRSKit/DRSKit2_1.zip", root = "DRSKit", xml = "DRSKit_full.xml",
      map = ["Kick" => ["Kdrum_with_contact"], "Snare" => ["Snare"], "Rim" => ["Snare_rim"],
             "HiHat" => ["Hihat_closed"], "HHOpen" => ["Hihat_open"], "HHPedal" => ["Hihat_foot"],
-            "Tom" => ["Tom1"], "FloorTom" => ["Tom3"], "Ride" => ["Ride_tip"],
+            "Tom" => ["Tom1"], "Tom2" => ["Tom2"], "FloorTom" => ["Tom3"], "Ride" => ["Ride_tip"],
             "RideBell" => ["Ride_shank_bell"], "Crash" => ["Crash_left_shank"]],
      mix = DG_DRS_MIX, polarity = DG_SNARE_POLARITY,
      credit = """
@@ -665,7 +666,7 @@ const DG_KITS = [
      # no hi-hat pedal recordings: the closed hi-hat stands in; side stick = "SnareRest"
      map = ["Kick" => ["KdrumL", "KdrumR"], "Snare" => ["Snare"], "Rim" => ["SnareRest"],
             "HiHat" => ["HihatClosed"], "HHOpen" => ["HihatOpen"], "HHPedal" => ["HihatClosed"],
-            "Tom" => ["Tom1"], "FloorTom" => ["Tom4"], "Ride" => ["RideR"],
+            "Tom" => ["Tom1"], "Tom2" => ["Tom2"], "FloorTom" => ["Tom4"], "Ride" => ["RideR"],
             "RideBell" => ["RideRBell"], "Crash" => ["CrashL"]],
      mix = DG_MULDJORD_MIX, polarity = DG_SNARE_POLARITY,
      credit = """
@@ -677,7 +678,7 @@ const DG_KITS = [
      # side stick = rim shot (no cross-stick recordings); pedal = "hihat_closed3" as in the kit's midimap
      map = ["Kick" => ["kick_l", "kick_r"], "Snare" => ["snare_on_center"], "Rim" => ["snare_rim_shot"],
             "HiHat" => ["hihat_closed1"], "HHOpen" => ["hihat_open"], "HHPedal" => ["hihat_closed3"],
-            "Tom" => ["tom_1"], "FloorTom" => ["tom_4"], "Ride" => ["ride"],
+            "Tom" => ["tom_1"], "Tom2" => ["tom_2"], "FloorTom" => ["tom_4"], "Ride" => ["ride"],
             "RideBell" => ["ride_bell2"], "Crash" => ["crash1"]],
      mix = DG_AASI_MIX, polarity = DG_SNARE_POLARITY,
      credit = """
@@ -701,7 +702,7 @@ const DG_KITS = [
      xml = "CrocellKit_full.xml",
      map = ["Kick" => ["KDrumL", "KDrumR"], "Snare" => ["Snare"], "Rim" => ["SnareRim"],
             "HiHat" => ["HihatClosed"], "HHOpen" => ["HihatOpen"], "HHPedal" => ["HihatPedal"],
-            "Tom" => ["Tom1"], "FloorTom" => ["FTom1"], "Ride" => ["RideR"],
+            "Tom" => ["Tom1"], "Tom2" => ["Tom2"], "FloorTom" => ["FTom1"], "Ride" => ["RideR"],
             "RideBell" => ["RideRBell"], "Crash" => ["CrashL"]],
      polarity = ["SnareBottom" => "SnareTop", "KDrumOutside" => "KDrumInside"],
      variants = [
@@ -755,7 +756,14 @@ function build_drumgizmo(spec; src = nothing, dest = joinpath(user_kit_dir(), sp
     end
     isfile(joinpath(src, spec.xml)) || unpack(["$(spec.root)/*.xml"])   # kit and instrument files
     insts = dg_instruments(joinpath(src, spec.xml))
-    recs = map(spec.map) do (id, names)
+    # tom 2 is optional: without it the kit makes one from tom 1 when loaded (see `lower_tom`)
+    map_ = filter(spec.map) do (id, names)
+        id == "Tom2" || return true
+        ok = all(nm -> haskey(insts, nm), names)
+        ok || log(L("{1}: kein Tom 2 in {2}, wird beim Laden aus Tom 1 erzeugt", spec.name, spec.xml))
+        return ok
+    end
+    recs = map(map_) do (id, names)
         id => [afs for nm in names
                    for afs in (haskey(insts, nm) ? dg_samples(insts[nm]...) :
                                error(L("Instrument {1} fehlt in {2}", nm, spec.xml)))]

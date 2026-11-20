@@ -44,8 +44,8 @@ function sound_808(id::AbstractString)
         x = bandpass!(copy(m), 3440, 1.2) .+ bandpass!(copy(m), 7100, 1.2)
         highpass!(x, 6500)
         return finish(x .* _env(t, dec); peak = id == "HHPedal" ? 0.6 : 1.0)
-    elseif id in ("Tom", "FloorTom")
-        f0 = id == "Tom" ? 165.0 : 98.0
+    elseif id in ("Tom", "Tom2", "FloorTom")
+        f0 = id == "Tom" ? 165.0 : id == "Tom2" ? 128.0 : 98.0
         n = _n(0.9); t = _t(n)
         f = f0 .* (1 .+ 0.12 .* _env(t, 0.08))
         nz = lowpass!(_noise(rng, n), 2500) .* _env(t, 0.004)
@@ -108,8 +108,8 @@ function sound_909(id::AbstractString)
         highpass!(x, 7000)
         x = _bits6(x ./ maximum(abs, x))
         return finish(x .* _env(t, dec); peak = id == "HHPedal" ? 0.6 : 1.0)
-    elseif id in ("Tom", "FloorTom")
-        f0 = id == "Tom" ? 185.0 : 105.0
+    elseif id in ("Tom", "Tom2", "FloorTom")
+        f0 = id == "Tom" ? 185.0 : id == "Tom2" ? 140.0 : 105.0
         n = _n(0.8); t = _t(n)
         f = f0 .* (1 .+ 0.45 .* _env(t, 0.05))
         nz = lowpass!(_noise(rng, n), 3000) .* _env(t, 0.03)
@@ -139,16 +139,16 @@ const ANALOG_GAIN = 0.42
 
 function analog_kit(name, sound, gain)
     layers = [[[Sample(sound(id))]] for id in TRACK_IDS]
-    pan = Float32[0, 0, 0.1, -0.25, -0.25, -0.25, -0.2, 0.25, 0.3, 0.2, -0.3]
-    choke = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
+    pan = Float32[0, 0, 0.1, -0.25, -0.25, -0.25, -0.2, 0.05, 0.25, 0.3, 0.2, -0.3]
+    choke = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0]
     # Synth sounds have only one layer: dynamics via level (accent like on the machine)
     return Kit(name, layers, pan, Float32.(ANALOG_GAIN .* gain), choke, (0.45f0, 0.75f0, 1.0f0))
 end
 
 "Kit in the style of the TR-808 (Ride Bell = cowbell)."
 kit_808() = analog_kit("808 (Synth)", sound_808,
-                       [1.0, 0.75, 0.6, 0.45, 0.45, 0.35, 0.8, 0.85, 0.35, 0.45, 0.4])
+                       [1.0, 0.75, 0.6, 0.45, 0.45, 0.35, 0.8, 0.82, 0.85, 0.35, 0.45, 0.4])
 
 "Kit in the style of the TR-909."
 kit_909() = analog_kit("909 (Synth)", sound_909,
-                       [1.0, 0.8, 0.6, 0.4, 0.4, 0.3, 0.75, 0.8, 0.35, 0.4, 0.4])
+                       [1.0, 0.8, 0.6, 0.4, 0.4, 0.3, 0.75, 0.78, 0.8, 0.35, 0.4, 0.4])

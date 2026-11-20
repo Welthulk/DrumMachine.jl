@@ -637,6 +637,16 @@ const PRESETS = Pair{String,Function}[
               Kick  = "X...X...X.....")
         Song(name = "Taktart: 7/8 (2+2+3)", bpm = 120, patterns = [g])
     end,
+
+    # ------------------------------------------------------------------ MIDI
+    # for "Einmessen": hi-hat accent on the beats, normal in between; snare backbeat normal, a ghost
+    # note on the "and" after it; kick on 1 and 3. Slow and regular, so every hit is easy to place.
+    "Einmessen" => function ()
+        g = P(HiHat = "X.x.X.x.X.x.X.x.",
+              Snare = "....x.o.....x.o.",
+              Kick  = "x.......x.......")
+        Song(name = "Einmessen", bpm = 80, patterns = [g])
+    end,
 ]
 
 "Names of all built-in grooves, in menu order; see [`preset`](@ref)."

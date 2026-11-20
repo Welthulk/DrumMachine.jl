@@ -4,7 +4,7 @@
 
 const MIDI_PPQ = 960                       # ticks per quarter note (divisible by 2, 3, 4, 6, 8)
 "Note per track for the export, in `TRACKS` order: the TD-27 notes, which are also General MIDI."
-const MIDI_OUT_NOTES = (36, 38, 37, 42, 46, 44, 48, 43, 51, 53, 49)
+const MIDI_OUT_NOTES = (36, 38, 37, 42, 46, 44, 48, 45, 43, 51, 53, 49)
 const MIDI_CLICK_NOTES = (33, 34)          # metronome click, bell (accent on beat 1)
 "Velocity for ghost note, normal, accent (fit the recording thresholds 45 and 105)."
 const MIDI_OUT_VEL = (35, 90, 120)
@@ -179,6 +179,7 @@ function export_midi(path::AbstractString, song::Song; repeats::Int = song.repea
         write(io, b"MThd", hton(UInt32(6)), hton(UInt16(0)), hton(UInt16(1)), hton(UInt16(MIDI_PPQ)))
         write(io, b"MTrk", hton(UInt32(length(trk))), trk)
     end
+    logev("MIDI file exported"; path, song = song.name, repeats, loop)
     return String(path)
 end
 

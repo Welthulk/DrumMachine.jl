@@ -22,7 +22,8 @@ const TD27_NOTES = Dict(
     36 => "Kick",
     38 => "Snare", 40 => "Snare",                    # head, rim
     37 => "Rim",                                     # cross stick
-    48 => "Tom", 50 => "Tom", 45 => "Tom", 47 => "Tom",   # tom 1 and 2, head and rim
+    48 => "Tom", 50 => "Tom",                        # tom 1, head and rim
+    45 => "Tom2", 47 => "Tom2",                      # tom 2
     43 => "FloorTom", 58 => "FloorTom",              # tom 3
     46 => "HHOpen", 26 => "HHOpen",                  # hi-hat open bow, edge
     42 => "HiHat", 22 => "HiHat",                    # hi-hat closed bow, edge
@@ -36,13 +37,15 @@ const GM_NOTES = Dict(35 => "Kick", 39 => "Snare", 41 => "FloorTom")
 
 """
 Settings for MIDI recording: note -> track index, velocity thresholds (below `ghost` = ghost
-note, from `accent` on = accent) and the user offset in ms (positive = hits count earlier).
+note, from `accent` on = accent), the thresholds per track (`levels[t]`, the defaults unless set
+in `[midi_levels]`) and the user offset in ms (positive = hits count earlier).
 """
 struct MidiConfig
     map::Dict{Int,Int}
     ghost::Int
     accent::Int
     offset_ms::Float64
+    levels::Vector{Tuple{Int,Int}}
 end
 
 """
@@ -69,15 +72,349 @@ end
 
 _setting(d, key, default, lo, hi) = (v = get(d, key, default); v isa Real ? clamp(v, lo, hi) : default)
 
-"MIDI settings from the settings file: `midi_map`, `midi_ghost`, `midi_accent`, `midi_offset_ms`."
-midi_config(settings::AbstractDict = load_settings()) =
-    MidiConfig(midi_note_map(settings), round(Int, _setting(settings, "midi_ghost", 45, 1, 127)),
-               round(Int, _setting(settings, "midi_accent", 105, 1, 128)),
-               Float64(_setting(settings, "midi_offset_ms", 0, -500, 500)))
+"""
+    midi_levels(settings, ghost, accent) -> Vector{Tuple{Int,Int}}
+
+(ghost, accent) per track: the table `[midi_levels]` (`TrackId = [ghost, accent]`, e.g. set by
+*Einmessen*), the defaults `ghost`/`accent` for tracks not in it or with an invalid entry.
+"""
+function midi_levels(settings::AbstractDict, ghost::Int, accent::Int)
+    lv = fill((ghost, accent), NTRACKS)
+    tab = get(settings, "midi_levels", nothing)
+    tab isa AbstractDict || return lv
+    for (id, v) in tab
+        t = track_index(string(id))
+        (t === nothing || !(v isa AbstractVector) || length(v) != 2 || !all(x -> x isa Real, v)) && continue
+        g, a = round(Int, clamp(v[1], 1, 127)), round(Int, clamp(v[2], 1, 128))
+        g < a && (lv[t] = (g, a))
+    end
+    return lv
+end
+
+"MIDI settings from the settings file: `midi_map`, `midi_ghost`, `midi_accent`, `midi_offset_ms`, `midi_levels`."
+function midi_config(settings::AbstractDict = load_settings())
+    g = round(Int, _setting(settings, "midi_ghost", 45, 1, 127))
+    a = round(Int, _setting(settings, "midi_accent", 105, 1, 128))
+    return MidiConfig(midi_note_map(settings), g, a, Float64(_setting(settings, "midi_offset_ms", 0, -500, 500)),
+                      midi_levels(settings, g, a))
+end
 
 "Grid level of a hit: 1 (ghost) below `ghost`, 3 (accent) from `accent` on, else 2."
 velocity_level(v::Integer, ghost::Integer, accent::Integer) = v >= accent ? 3 : v < ghost ? 1 : 2
-velocity_level(v::Integer, c::MidiConfig) = velocity_level(v, c.ghost, c.accent)
+"Grid level of a hit on track `t`, with the thresholds of that track."
+velocity_level(v::Integer, c::MidiConfig, t::Integer) = velocity_level(v, c.levels[t]...)
+
+# ---------------------------------------------------------------------------
+# Calibration ("Einmessen"): the player plays the pattern shown, each hit is compared with the
+# level programmed in its cell, and the thresholds per track follow from that
+# ---------------------------------------------------------------------------
+
+"Hits needed on a track before its thresholds are changed, and per level for a boundary."
+const CAL_MIN_HITS = 8
+const CAL_MIN_LEVEL = 3
+"Largest distance (ms) of a hit from the typical timing that still counts for the thresholds."
+const CAL_MAX_MS = 50
+"Hits needed for a new timing offset, and the smallest change (ms) that is written."
+const CAL_MIN_TIMING = 16
+const CAL_MIN_SHIFT = 3.0
+
+"""
+    calibrate(hits, cfg) -> (levels, offset_ms, median_ms)
+
+Evaluates a calibration take. `hits` are `(track, velocity, programmed level, ms from the step)`.
+`median_ms` is the typical distance of the hits from their steps (positive = late): with at least
+`CAL_MIN_TIMING` hits and a distance of `CAL_MIN_SHIFT` ms or more, `offset_ms` is the corrected
+`midi_offset_ms` (else `nothing`). The thresholds (see [`calibrate_levels`](@ref)) use only hits
+within `CAL_MAX_MS` of the typical timing, so stray hits do not count.
+"""
+function calibrate(hits::AbstractVector, cfg::MidiConfig)
+    isempty(hits) && return Dict{Int,Tuple{Int,Int}}(), nothing, 0.0
+    med = Float64(_median([Float64(h[4]) for h in hits]))
+    near = [h for h in hits if abs(h[4] - med) <= CAL_MAX_MS]
+    off = length(hits) >= CAL_MIN_TIMING && abs(med) >= CAL_MIN_SHIFT ?
+          clamp(round(cfg.offset_ms + med; digits = 1), -500.0, 500.0) : nothing
+    lv = calibrate_levels(near, cfg)
+    hh, ho = track_index("HiHat"), track_index("HHOpen")      # one cymbal: the other track as well
+    haskey(lv, hh) && !haskey(lv, ho) && (lv[ho] = lv[hh])
+    haskey(lv, ho) && !haskey(lv, hh) && (lv[hh] = lv[ho])
+    return lv, off, med
+end
+
+# ---------------------------------------------------------------------------
+# A calibration take: waiting for the first hit, warm-up, measuring; ends after a pause
+# ---------------------------------------------------------------------------
+
+"Bars after the first hit that are not measured (time to get into the groove)."
+const CAL_WARMUP_BARS = 8
+"Pause in seconds that ends the measurement, and the longest wait for the first hit."
+const CAL_IDLE_S = 6.0
+const CAL_WAIT_S = 180.0
+
+"Hit of a take: track, velocity, programmed level, ms from the step, measured (not warm-up)."
+const CalHit = @NamedTuple{track::Int, vel::Int, level::Int, ms::Float64, measured::Bool}
+
+"""
+State of a calibration take. Times are `time()` seconds; `warmup` is the length of the warm-up
+after the first hit. See [`cal_phase`](@ref), [`cal_add!`](@ref), [`cal_end_reason`](@ref).
+"""
+mutable struct CalTake
+    t_start::Float64
+    t_first::Float64          # first hit, 0 = none yet
+    t_last::Float64           # last hit
+    warmup::Float64
+    hits::Vector{CalHit}
+end
+CalTake(now::Real, warmup::Real) = CalTake(now, 0.0, 0.0, warmup, CalHit[])
+
+"Phase of the take at time `now`: `:wait` (no hit yet), `:warmup` or `:measure`."
+cal_phase(c::CalTake, now::Real) = c.t_first == 0 ? :wait : now < c.t_first + c.warmup ? :warmup : :measure
+
+"Adds a hit at time `now` (track, velocity, programmed level, ms from the step)."
+function cal_add!(c::CalTake, now::Real, track::Int, vel::Int, level::Int, ms::Real)
+    c.t_first == 0 && (c.t_first = now)
+    c.t_last = now
+    push!(c.hits, (track = track, vel = vel, level = level, ms = Float64(ms), measured = cal_phase(c, now) == :measure))
+    return c
+end
+
+"Hits measured after the warm-up."
+cal_measured(c::CalTake) = [h for h in c.hits if h.measured]
+
+"""
+    cal_end_reason(c, now) -> Symbol or nothing
+
+`:pause` when the measurement runs and nothing was played for `CAL_IDLE_S` seconds, `:timeout`
+when no hit came within `CAL_WAIT_S` seconds, else `nothing`.
+"""
+function cal_end_reason(c::CalTake, now::Real)
+    c.t_first == 0 && return now - c.t_start > CAL_WAIT_S ? :timeout : nothing
+    cal_phase(c, now) == :measure && now - max(c.t_last, c.t_first + c.warmup) > CAL_IDLE_S && return :pause
+    return nothing
+end
+
+"Seconds of one bar of pattern `p` in `song` (own pattern tempo counts)."
+bar_seconds(song::Song, p::Pattern) = p.steps / song.steps_per_beat * 60 / pattern_bpm(song, p)
+
+"""
+Result of a take: the measured hits, the configuration before, the new thresholds per track, the
+new `midi_offset_ms` (`nothing` = unchanged) and the typical timing in ms.
+"""
+struct CalResult
+    hits::Vector{CalHit}
+    before::MidiConfig
+    levels::Dict{Int,Tuple{Int,Int}}
+    offset::Union{Nothing,Float64}
+    median_ms::Float64
+end
+
+"Evaluates the measured hits of a take with the configuration `cfg` (see [`calibrate`](@ref))."
+function cal_result(c::CalTake, cfg::MidiConfig)
+    hs = cal_measured(c)
+    lv, off, med = calibrate([(h.track, h.vel, h.level, h.ms) for h in hs], cfg)
+    return CalResult(hs, cfg, lv, off, med)
+end
+
+"Share of the hits on track `t` that get their programmed level with thresholds `(ghost, accent)`."
+function cal_hit_rate(hs::AbstractVector{CalHit}, t::Int, th::Tuple{Int,Int})
+    ts = [h for h in hs if h.track == t]
+    isempty(ts) && return 0.0
+    return count(h -> velocity_level(h.vel, th...) == h.level, ts) / length(ts)
+end
+
+# ---------------------------------------------------------------------------
+# Recording into a new song: a click plays, the take starts with the first hit; every bar played
+# becomes a pattern (equal bars share one), the chain follows the order. Ends after a pause.
+# ---------------------------------------------------------------------------
+
+"Pause in seconds that ends a recording."
+const REC_IDLE_S = 8.0
+"Most different patterns of a recording (the pattern buttons of the main window)."
+const REC_MAX_PATTERNS = 24
+
+"A recorded hit: bar (0 = the bar the click started with), step (1-based), track, level, velocity, ms off the step."
+const RecHit = @NamedTuple{bar::Int, step::Int, track::Int, level::Int, vel::Int, ms::Float64}
+
+"""
+State of a recording: tempo and grid (no swing, so every step has the same length), the engine
+position `t0` of step 1 of the first click bar, times (`time()`) of start, first and last hit,
+the length in bars (`maxbars`, 0 = until a pause) and the bar of the first hit (`bar0`).
+"""
+mutable struct RecTake
+    bpm::Float64
+    spb::Int
+    steps::Int
+    t0::Float64
+    steplen::Float64
+    t_start::Float64
+    t_first::Float64
+    t_last::Float64
+    maxbars::Int
+    bar0::Int
+    hits::Vector{RecHit}
+end
+RecTake(bpm::Real, spb::Int, steps::Int, t0::Real, now::Real; maxbars::Int = 0) =
+    RecTake(Float64(bpm), spb, steps, Float64(t0), 60 / bpm / spb * SR, Float64(now), 0.0, 0.0, maxbars, 0, RecHit[])
+
+"Bar (0-based), step (1-based) and ms off the nearest step for the engine position `h` (samples)."
+function rec_cell(r::RecTake, h::Real)
+    g = round(Int, (h - r.t0) / r.steplen)
+    return fld(g, r.steps), mod(g, r.steps) + 1, 1000 * (h - r.t0 - g * r.steplen) / SR
+end
+
+"""
+Adds a hit heard at engine position `h`. Ignored (`nothing`): hits before the first click bar and,
+with a fixed length, after the last bar.
+"""
+function rec_add!(r::RecTake, now::Real, h::Real, track::Int, vel::Int, level::Int)
+    bar, step, ms = rec_cell(r, h)
+    bar < 0 && return nothing
+    r.t_first > 0 && r.maxbars > 0 && bar >= r.bar0 + r.maxbars && return nothing
+    r.t_first == 0 && (r.t_first = now; r.bar0 = bar)
+    r.t_last = now
+    hit = (bar = bar, step = step, track = track, level = level, vel = vel, ms = ms)
+    push!(r.hits, hit)
+    return hit
+end
+
+"Phase of a recording: `:wait` (click plays, no hit yet) or `:rec`."
+rec_phase(r::RecTake) = r.t_first == 0 ? :wait : :rec
+
+"""
+    rec_end_reason(r, now, h = nothing) -> Symbol or nothing
+
+`:done` when a fixed length is reached (`h` = engine position heard now), `:pause` after
+`REC_IDLE_S` s without a hit (only without a fixed length), `:timeout` without any hit for
+`CAL_WAIT_S` s, else `nothing`.
+"""
+function rec_end_reason(r::RecTake, now::Real, h::Union{Real,Nothing} = nothing)
+    r.t_first == 0 && return now - r.t_start > CAL_WAIT_S ? :timeout : nothing
+    if r.maxbars > 0
+        return h !== nothing && rec_cell(r, h)[1] >= r.bar0 + r.maxbars ? :done : nothing
+    end
+    return now - r.t_last > REC_IDLE_S ? :pause : nothing
+end
+
+"Bars recorded so far: from the first hit to the last (0 without hits)."
+rec_bars(r::RecTake) = isempty(r.hits) ? 0 : maximum(h.bar for h in r.hits) - r.bar0 + 1
+
+"""
+    rec_song(r; name, kit, maxpat = REC_MAX_PATTERNS) -> (song, info)
+
+The recording as a song: one bar per chain entry from the bar of the first hit to the bar of the
+last; equal bars share a pattern. Two hits of a track on one step keep the louder level. With more
+than `maxpat` different bars the others take the most similar pattern (`info.merged`). `info`:
+bars, patterns, merged, hits, typical timing in ms.
+"""
+function rec_song(r::RecTake; name::AbstractString, kit::AbstractString, maxpat::Int = REC_MAX_PATTERNS)
+    isempty(r.hits) && error("no hits recorded")
+    b0 = r.bar0
+    b1 = r.maxbars > 0 ? b0 + r.maxbars - 1 : maximum(h.bar for h in r.hits)   # fixed length: all bars
+    grids = [zeros(UInt8, NTRACKS, MAXSTEPS) for _ in b0:b1]
+    for h in r.hits
+        g = grids[h.bar-b0+1]
+        g[h.track, h.step] = max(g[h.track, h.step], UInt8(h.level))
+    end
+    pats = Pattern[]; chain = Int[]; merged = 0
+    for g in grids
+        k = findfirst(p -> p.grid == g, pats)
+        if k === nothing && length(pats) < maxpat
+            push!(pats, Pattern(r.steps, g)); k = length(pats)
+        elseif k === nothing
+            k = argmin([count(p.grid .!= g) for p in pats]); merged += 1
+        end
+        push!(chain, k)
+    end
+    song = Song(; name, bpm = r.bpm, steps_per_beat = r.spb, patterns = pats, chain, kit, countin = 1)
+    info = (bars = length(grids), patterns = length(pats), merged, hits = length(r.hits),
+            median_ms = Float64(_median([h.ms for h in r.hits])))
+    return song, info
+end
+
+"""
+    cal_target(p, t, s) -> (track, level) or nothing
+
+Track and programmed level a calibration hit on track `t` at step `s` of pattern `p` counts for.
+Closed and open hi-hat are one cymbal: a module sends "open" when the pedal is not quite closed,
+so a hit on the other hi-hat track counts where the pattern has a hi-hat.
+"""
+function cal_target(p::Pattern, t::Int, s::Int)
+    lv = Int(p.grid[t, s])
+    lv > 0 && return (t, lv)
+    hh, ho = track_index("HiHat"), track_index("HHOpen")
+    o = t == ho ? hh : t == hh ? ho : 0
+    o > 0 && p.grid[o, s] > 0 && return (o, Int(p.grid[o, s]))
+    return nothing
+end
+
+"Value at fraction `q` (0..1) of the sorted vector `v` (nearest rank)."
+_quantile(v::Vector{Int}, q::Real) = v[clamp(round(Int, q * (length(v) - 1)) + 1, 1, length(v))]
+
+"""
+    level_boundary(lo, hi) -> Int
+
+Velocity threshold between two levels: the value from which on a hit counts as the louder level,
+with the fewest hits of `lo` (softer) and `hi` (louder) on the wrong side. Among equally good
+values the one nearest to the middle between the two medians.
+"""
+function level_boundary(lo::Vector{Int}, hi::Vector{Int})
+    lo, hi = sort(lo), sort(hi)
+    mid = (_median(lo) + _median(hi)) / 2
+    best, berr, bd = 64, typemax(Int), Inf
+    for x in 2:127
+        err = count(>=(x), lo) + count(<(x), hi)
+        d = abs(x - 0.5 - mid)
+        (err < berr || (err == berr && d < bd)) && ((best, berr, bd) = (x, err, d))
+    end
+    return best
+end
+
+"""
+    calibrate_levels(hits, cfg) -> Dict{Int,Tuple{Int,Int}}
+
+New (ghost, accent) for each track with at least `CAL_MIN_HITS` hits. `hits` are
+`(track, velocity, programmed level)`. A boundary between two levels played at least
+`CAL_MIN_LEVEL` times each is set from the hits (see [`level_boundary`](@ref)). Without the softer
+or louder level, the threshold moves only so far that 98 % of the hits played keep their level.
+"""
+function calibrate_levels(hits::AbstractVector, cfg::MidiConfig)
+    out = Dict{Int,Tuple{Int,Int}}()
+    for t in 1:NTRACKS
+        vs = [Int[h[2] for h in hits if h[1] == t && h[3] == l] for l in 1:3]
+        sum(length, vs) >= CAL_MIN_HITS || continue
+        ok = [length(v) >= CAL_MIN_LEVEL for v in vs]
+        any(ok) || continue
+        g, a = cfg.levels[t]
+        if ok[1] && (ok[2] || ok[3])
+            g = level_boundary(vs[1], ok[2] ? vs[2] : vs[3])
+        elseif !ok[1] && !(isempty(vs[2]) && isempty(vs[3]))
+            g = min(g, _quantile(sort(vcat(vs[2], vs[3])), 0.02))
+        end
+        if ok[3] && (ok[2] || ok[1])
+            a = level_boundary(ok[2] ? vs[2] : vs[1], vs[3])
+        elseif !ok[3] && !(isempty(vs[1]) && isempty(vs[2]))
+            a = max(a, _quantile(sort(vcat(vs[1], vs[2])), 0.98) + 1)
+        end
+        g, a = clamp(g, 1, 127), clamp(a, 2, 128)
+        g >= a && (g = a - 1)
+        out[t] = (g, a)
+    end
+    return out
+end
+
+"""
+    save_midi_levels!(new) -> MidiConfig
+
+Writes the thresholds `new` (track => (ghost, accent)) into the table `[midi_levels]` of the
+settings file, keeps the entries of the other tracks, and returns the new configuration.
+"""
+function save_midi_levels!(new::AbstractDict)
+    tab = get(load_settings(), "midi_levels", nothing)
+    tab = tab isa AbstractDict ? Dict{String,Any}(string(k) => v for (k, v) in tab) : Dict{String,Any}()
+    for (t, (g, a)) in new
+        tab[TRACK_IDS[t]] = [g, a]
+    end
+    return midi_config(save_setting!("midi_levels", tab))
+end
 
 # ---------------------------------------------------------------------------
 # Timing: engine position at a given time, grid cell of a hit
@@ -234,20 +571,6 @@ function record_step(song::Song, seq::Vector{Int}, loop_from::Int, edit_pat::Int
     return nothing
 end
 
-"""
-    overdub!(p, t, s, level) -> Bool
-
-Adds a recorded hit: sets the cell if it is empty or softer, keeps a louder hit already there.
-`true` if the cell changed.
-"""
-function overdub!(p::Pattern, t::Int, s::Int, level::Integer)
-    old = p.grid[t, s]
-    level > old || return false
-    old == 0 && (p.orn[t, s] = 0x00)
-    p.grid[t, s] = UInt8(level)
-    return true
-end
-
 "Starts the current edit pattern in a loop with one count-in bar (record pressed while stopped)."
 record_play!(eng) = lock(() -> start_seq!(eng, [0, -1], 2), eng.lock)
 
@@ -386,7 +709,7 @@ function open_midi(name::AbstractString; cfg::MidiConfig = midi_config(),
                    monitor::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false))
     devs = midi_devices(; fresh = PM_OPEN[] == 0)
     k = findfirst(d -> d[3] && d[2] == name, devs)
-    k === nothing && return nothing
+    k === nothing && (logev("MIDI input not found"; name, inputs = [d[2] for d in devs if d[3]]); return nothing)
     ref = Ref{Ptr{Cvoid}}(C_NULL)
     err = lock(MIDI_LOCK) do
         pm_locked(pt_start!)
@@ -395,9 +718,11 @@ function open_midi(name::AbstractString; cfg::MidiConfig = midi_config(),
         e == 0 && (PM_OPEN[] += 1; pm_locked(() -> ccall((:Pm_SetFilter, libpm), Cint, (Ptr{Cvoid}, Int32), ref[], PM_FILT)))
         e
     end
-    err == 0 || return nothing
+    err == 0 || (logev("MIDI input cannot be opened"; name, error = err); return nothing)
     m = MidiInput(String(name), ref[], Channel{MidiHit}(512), Threads.Atomic{Bool}(true), monitor, cfg, pads, nothing)
     m.task = Threads.@spawn midi_reader(m)
+    logev("MIDI input opened"; name, ghost_accent = cfg.ghost => cfg.accent, offset_ms = cfg.offset_ms,
+          levels = Dict(TRACK_IDS[t] => cfg.levels[t] for t in 1:NTRACKS if cfg.levels[t] != (cfg.ghost, cfg.accent)))
     return m
 end
 
@@ -436,7 +761,7 @@ function midi_reader(m::MidiInput)
                 try_put!(m.hits, hit)
                 if m.monitor[]
                     t = get(m.cfg.map, hit.note, 0)
-                    t > 0 && try_put!(m.pads, (t, velocity_level(hit.vel, m.cfg)))
+                    t > 0 && try_put!(m.pads, (t, velocity_level(hit.vel, m.cfg, t)))
                 end
             end
             # PortMidi stamps ALSA input only when it is read: poll on this thread without relying
@@ -458,6 +783,7 @@ function close_midi!(m::MidiInput)
         pm_locked(() -> ccall((:Pm_Close, libpm), Cint, (Ptr{Cvoid},), m.stream))
         m.stream = C_NULL
         PM_OPEN[] = max(PM_OPEN[] - 1, 0)
+        logev("MIDI input closed"; name = m.name)
     end
     return nothing
 end
@@ -494,6 +820,7 @@ function open_midi_out(name::AbstractString)
                                   ref, devs[k][1], C_NULL, 256, C_NULL, C_NULL, MIDI_OUT_LATENCY))
         e == 0 ? (PM_OPEN[] += 1) : (ref[] = C_NULL)
     end
+    logev(ref[] == C_NULL ? "MIDI output cannot be opened" : "MIDI output opened"; name)
     return ref[]
 end
 

@@ -12,7 +12,8 @@ const TRACKS = [
     ("HiHat",    "HiHat"),
     ("HHOpen",   "HH offen"),
     ("HHPedal",  "HH Pedal"),
-    ("Tom",      "Tom"),
+    ("Tom",      "Tom 1"),
+    ("Tom2",     "Tom 2"),
     ("FloorTom", "Floor Tom"),
     ("Ride",     "Ride"),
     ("RideBell", "Ride Bell"),
@@ -43,10 +44,52 @@ struct Kit
     gain::Vector{Float32}
     choke::Vector{Int}
     level_gain::NTuple{3,Float32}            # extra gain for ghost note/normal/accent
+    pools::Vector{NTuple{3,Vector{Tuple{Sample,Float32}}}}   # [track][level]: recordings with gain, see `level_pools`
 end
 "Default extra gain: dynamics via level, for kits with few layers."
 const DEFAULT_LEVEL_GAIN = (0.5f0, 0.8f0, 1.0f0)
-Kit(name, layers, pan, gain, choke) = Kit(name, layers, pan, gain, choke, DEFAULT_LEVEL_GAIN)
+Kit(name, layers, pan, gain, choke, level_gain = DEFAULT_LEVEL_GAIN) =
+    Kit(name, layers, pan, gain, choke, level_gain, [level_pools(ls, level_gain) for ls in layers])
+
+# Even levels: the recordings of a level are brought to one loudness, the levels keep a distance
+const MIN_ACCENT_DB = 6.0     # accent at least this much louder than a normal hit
+const MIN_GHOST_DB = 8.0      # ghost note at least this much softer than a normal hit
+const POOL_DB = 3.0           # recordings within ± this of the level's median are used (at least 2)
+
+"Attack peak of a sample in dB (first 30 ms, louder channel), as the kit builder sorts the layers."
+function attack_db(s::Sample)
+    n = min(length(s), round(Int, 0.03SR))
+    n == 0 && return -120.0
+    return 20log10(max(maximum(abs, view(s.l, 1:n)), maximum(abs, view(s.r, 1:n)), 1f-6))
+end
+
+_median(x) = (s = sort(x); n = length(s); isodd(n) ? s[(n+1)÷2] : (s[n÷2] + s[n÷2+1]) / 2)
+
+"""
+    level_pools(layers, level_gain) -> (ghost, normal, accent)
+
+Recordings per velocity level, each with the gain that brings it to the level's target loudness.
+A normal hit keeps its median loudness (the kit balance is set on it), the accent is at least
+`MIN_ACCENT_DB` louder, the ghost note at least `MIN_GHOST_DB` softer. Of the layers of a level
+(see `level_layers`) only the recordings near the level's median are used, so a soft recording
+raised to normal does not sound duller than its neighbours. Variation is left to `song.human`.
+"""
+function level_pools(layers::Vector{Vector{Sample}}, lg::NTuple{3,Float32})
+    pool = map(1:3) do v
+        ss = [s for l in level_layers(v, length(layers)) for s in layers[l]]
+        ss, attack_db.(ss) .+ 20log10(lg[v])
+    end
+    any(p -> isempty(p[1]), pool) && return ntuple(v -> [(s, lg[v]) for s in pool[v][1]], 3)   # e.g. dry_kit()
+    med = [_median(p[2]) for p in pool]
+    target = (min(med[1], med[2] - MIN_GHOST_DB), med[2], max(med[3], med[2] + MIN_ACCENT_DB))
+    return ntuple(3) do v
+        ss, db = pool[v]
+        keep = [i for i in eachindex(db) if abs(db[i] - med[v]) <= POOL_DB]
+        k = min(2, length(db))
+        length(keep) < k && (keep = sortperm(abs.(db .- med[v]))[1:k])
+        [(ss[i], Float32(lg[v] * 10^((target[v] - db[i]) / 20))) for i in keep]
+    end
+end
 
 # ---------------------------------------------------------------------------
 # Synthesis
@@ -93,8 +136,8 @@ function synth_sound(id::AbstractString)
         bandpass!(x, id == "HHPedal" ? 6000 : 9000, 0.9)
         highpass!(x, 5000)
         return finish(x .* exp.(-t ./ dec))
-    elseif id in ("Tom", "FloorTom")
-        f0 = id == "Tom" ? 190.0 : 105.0
+    elseif id in ("Tom", "Tom2", "FloorTom")
+        f0 = id == "Tom" ? 190.0 : id == "Tom2" ? 145.0 : 105.0
         n = _n(0.9); t = _t(n)
         f = f0 .* (1 .+ 0.35 .* exp.(-t ./ 0.05))
         ph = cumsum(2π .* f ./ SR)
@@ -123,9 +166,9 @@ end
 "Synthetic kit: one layer per track (dynamics via level only)."
 function synth_kit()
     layers = [[[Sample(synth_sound(id))]] for id in TRACK_IDS]
-    pan = Float32[0, -0.2, -0.2, -0.35, -0.35, -0.35, -0.1, 0.4, 0.35, 0.35, -0.4]
-    gain = Float32[1.0, 0.8, 0.7, 0.45, 0.45, 0.4, 0.8, 0.8, 0.35, 0.4, 0.4]
-    choke = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]
+    pan = Float32[0, -0.2, -0.2, -0.35, -0.35, -0.35, -0.1, 0.15, 0.4, 0.35, 0.35, -0.4]
+    gain = Float32[1.0, 0.8, 0.7, 0.45, 0.45, 0.4, 0.8, 0.8, 0.8, 0.35, 0.4, 0.4]
+    choke = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0]
     return Kit("Synth", layers, pan, gain, choke)
 end
 
@@ -206,8 +249,30 @@ function load_kit(dir::AbstractString; fallback::Kit = synth_kit())
         gain[k] = get(t, "gain", 1.0)
         choke[k] = get(t, "choke", 0)
     end
+    t1, t2, tf = track_index("Tom"), track_index("Tom2"), track_index("FloorTom")
+    if !haskey(tr, "Tom2") && haskey(tr, "Tom") && layers[t1] !== fallback.layers[t1]
+        layers[t2] = lower_tom(layers[t1])
+        pan[t2] = (pan[t1] + pan[tf]) / 2
+        gain[t2] = gain[t1]
+        choke[t2] = 0
+    end
     lg = get(cfg, "level_gain", collect(DEFAULT_LEVEL_GAIN))
     return Kit(name, layers, pan, gain, choke, Tuple(Float32.(lg)))
+end
+
+"Semitones between tom 1 and a tom 2 made from it (kits recorded with two toms only)."
+const TOM2_SEMITONES = 3
+
+"""
+    lower_tom(layers; semitones = TOM2_SEMITONES) -> layers
+
+Tom 2 for a kit without one: the samples of tom 1 played slower, so `semitones` lower and a
+little longer, as a larger drum would sound.
+"""
+function lower_tom(layers::Vector{Vector{Sample}}; semitones::Real = TOM2_SEMITONES)
+    fs = SR * 2.0^(-semitones / 12)
+    low(x) = resample_sinc(x, fs, SR; taps = 8)          # toms: little high end, 8 taps are plenty
+    return [[isstereo(s) ? Sample(low(s.l), low(s.r)) : Sample(low(s.l)) for s in l] for l in layers]
 end
 
 function load_prefix_layers(dir, prefix)
@@ -304,6 +369,7 @@ function get_kit(e::KitEntry)
     lock(KIT_CACHE_LOCK) do
         c = get(KIT_CACHE, key, nothing)
         c !== nothing && c[1] == mt && return c[2]
+        t0 = time()
         kit = try
             e.src isa String ? load_kit(e.src; fallback = cached_synth_kit()) : e.src()
         catch err
@@ -311,6 +377,8 @@ function get_kit(e::KitEntry)
             s = cached_synth_kit()
             Kit(e.name, s.layers, s.pan, s.gain, s.choke, s.level_gain)
         end
+        logev("kit loaded"; name = e.name, seconds = round(time() - t0; digits = 2),
+              samples = sum(length(l) for ls in kit.layers for l in ls; init = 0))
         KIT_CACHE[key] = (mt, kit)
         return kit
     end

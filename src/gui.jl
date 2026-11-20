@@ -7,13 +7,15 @@ const SONG_DIR = normpath(joinpath(@__DIR__, "..", "songs"))     # example songs
 """
 Folder for the user's songs and WAV exports: the package's `songs/` in a writable checkout (git
 clone, `Pkg.develop`), otherwise (package installed with Pkg) `~/.local/share/DrumMachine/songs`.
-`DRUMMACHINE_SONG_DIR` overrides it.
+`song_dir` in the settings file overrides it, `DRUMMACHINE_SONG_DIR` overrides both.
 """
 function song_dir()
     d = get(ENV, "DRUMMACHINE_SONG_DIR", "")
+    isempty(d) && (d = string(get(load_settings(), "song_dir", "")))
     if isempty(d)
         d = songs_writable(SONG_DIR) ? SONG_DIR : joinpath(data_dir(), "songs")
     end
+    d = abspath(expanduser(d))
     mkpath(d)
     return d
 end
@@ -124,14 +126,19 @@ TRANSPORT
                         beim Abspielen bis zu x min an, gegen Knackser bei schnellen Tempi;
                         läuft bei Stop, nach Ablauf der Zeit oder unter 1 GB freiem Speicher
                         wieder (beim Ablauf mitten im Spielen ist ein Knackser möglich)
-  ● Aufnahme            Schläge vom E-Drum (MIDI, z. B. TD-27 per USB) ins laufende Pattern;
-                        im Stand: Pattern in Schleife mit einem Takt Einzähler. MIDI = Eingang,
-                        ↻ sucht neu, Mithören spielt den Kit-Klang mit (Docs → MIDI)
+  ● Aufnahme            Fenster: Tempo, Raster, Takt, Start; Klick läuft, ab dem ersten Schlag
+                        wird Takt für Takt in einen neuen Song aufgenommen, 8 s Pause beenden.
+                        MIDI = Eingang (z. B. TD-27 per USB), ↻ sucht neu, Mithören spielt den
+                        Kit-Klang mit (Docs → MIDI)
+  Einmessen             lädt und spielt das Pattern „Einmessen“, Fenster zeigt die Messung;
+                        8 Takte einspielen, dann laut und leise wie notiert spielen; 6 s Pause
+                        beenden; Ergebnisfenster: Grenzen pro Spur und Timing übernehmen
 
 RASTER & SWING
   Raster                16tel, 8tel-Triolen, 16tel-Triolen, 8tel oder 32tel
   Swing                 Lage der Off-Beat-Note: 50 % gerade, 67 % Triole, 75 % punktiert, bis 80 %
   Auto / 8tel / 16tel   worauf im geraden Raster geswingt wird
+  Human                 0 % exakt; bis 100 % streut jeder Schlag bis ±3 dB und ±10 ms
 
 PATTERNS & KETTE
   1 … 24                Pattern bearbeiten   + Kopie / + Leer / Löschen / Leeren
@@ -209,14 +216,19 @@ TRANSPORT
                         x min, against crackles at fast tempos; resumes on stop, when the
                         time is up or below 1 GB of free memory (if the time runs out while
                         playing, a single crackle is possible)
-  ● Record              hits from an e-drum kit (MIDI, e.g. TD-27 by USB) into the playing
-                        pattern; when stopped: pattern in a loop with one count-in bar. MIDI =
-                        input, ↻ searches again, Monitor plays the kit sound too (Docs → MIDI)
+  ● Record              window: tempo, grid, bar, Start; a click plays, from the first hit on
+                        every bar is recorded into a new song, a pause of 8 s ends it. MIDI =
+                        input (e.g. TD-27 by USB), ↻ searches again, Monitor plays the kit
+                        sound too (Docs → MIDI)
+  Calibrate             loads and plays the pattern "Einmessen", a window shows the take;
+                        8 bars warm-up, then play loud and soft as written; a 6 s pause ends
+                        it; result window: apply thresholds per track and timing
 
 GRID & SWING
   Grid                  16ths, 8th triplets, 16th triplets, 8ths or 32nds
   Swing                 position of the off-beat: 50 % straight, 67 % triplet, 75 % dotted, up to 80 %
   Auto / 8ths / 16ths   which subdivision swings in a straight grid
+  Human                 0 % exact; up to 100 % each hit varies by up to ±3 dB and ±10 ms
 
 PATTERNS & CHAIN
   1 … 24                edit pattern
@@ -284,6 +296,9 @@ function last_change_date(dir::AbstractString = normpath(joinpath(@__DIR__, ".."
     return m === nothing ? "" : String(m[1])
 end
 
+"Path with the home folder shortened to ~."
+home_path(p::AbstractString) = startswith(p, homedir()) ? "~" * p[length(homedir())+1:end] : p
+
 "Text of the info window (German / English)."
 function info_text(lang::Symbol = LANG[]; date::AbstractString = last_change_date())
     v = "DrumMachine.jl  " * app_version()
@@ -295,6 +310,7 @@ Step sequencer for drum practice: enter grooves, preview them, export WAV or MID
 With metronome, WAV editor and Drum-JSON import.
 
 Code: MIT license          $(REPO_URL)
+Log (attach to bug reports): $(home_path(log_path()))
 
 KITS
   BlackPearl         AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
@@ -324,6 +340,7 @@ Step-Sequencer zum Schlagzeug-Üben: Grooves eintragen, vorhören, als WAV oder 
 Mit Metronom, WAV-Editor und Drum-JSON-Import.
 
 Code: MIT-Lizenz           $(REPO_URL)
+Log (für Fehlermeldungen):  $(home_path(log_path()))
 
 KITS
   BlackPearl         AVL Drumkits (bandshed.net)                        CC BY-SA 3.0
@@ -431,6 +448,31 @@ function set_icon!(screen)
         @debug "Window icon not set" exception = e
     end
     return
+end
+
+"""
+    raise_window!(screen) -> Bool
+
+Brings an open window to the front: restores it when minimized, then gives it the focus (X11).
+Wayland does not let a program take the focus; there the window asks for attention (taskbar)
+and `false` is returned.
+"""
+function raise_window!(screen)
+    try
+        G = GLMakie.GLFW
+        w = screen.glscreen
+        G.GetWindowAttrib(w, G.ICONIFIED) != 0 && G.RestoreWindow(w)
+        G.ShowWindow(w)
+        if G.GetPlatform() == G.PLATFORM_WAYLAND
+            G.RequestWindowAttention(w)
+            return false
+        end
+        ccall((:glfwFocusWindow, GLMakie.GLFW.libglfw), Cvoid, (Ptr{Cvoid},), w.handle)
+        return true
+    catch e
+        @debug "Window not raised" exception = e
+        return false
+    end
 end
 
 "Opens `url` in the default browser."
@@ -599,6 +641,7 @@ immediately (for the REPL) and returns `(fig, eng)`.
 function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::Bool = true)
     GLMakie.activate!(title = "DrumMachine.jl")
     set_lang!(initial_lang())
+    start_log!(what = "main window")
     session = new_session()
     if song === nothing                                    # continue where the last session ended
         last = load_session()
@@ -644,6 +687,7 @@ function run(; song::Union{Song,Nothing} = nothing, block::Bool = true, audio::B
             end
         finally
             try
+                logev("main window closed")
                 try save_session(eng, session) catch end
                 gcpause_release!()
                 close_midi!(session.midi[]); session.midi[] = nothing
@@ -721,7 +765,14 @@ new_session() = (last_export = Ref(""), wave_win = Ref{Any}(nothing), rebuild = 
                  restore = Ref{Any}(nothing),             # state of the last session, applied once at start
                  midi = Ref{Any}(nothing),                # open MIDI input (MidiInput), kept across rebuilds
                  midi_monitor = Threads.Atomic{Bool}(false),   # MIDI hits also play the kit sound
-                 rec = Ref(false), rec_hits = Ref(0))      # recording on, hits written in this take
+                 rec = Ref(false), rec_take = Ref{Any}(nothing),   # recording runs, its take (RecTake)
+                 rec_win = Ref{Any}(nothing), rec_setup = Ref{Any}(nothing),   # recording window, its settings
+                 rec_result = Ref{Any}(nothing),          # last result: (song, info, apply!, discard!)
+                 rec_api = Ref{Any}(nothing),             # (open!, begin!, end!) of the recording, for scripts
+                 cal = Ref(false), cal_take = Ref{Any}(nothing),   # calibration on, its take (CalTake)
+                 cal_prev = Ref{Any}(nothing),            # (song, edit pattern, calibration song) while calibrating
+                 cal_win = Ref{Any}(nothing),             # live window of the take
+                 cal_result = Ref{Any}(nothing))          # last result: (res, apply!, discard!), until one is called
 
 # ---------------------------------------------------------------------------
 # Last session: song and GUI state are stored on exit (and every 30 s while they change) and
@@ -747,8 +798,10 @@ since the last save (or `force`). The song file is replaced atomically.
 """
 function save_session(eng, session; force::Bool = false)
     lock(SESSION_LOCK) do
-        song = sprint(io -> TOML.print(io, song_to_dict(eng.song); sorted = true))
+        cp = session.cal_prev[]                           # calibrating: keep the user's song
+        song = sprint(io -> TOML.print(io, song_to_dict(cp === nothing ? eng.song : cp[1]); sorted = true))
         st = session_state(eng, session)
+        cp === nothing || (st["edit_pat"] = cp[2])
         key = song * repr(sort(collect(st); by = first))
         (force || key != SESSION_SAVED[]) || return false
         try
@@ -884,18 +937,21 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     Label(top2[1, 7], "FX", halign = :right, color = C_TEXT2)
     fx_menu = Menu(top2[1, 8], options = FX_NAMES, default = song.fx, width = 90)
     Label(top2[1, 9], L("Anteil"), halign = :right, color = C_TEXT2)
-    fx_sl = Slider(top2[1, 10], range = 0:0.01:1, startvalue = song.fxmix, width = 100)
+    fx_sl = Slider(top2[1, 10], range = 0:0.01:1, startvalue = song.fxmix, width = 80)
     Label(top2[1, 11], "Master", halign = :right, color = C_TEXT2)
-    mst_sl = Slider(top2[1, 12], range = 0:0.01:1.5, startvalue = song.master, width = 100)
+    mst_sl = Slider(top2[1, 12], range = 0:0.01:1.5, startvalue = song.master, width = 80)
+    Label(top2[1, 13], "Human", halign = :right, color = C_TEXT2)
+    hum_sl = Slider(top2[1, 14], range = 0:5:100, startvalue = round(Int, 100song.human), width = 80)
     top3 = tbox[3, 1] = GridLayout(halign = :left)
-    recbtn = Button(top3[1, 1], label = L("● Aufnahme"), width = 120, buttoncolor = session.rec[] ? C_MUTE : C_BTN)
-    Label(top3[1, 2], "MIDI", halign = :right, color = C_TEXT2)
+    recbtn = Button(top3[1, 1], label = L("● Aufnahme"), width = 150, buttoncolor = session.rec[] ? C_MUTE : C_BTN)
+    calbtn = Button(top3[1, 2], label = L("Einmessen"), width = 190, buttoncolor = session.cal[] ? C_MUTE : C_BTN)
+    Label(top3[1, 3], "MIDI", halign = :right, color = C_TEXT2)
     midi_off = L("aus")
-    midi_menu = Menu(top3[1, 3], options = [midi_off], default = midi_off, width = 260)
-    midi_rf = Button(top3[1, 4], label = "↻", width = 34)
-    Label(top3[1, 5], L("Mithören"), halign = :right, color = C_TEXT2)
-    mon_toggle = Toggle(top3[1, 6], active = session.midi_monitor[])
-    Label(top3[1, 7], L("E-Drum per USB: „Aufnahme“ trägt die Schläge ins laufende Pattern ein (Docs → MIDI)"),
+    midi_menu = Menu(top3[1, 4], options = [midi_off], default = midi_off, width = 220)
+    midi_rf = Button(top3[1, 5], label = "↻", width = 34)
+    Label(top3[1, 6], L("Mithören"), halign = :right, color = C_TEXT2)
+    mon_toggle = Toggle(top3[1, 7], active = session.midi_monitor[])
+    Label(top3[1, 8], L("E-Drum per USB, Anleitung: Docs → MIDI"),
           color = C_DIM, fontsize = 12)
     rowgap!(tbox, 8)
 
@@ -947,22 +1003,22 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     fx_track = Ref(1)                          # track whose effects are shown on the right
     for t in 1:NTRACKS
         r = t + 1
-        nb = Button(grid[r, 1], label = L(TRACKS[t][2]), width = 100)
+        nb = Button(grid[r, 1], label = L(TRACKS[t][2]), width = 100, height = 30)
         push!(namebtns, nb)
         on(nb.clicks) do _
             try_put!(eng.pads, (t, 2))         # never blocks (nothing drains it once audio is gone)
             fx_track[] = t
             refresh_fx!()
         end
-        mb = Button(grid[r, 2], label = "M", width = 30)
-        sb = Button(grid[r, 3], label = "S", width = 30)
+        mb = Button(grid[r, 2], label = "M", width = 30, height = 30)
+        sb = Button(grid[r, 3], label = "S", width = 30, height = 30)
         vbox = grid[r, 4] = GridLayout()
-        push!(swapbtns, Button(vbox[1, 1], label = "L⇄R", width = 44, fontsize = 12))
+        push!(swapbtns, Button(vbox[1, 1], label = "L⇄R", width = 44, height = 30, fontsize = 12))
         vs = Slider(vbox[1, 2], range = VOL_DB, startvalue = vol_to_db(song.tracks[t].vol), width = 90)
         Label(vbox[1, 3], lift(vol_label, vs.value), width = 54, halign = :right, fontsize = 12, color = C_TEXT2)
         colgap!(vbox, 4)
         push!(mutebtns, mb); push!(solobtns, sb); push!(volsls, vs)
-        ax = Axis(grid[r, 5]; height = 32, backgroundcolor = :transparent,
+        ax = Axis(grid[r, 5]; height = 30, backgroundcolor = :transparent,
                   xrectzoom = false, yrectzoom = false, xzoomlock = true, yzoomlock = true,
                   xpanlock = true, ypanlock = true, BARE_AXIS...)
         for k in (:rectanglezoom, :scrollzoom, :dragpan, :limitreset)
@@ -1111,6 +1167,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         win = wave_win[]
         if win !== nothing && isopen(win[1])
             # never replace the open file (it may have unsaved edits); the editor has its own button
+            raise_window!(win[1])
             status[] = L("WAV-Editor ist schon offen – dort „Letzten Export öffnen“ lädt den letzten Export.")
         else
             wave_win[] = show_wave_editor(eng; path = isfile(last_export[]) ? last_export[] : "", last_export)
@@ -1120,6 +1177,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(plybtn.clicks) do _
         win = session.player_win[]
         if win !== nothing && isopen(win)
+            raise_window!(win)
             status[] = L("Der Setup-Player ist schon offen.")
         else
             session.player_win[] = show_player(eng)
@@ -1129,6 +1187,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(setbtn.clicks) do _
         win = session.setup_win[]
         if win !== nothing && isopen(win)
+            raise_window!(win)
             status[] = L("Der Setup-Editor ist schon offen.")
         else
             session.setup_win[] = show_setlist_editor_last()
@@ -1138,6 +1197,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(metbtn.clicks) do _
         win = session.metro_win[]
         if win !== nothing && isopen(win)
+            raise_window!(win)
             status[] = L("Metronom ist schon offen.")
         else
             session.metro_win[] = show_metronome(eng)
@@ -1262,6 +1322,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         raster_menu.i_selected[] = something(findfirst(o -> o[2] == s.steps_per_beat, RASTER_OPTS), 1)
         fx_menu.i_selected[] = something(findfirst(==(s.fx), FX_NAMES), 1)
         set_close_to!(fx_sl, s.fxmix); set_close_to!(mst_sl, s.master)
+        set_close_to!(hum_sl, round(Int, 100s.human))
         for t in 1:NTRACKS; set_close_to!(volsls[t], vol_to_db(s.tracks[t].vol)); end
         for (f, sl) in orn_sliders; set_close_to!(sl, getfield(s.orn, f)); end
         chain_tb.stored_string[] = chain_string(s.chain); chain_tb.displayed_string[] = chain_string(s.chain)
@@ -1332,7 +1393,8 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     function toggle_play()
         if eng.playing
             stop!(eng)
-            set_rec!(false)
+            rec_end!(:stop)
+            end_cal!(:stop)
             playbtn.label[] = "▶  Play"
         else
             audio_ok!() || return
@@ -1439,6 +1501,12 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     end
     on(v -> (eng.song.fxmix = v; apply_fx!(eng)), fx_sl.value)
     on(v -> (eng.song.master = v), mst_sl.value)
+    on(hum_sl.value) do v
+        round(Int, 100eng.song.human) == v && return          # loading a song sets the slider, no message
+        eng.song.human = v / 100
+        status[] = L("Human {1} %: jeder Schlag streut bis ±{2} dB und ±{3} ms", v,
+                     round(v / 100 * HUMAN_CUT * HUMAN_DB, digits = 1), round(Int, v / 100 * HUMAN_CUT * HUMAN_MS))
+    end
 
     # MIDI recording (src/midi.jl): the reader thread collects the hits, `tick!` writes them into
     # the playing pattern here on the main thread
@@ -1446,7 +1514,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     midi_names() = audio ? midi_inputs() : String[]       # no MIDI without audio (precompile, tests)
     midi_sync = Ref(false)                                # menu is being set from code
     rec = session.rec                                     # kept across rebuilds (language switch)
-    rec_hits = session.rec_hits
+    cal = session.cal
     function midi_options!(names)
         cur = session.midi[]
         opts = vcat([midi_off], names)
@@ -1498,27 +1566,215 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         status[] = v ? L("Mithören an: jeder Schlag spielt auch den Kit-Klang, verzögert um den Audio-Puffer.") :
                        L("Mithören aus.")
     end
-    function set_rec!(v::Bool)
-        rec[] == v && return
-        rec[] = v
-        recbtn.buttoncolor[] = v ? C_MUTE : C_BTN
-        if v
-            rec_hits[] = 0
-        else
-            status[] = L("Aufnahme beendet: {1} Schläge eingetragen.", rec_hits[])
+    # recording into a new song (src/midi.jl, src/record_gui.jl): *● Aufnahme* opens the window,
+    # *Start* there puts the song aside and plays an empty pattern with click; from the first hit on
+    # every bar is recorded; a pause or Stop ends it, the result window offers to load the new song
+    rec_take() = session.rec_take[]
+    function rec_label()
+        r = rec_take()
+        r === nothing && return L("● Aufnahme")
+        return rec_phase(r) == :wait ? "■ " * L("Aufnahme: warte") : "■ " * L("Takt {1}", rec_bars(r))
+    end
+    function rec_open!()
+        if session.midi[] === nothing
+            status[] = L("Aufnahme: erst einen MIDI-Eingang wählen (Menü MIDI).")
+            return
+        end
+        w = session.rec_win[]
+        again = w !== nothing && isopen(w)
+        # window open: to the front and the next take right away; where a window cannot be raised
+        # (Wayland) it is opened anew, which brings it to the front (it holds no state of its own)
+        again && raise_window!(w) && return rec_begin!()
+        again && (session.rec_win[] = nothing; close(w))
+        session.rec_setup[] === nothing &&
+            (session.rec_setup[] = RecSetup(eng.song.bpm, eng.song.steps_per_beat,
+                                            clamp(cur_pattern().steps ÷ eng.song.steps_per_beat, extrema(REC_BEATS)...)))
+        if audio
+            me = Ref{Any}(nothing)
+            me[] = show_rec_live(session.rec_setup[], rec_take; start! = rec_begin!, stop! = () -> rec_end!(:stop),
+                                 closed! = () -> session.rec_win[] === me[] && (session.rec_win[] = nothing; rec_end!(:stop)))
+            session.rec_win[] = me[]
+        end
+        again && return rec_begin!()
+        status[] = L("Aufnahmefenster: Tempo, Raster und Takt wählen, dann Start.")
+    end
+    function rec_begin!()
+        rec_take() === nothing || return
+        session.midi[] === nothing && return rec_open!()
+        audio_ok!() || return
+        end_cal!(:stop)
+        eng.playing && stop!(eng)
+        su = session.rec_setup[]
+        su === nothing && (su = session.rec_setup[] = RecSetup(eng.song.bpm, eng.song.steps_per_beat, 4))
+        steps = rec_steps(su)
+        rs = Song(; name = L("Aufnahme"), bpm = su.bpm, steps_per_beat = su.spb, patterns = [Pattern(steps)],
+                  click = true, kit = eng.song.kit)
+        session.cal_prev[] = (eng.song, eng.edit_pat, rs)        # put aside, back after the take
+        set_song!(rs)
+        t0 = lock(eng.lock) do
+            start_seq!(eng, [-1], 1)
+            eng.next_step_at
+        end
+        session.rec_take[] = RecTake(su.bpm, su.spb, steps, t0, time(); maxbars = su.bars)
+        rec[] = true
+        recbtn.buttoncolor[] = C_MUTE
+        recbtn.label[] = rec_label()
+        playbtn.label[] = "■  Stop"
+        logev("recording started"; bpm = su.bpm, steps_per_beat = su.spb, steps, bars = su.bars)
+        status[] = L("Aufnahme: der Klick läuft, aufgenommen wird ab deinem ersten Schlag; {1} s Pause beenden die Aufnahme.",
+                     round(Int, REC_IDLE_S))
+    end
+    function rec_end!(reason::Symbol)
+        r = rec_take()
+        r === nothing && return
+        session.rec_take[] = nothing
+        rec[] = false
+        eng.playing && stop!(eng)
+        playbtn.label[] = "▶  Play"
+        recbtn.buttoncolor[] = C_BTN
+        recbtn.label[] = L("● Aufnahme")
+        restore_cal_song!()
+        logev("recording ended"; reason, hits = length(r.hits), bars = rec_bars(r))
+        if isempty(r.hits)
+            status[] = reason == :timeout ? L("Aufnahme beendet: {1} min kein Schlag.", round(Int, CAL_WAIT_S / 60)) :
+                                            L("Aufnahme beendet, es wurde nichts gespielt.")
+            return
+        end
+        song, info = rec_song(r; name = L("Aufnahme") * " " * Libc.strftime("%Y-%m-%d %H-%M", time()), kit = eng.song.kit)
+        undo! = rec_load!(song, info, reason)
+        session.rec_result[] = (song = song, info = info, undo! = undo!)
+        audio && show_rec_result(song, info; undo!)
+    end
+    # loads the recording as the song; returns the function that brings the previous song back
+    function rec_load!(song::Song, info, reason::Symbol)
+        prev, prev_path, prev_pat = eng.song, edit_path[], eng.edit_pat
+        bk = joinpath(log_dir(), "vor_aufnahme.toml")             # the song before, in case it was not saved
+        ok = try
+            save_song(bk, prev); true
+        catch e
+            @warn "Song could not be backed up before loading the recording" path = bk exception = e
+            false
+        end
+        set_song!(song)
+        set_edit!("")
+        logev("recording loaded"; reason, bars = info.bars, patterns = info.patterns, backup = ok ? bk : "")
+        status[] = (reason == :pause ? L("Spielpause: Aufnahme beendet.") : L("Aufnahme beendet.")) * " " *
+                   L("Als Song geladen: {1} Takte, {2} Pattern. Mit „Speichern“ sichern.", info.bars, info.patterns) *
+                   (ok ? "  " * L("Vorheriger Song gesichert: {1}", home_path(bk)) : "")
+        return function ()
+            eng.song === song || return                             # another song was loaded meanwhile
+            set_song!(prev)
+            eng.edit_pat = clamp(prev_pat, 1, length(prev.patterns))
+            set_edit!(prev_path)
+            refresh_all!()
+            session.rec_result[] = nothing
+            logev("recording undone")
+            status[] = L("Rückgängig: dein vorheriger Song ist wieder geladen.")
         end
     end
-    on(recbtn.clicks) do _
-        rec[] && return set_rec!(false)
-        eng.playing || audio_ok!() || return
-        set_rec!(true)
-        if !eng.playing                                   # current pattern in a loop, one count-in bar
-            record_play!(eng)
-            playbtn.label[] = "■  Stop"
+    session.rec_api[] = (open! = rec_open!, begin! = rec_begin!, end! = rec_end!)
+    # calibration ("Einmessen"): the pattern "Einmessen" replaces the song while the take runs; the
+    # hits are compared with the levels in the grid (src/midi.jl). The take ends with Stop or after
+    # a pause in playing; the result window then offers to apply the thresholds and the timing.
+    cal_take() = session.cal_take[]
+    function cal_label()
+        c = cal_take()
+        c === nothing && return L("Einmessen")
+        ph = cal_phase(c, time())
+        return "■ " * (ph == :wait ? L("Einmessen: warte") : ph == :warmup ? L("Einspielen …") :
+                       L("Messung") * " · $(count(h -> h.measured, c.hits))")
+    end
+    function set_cal!(v::Bool)
+        cal[] == v && return
+        cal[] = v
+        calbtn.buttoncolor[] = v ? C_MUTE : C_BTN
+        if !v
+            w = session.cal_win[]
+            w === nothing || (isopen(w) && close(w))
+            session.cal_win[] = nothing
+            restore_cal_song!()
         end
-        status[] = (eng.pat == 0 ? L("Einzähler …") * "  " : "") *
-                   (session.midi[] === nothing ? L("Aufnahme an, aber kein MIDI-Eingang gewählt (Menü MIDI).") :
-                    L("Aufnahme läuft: Schläge kommen ins laufende Pattern, Stop beendet die Aufnahme."))
+        calbtn.label[] = v ? cal_label() : L("Einmessen")
+    end
+    # the user's song comes back after calibrating, unless another song was loaded meanwhile
+    function restore_cal_song!()
+        cp = session.cal_prev[]
+        cp === nothing && return
+        session.cal_prev[] = nothing
+        eng.song === cp[3] || return
+        set_song!(cp[1])
+        eng.edit_pat = clamp(cp[2], 1, length(cp[1].patterns))
+        refresh_all!()
+    end
+    function cal_apply!(res::CalResult)
+        logev("calibration applied"; levels = Dict(TRACK_IDS[t] => v for (t, v) in res.levels), offset_ms = res.offset)
+        res.offset === nothing || save_setting!("midi_offset_ms", res.offset)
+        midi_cfg[] = isempty(res.levels) ? midi_config() : save_midi_levels!(res.levels)
+        m = session.midi[]
+        m === nothing || (m.cfg = midi_cfg[])
+        session.cal_result[] = nothing
+        lv = join(["$(L(TRACKS[t][2])) $g/$a" for (t, (g, a)) in sort!(collect(res.levels))], ", ")
+        status[] = L("Einmessen übernommen: {1}", isempty(lv) ? L("Grenzen unverändert") : lv) *
+                   (res.offset === nothing ? "" : "  ·  midi_offset_ms = $(res.offset)")
+    end
+    function cal_discard!()
+        logev("calibration discarded")
+        session.cal_result[] = nothing
+        status[] = L("Einmessen verworfen, nichts geändert.")
+    end
+    # ends the take: stop, song back, evaluate, show the result
+    function end_cal!(reason::Symbol)
+        cal[] || return
+        c = cal_take()
+        eng.playing && stop!(eng)
+        playbtn.label[] = "▶  Play"
+        set_cal!(false)
+        session.cal_take[] = nothing
+        c === nothing && return
+        res = cal_result(c, midi_cfg[])
+        logev("calibration ended"; reason, hits = length(c.hits), measured = length(res.hits),
+              per_track = Dict(TRACK_IDS[t] => count(h -> h.track == t, res.hits) for t in unique(h.track for h in res.hits)),
+              median_ms = round(res.median_ms; digits = 1), levels = Dict(TRACK_IDS[t] => v for (t, v) in res.levels),
+              offset_ms = res.offset)
+        if isempty(res.hits)
+            status[] = reason == :timeout ? L("Einmessen beendet: {1} min kein Schlag.", round(Int, CAL_WAIT_S / 60)) :
+                       L("Einmessen beendet: noch nichts gemessen (die ersten {1} Takte sind zum Einspielen).", CAL_WARMUP_BARS)
+            return
+        end
+        session.cal_result[] = (res = res, apply! = () -> cal_apply!(res), discard! = cal_discard!)
+        status[] = (reason == :pause ? L("Spielpause: Messung beendet.") : L("Messung beendet.")) * " " *
+                   L("{1} Schläge, Ergebnis im Fenster.", length(res.hits))
+        audio && show_cal_result(res; session.cal_result[].apply!, session.cal_result[].discard!)
+    end
+    on(calbtn.clicks) do _
+        cal[] && return end_cal!(:stop)
+        if session.midi[] === nothing
+            status[] = L("Einmessen: erst einen MIDI-Eingang wählen (Menü MIDI).")
+            return
+        end
+        audio_ok!() || return
+        rec_end!(:stop)
+        eng.playing && stop!(eng)
+        cs = preset("Einmessen")
+        cs.kit = eng.song.kit
+        session.cal_prev[] = (eng.song, eng.edit_pat, cs)
+        set_song!(cs)
+        p = cs.patterns[1]
+        c = CalTake(time(), CAL_WARMUP_BARS * bar_seconds(cs, p))
+        session.cal_take[] = c
+        logev("calibration started"; warmup_s = round(c.warmup; digits = 1))
+        set_cal!(true)
+        record_play!(eng)
+        playbtn.label[] = "■  Stop"
+        if audio
+            title = L("Pattern „Einmessen“, {1} BPM", round(Int, pattern_bpm(cs, p)))
+            session.cal_win[] = show_cal_live(c, cal_tracks(p), midi_cfg[]; title)
+        end
+        status[] = L("Einmessen: das Pattern läuft. Nach dem ersten Schlag {1} Takte einspielen, dann wird gemessen; {2} s Pause beenden die Messung.",
+                     CAL_WARMUP_BARS, round(Int, CAL_IDLE_S))
+    end
+    on(recbtn.clicks) do _
+        rec_take() === nothing ? rec_open!() : rec_end!(:stop)
     end
     # shows a MIDI hit and, while recording, writes it into the pattern that was heard
     function midi_hit!(h)
@@ -1528,9 +1784,9 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             status[] = L("MIDI: Note {1} (Velocity {2}) ist keiner Spur zugeordnet, siehe [midi_map] in Docs → MIDI.", h.note, h.vel)
             return
         end
-        lv = velocity_level(h.vel, cfg)
+        lv = velocity_level(h.vel, cfg, t)
         msg = L("MIDI: {1} · Note {2} · Velocity {3}", L(TRACKS[t][2]), h.note, h.vel)
-        if rec[] && eng.playing
+        if cal[] && eng.playing && cal_take() !== nothing
             tgt = lock(eng.lock) do
                 ts, pos, bars, lat, steps = clock_snapshot(eng.clock)
                 hs = heard_sample(ts, pos, h.t, hit_delay(lat, cfg.offset_ms))
@@ -1538,13 +1794,19 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
             end
             if tgt !== nothing
                 k, s, off = tgt
-                if overdub!(eng.song.patterns[k], t, s, lv)
-                    rec_hits[] += 1
-                    k == eng.edit_pat && refresh_row!(t)
+                tw = cal_target(eng.song.patterns[k], t, s)
+                if tw !== nothing
+                    cal_add!(cal_take(), time(), tw[1], h.vel, tw[2], 1000off / SR)
+                    msg *= "  →  " * cal_label() * " ($(_signed_ms(1000off / SR)) ms)"
                 end
-                ms = round(Int, 1000off / SR)
-                msg *= L("  →  Pattern {1}, Step {2} ({3} ms)", k, s, ms > 0 ? "+$ms" : string(ms))
             end
+        elseif rec[] && eng.playing && rec_take() !== nothing
+            hs = lock(eng.lock) do
+                ts, pos, _, lat, _ = clock_snapshot(eng.clock)
+                heard_sample(ts, pos, h.t, hit_delay(lat, cfg.offset_ms))
+            end
+            x = hs === nothing ? nothing : rec_add!(rec_take(), time(), hs, t, h.vel, lv)
+            x === nothing || (msg *= L("  →  Takt {1}, Step {2} ({3} ms)", rec_bars(rec_take()), x.step, _signed_ms(x.ms)))
         end
         status[] = msg
     end
@@ -1731,6 +1993,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     on(preset_menu.selection) do sel
         sel === nothing && return
         s = preset(sel)
+        logev("preset loaded"; name = sel)
         s.kit = eng.song.kit                  # presets keep the selected kit
         set_song!(s); set_edit!("")
         status[] = L("Preset \"{1}\" geladen ({2}).", sel, song_summary(eng.song))
@@ -1809,6 +2072,10 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
     save_target() = edit_toggle.active[] && edit_path[] != "" && eng.song.name == edit_name[] ?
                     edit_path[] : song_path(eng.song.name)
     on(savebtn.clicks) do _
+        if cal[] || rec[]
+            status[] = L("Beim Einmessen und Aufnehmen wird nicht gespeichert – erst Stop drücken.")
+            return
+        end
         commit_fields!()
         path = save_target()
         own = edit_toggle.active[] && path == edit_path[]
@@ -1838,7 +2105,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         old = eng.song
         spb = old.steps_per_beat
         s = Song(name = unique_name(L("Neuer Groove")), bpm = old.bpm, steps_per_beat = spb,
-                 swing = old.swing, swing_on = old.swing_on,
+                 swing = old.swing, swing_on = old.swing_on, human = old.human,
                  patterns = [Pattern(spb in (2, 4) ? 16 : 4spb)], kit = old.kit,
                  repeats = old.repeats, countin = old.countin, click = old.click, mono = old.mono,
                  swap_lr = old.swap_lr)
@@ -2041,7 +2308,25 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         if m !== nothing && isready(m.hits)
             foreach(midi_hit!, take_hits!(m))
         end
-        rec[] && !eng.playing && set_rec!(false)
+        if rec[]
+            r = rec_take()
+            hnow = eng.samplepos - hit_delay(eng.clock.latency, midi_cfg[].offset_ms) * SR   # heard now
+            rr = r === nothing ? nothing : rec_end_reason(r, time(), hnow)
+            if rr !== nothing || !eng.playing
+                rec_end!(rr === nothing ? :stop : rr)
+            else
+                set_if_changed!(recbtn.label, rec_label())
+            end
+        end
+        if cal[]
+            c = cal_take()
+            r = c === nothing ? nothing : cal_end_reason(c, time())
+            if r !== nothing || !eng.playing
+                end_cal!(r === nothing ? :stop : r)
+            else
+                set_if_changed!(calbtn.label, cal_label())
+            end
+        end
         if audio && !eng.running && !audio_dead[]
             audio_dead[] = true
             status[] = L("Audio-Ausgabe beendet (Fehler, siehe Terminal). „Play“ startet sie neu.")
@@ -2057,7 +2342,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
                 eng.edit_pat = pt
                 refresh_grid!()
             end
-            if sp != last[][4] && !rec[] && any(>(0), eng.seq)   # recording: keep the hit messages
+            if sp != last[][4] && !rec[] && !cal[] && any(>(0), eng.seq)   # recording: keep the hit messages
                 seq = eng.seq
                 k = count(>(0), @view seq[1:min(sp, length(seq))])
                 status[] = L("Song: Takt {1} von {2} · Pattern {3}   (Kette: {4})", k, count(>(0), seq), pt, chain_string(eng.song.chain))
@@ -2068,7 +2353,7 @@ function _build_gui(song::Song; audio::Bool = true, eng = nothing, session = new
         refresh_patbtns!()
         if !eng.playing && last[][3]
             playbtn.label[] = "▶  Play"
-        elseif eng.playing && pt == 0 && !rec[]
+        elseif eng.playing && pt == 0 && !rec[] && !cal[]
             set_if_changed!(status, L("Einzähler …"))
         end
         last[] = cur

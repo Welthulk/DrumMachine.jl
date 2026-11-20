@@ -11,6 +11,7 @@ Step sequencer for drum practice: enter a groove, preview it, export it as WAV.
 module DrumMachine
 
 include("i18n.jl")
+include("log.jl")
 include("lang/en_core.jl")
 include("lang/en_gui.jl")
 include("lang/en_wavedit.jl")
@@ -40,6 +41,8 @@ include("docs_view.jl")
 include("wavedit_gui.jl")
 include("metronome_gui.jl")
 include("player_gui.jl")
+include("calibrate_gui.jl")
+include("record_gui.jl")
 include("precompile.jl")
 
 export Song, Pattern, TrackParams, Kit, Engine,

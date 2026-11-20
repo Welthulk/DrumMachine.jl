@@ -25,6 +25,7 @@ add_translations!(Dict{String,String}(
     "Arbeitsspeicher knapp – Speicherbereinigung läuft wieder." => "Memory low – garbage collection is back on.",
     "Raster" => "Grid",
     "Anteil" => "Amount",
+    "Human {1} %: jeder Schlag streut bis ±{2} dB und ±{3} ms" => "Human {1} %: each hit varies by up to ±{2} dB and ±{3} ms",
     "16tel (4 pro Schlag)" => "16ths (4 per beat)",
     "Triolen (3 pro Schlag)" => "Triplets (3 per beat)",
     "16tel-Triolen (6 pro Schlag)" => "16th triplets (6 per beat)",

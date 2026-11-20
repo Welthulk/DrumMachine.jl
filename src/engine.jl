@@ -94,6 +94,8 @@ mutable struct Engine
     preview::Preview
     metro::Metronome
     pending::Vector{Tuple{Float64,Int,Int,Float32}}   # ornament strokes: (sample time, track, level, gain)
+    humsched::Bool                   # hits of the next step are already in `humpend` (human timing)
+    humpend::Vector{Tuple{Float64,Int,Int,Float32}}   # hits shifted by `song.human`, like `pending`
     player::Player                   # setup player (prepared songs), mixed in last
     clock::HitClock                  # timing log for MIDI recording (see src/midi.jl)
     hits::Union{Nothing,Vector{Tuple{Int,Int,Int,Float32}}}   # dry run: (sample, track, level, gain), no audio
@@ -109,7 +111,8 @@ function Engine(song::Song, kit::Kit)
                  false, 0, 0.0, 0, Int[], 1, 0, 1, 1, false, false, false,
                  Threads.Atomic{Int}(-1), Threads.Atomic{Int}(1), Threads.Atomic{Int}(0),
                  Channel{Tuple{Int,Int}}(64), ReentrantLock(), false, nothing, Preview(), Metronome(),
-                 sizehint!(Tuple{Float64,Int,Int,Float32}[], 64), Player(), HitClock(), nothing,
+                 sizehint!(Tuple{Float64,Int,Int,Float32}[], 64), false,
+                 sizehint!(Tuple{Float64,Int,Int,Float32}[], NTRACKS), Player(), HitClock(), nothing,
                  Threads.Atomic{Int}(0))
     apply_fx!(eng)
     return eng
@@ -182,35 +185,23 @@ function trigger!(eng::Engine, t::Int, level::Int; seq::Bool = true, gain::Float
     end
     eng.hits === nothing || (push!(eng.hits, (eng.samplepos, t, level, gain)); return)
     kit = eng.kit
-    smp = pick_sample(eng.rng, kit.layers[t], level, eng.last[t])
+    smp, g = pick_sample(eng.rng, kit.pools[t][level], eng.last[t])
     eng.last[t] = smp
-    gain *= kit.level_gain[level] * kit.gain[t] * tp.vol * eng.kitgain
+    gain *= g * kit.gain[t] * tp.vol * eng.kitgain
     rate = 2.0^(tp.pitch / 12)
     start_voice!(eng, smp, gain, kit.pan[t] + tp.pan, rate, t, kit.choke[t]; swap = tp.swap)
     return
 end
 
 """
-Randomly picks a recording from the layers of the velocity level (all round robins),
-but not the same one as last time – so fast repeats sound natural.
+Randomly picks `(recording, gain)` from the pool of a velocity level (see `level_pools`),
+but not the same recording as last time – so fast repeats sound natural.
 """
-function pick_sample(rng::AbstractRNG, layers::Vector{Vector{Sample}}, level::Int, prev::Sample)
-    r = level_layers(level, length(layers))
-    n = sum(length(layers[l]) for l in r)
+function pick_sample(rng::AbstractRNG, pool::Vector{Tuple{Sample,Float32}}, prev::Sample)
+    n = length(pool)
     k = rand(rng, 1:n)
-    s = nth_sample(layers, r, k)
-    if s === prev && n > 1                 # no immediate repeat: next recording
-        s = nth_sample(layers, r, mod1(k + 1, n))
-    end
-    return s
-end
-
-function nth_sample(layers, r, k)
-    for l in r
-        k <= length(layers[l]) && return layers[l][k]
-        k -= length(layers[l])
-    end
-    error("Index außerhalb der Layer")   # i18n-ok: internal error, never shown
+    pool[k][1] === prev && n > 1 && (k = mod1(k + 1, n))   # no immediate repeat: next recording
+    return pool[k]
 end
 
 function click!(eng::Engine, accent::Bool)
@@ -321,7 +312,7 @@ function do_step!(eng::Engine)
             for t in 1:NTRACKS
                 lv = p.grid[t, s+1]
                 lv > 0 || continue
-                trigger!(eng, t, Int(lv))
+                eng.humsched || trigger!(eng, t, Int(lv))     # else scheduled by `schedule_human!`
                 o = p.orn[t, s+1]
                 o in (ORN_DOUBLE, ORN_BUZZ) && add_roll!(eng, t, Int(lv), o, step_samples(song, s, p))
             end
@@ -350,6 +341,7 @@ function do_step!(eng::Engine)
         eng.pat = resolve_pat(eng, eng.seq[eng.seqpos])
     end
     schedule_graces!(eng)
+    schedule_human!(eng)
     return
 end
 
@@ -399,6 +391,36 @@ function schedule_graces!(eng::Engine)
     end
 end
 
+# Human (`song.human` 0…1): spread of level and timing per hit at 1, as standard deviation
+const HUMAN_DB = 1.5                    # dB
+const HUMAN_MS = 5.0                    # ms
+const HUMAN_CUT = 2.0                   # at most this many standard deviations (±3 dB, ±10 ms)
+
+"""
+With `song.human > 0`: the hits of the next step go into `eng.humpend`, each with a random level
+and time offset, so they can also come a little early (`early = false`: only late, for the first
+step after the start, which an export would cut). `do_step!` then leaves them out.
+"""
+function schedule_human!(eng::Engine; early::Bool = true)
+    eng.humsched = false
+    h = eng.song.human
+    (h > 0 && eng.pat > 0) || return
+    p = eng.song.patterns[eng.pat]
+    s = eng.step + 1
+    s <= p.steps || return
+    T = eng.next_step_at
+    for t in 1:NTRACKS
+        lv = p.grid[t, s]
+        lv > 0 || continue
+        dt = clamp(randn(eng.rng), -HUMAN_CUT, HUMAN_CUT) * h * HUMAN_MS / 1000 * SR
+        db = clamp(randn(eng.rng), -HUMAN_CUT, HUMAN_CUT) * h * HUMAN_DB
+        early || (dt = abs(dt))
+        push!(eng.humpend, (max(T + dt, Float64(eng.samplepos)), t, Int(lv), Float32(10^(db / 20))))
+    end
+    eng.humsched = true
+    return
+end
+
 const LEAD_IN = 0.1 * SR                # samples before step 1: room for its grace notes
 
 "Starts playback of sequence `seq` (see field docs) right away."
@@ -413,8 +435,9 @@ function start_seq!(eng::Engine, seq::Vector{Int}, loop_from::Int)
     eng.playing = true
     eng.clock.nb = 0
     eng.clock.ns = 0
-    empty!(eng.pending)
+    empty!(eng.pending); empty!(eng.humpend)
     schedule_graces!(eng)
+    schedule_human!(eng; early = false)
     return eng
 end
 
@@ -431,7 +454,7 @@ function stop!(eng::Engine)
     lock(eng.lock) do
         eng.playing = false
         eng.shown_step[] = -1
-        empty!(eng.pending)                  # no leftover ornament strokes after a stop
+        empty!(eng.pending); empty!(eng.humpend)   # no leftover strokes after a stop
         for v in eng.voices
             v.active && v.fade == 0 && (v.fade = FADE_SAMPLES)
         end
@@ -439,22 +462,26 @@ function stop!(eng::Engine)
 end
 
 """
-Next sequencer event as `(time, k)`: `k > 0` is the ornament stroke `eng.pending[k]`, `k = 0`
-the next step. After the end of a sequence only the remaining strokes count (time `Inf` once
-none are left), so the second stroke of a double or a buzz roll on the last step still plays.
+Next sequencer event as `(time, k)`: `k > 0` is the ornament stroke `eng.pending[k]`, `k < 0`
+the human-shifted hit `eng.humpend[-k]`, `k = 0` the next step. After the end of a sequence only
+the remaining strokes count (time `Inf` once none are left), so the second stroke of a double or
+a buzz roll on the last step still plays.
 """
 function next_event(eng::Engine)
     tnext = eng.playing ? eng.next_step_at : Inf; k = 0
     for (j, ev) in enumerate(eng.pending)
         ev[1] < tnext && (tnext = ev[1]; k = j)
     end
+    for (j, ev) in enumerate(eng.humpend)
+        ev[1] < tnext && (tnext = ev[1]; k = -j)
+    end
     return tnext, k
 end
 
-"Plays event `k` from [`next_event`](@ref): an ornament stroke or the next step."
+"Plays event `k` from [`next_event`](@ref): an ornament stroke, a human-shifted hit or the next step."
 function fire_event!(eng::Engine, k::Int)
-    if k > 0
-        ev = popat!(eng.pending, k)
+    if k != 0
+        ev = k > 0 ? popat!(eng.pending, k) : popat!(eng.humpend, -k)
         trigger!(eng, ev[2], ev[3]; gain = ev[4])
     else
         do_step!(eng)
@@ -691,6 +718,8 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
     eng.clock.latency = stream_latency(stream, latency)    # what the sound card reports
     eng.metro.latency = eng.clock.latency                # metronome display delay: the same
     eng.player.mlat = 1000 * hit_delay(eng.clock.latency, 0)   # player MIDI: rendering to hearing, ms
+    logev("audio started"; device = something(device, "default"), latency_set = latency,
+          latency_reported = round(eng.clock.latency; digits = 4), block = BLOCK, rate = SR)
     sink = direct_sink(stream, BLOCK)
     eng.task = Threads.@spawn begin
         buf = zeros(Float32, BLOCK, 2)
@@ -700,7 +729,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
                 if rt > 0 && (me = current_thread()) != rt_thread   # the task may move to another thread
                     if set_thread_sched!(me, rt)
                         rt_thread == 0 || set_thread_sched!(rt_thread, 0)   # the old thread back to normal
-                        rt_thread == 0 && @info L("Audio-Thread läuft mit Echtzeit-Priorität {1}.", rt)
+                        rt_thread == 0 && (@info L("Audio-Thread läuft mit Echtzeit-Priorität {1}.", rt); logev("audio realtime priority"; rt))
                         rt_thread = me
                         eng.rt[] = rt
                     else
@@ -725,7 +754,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
             lock(eng.lock) do
                 eng.playing = false
                 eng.shown_step[] = -1
-                empty!(eng.pending)
+                empty!(eng.pending); empty!(eng.humpend)
             end
         end
     end
@@ -733,6 +762,7 @@ function start_audio!(eng::Engine; device = nothing, latency::Real = audio_laten
 end
 
 function stop_audio!(eng::Engine)
+    eng.task === nothing || logev("audio stopped")
     eng.running = false
     eng.task === nothing || wait(eng.task)
     eng.task = nothing
@@ -875,6 +905,7 @@ function export_wav(path::AbstractString, song::Song, kit::Kit; mono::Bool = son
     pcm = round.(Int32, clamp.(y, -1, 1) .* q)
     WAV.wavwrite(bits == 16 ? Int16.(pcm) : pcm, path; Fs = SR, nbits = bits,
                  compression = WAV.WAVE_FORMAT_PCM)
+    logev("WAV exported"; path, song = song.name, kit = kit.name, seconds = round(size(y, 1) / SR; digits = 1), bits)
     return path
 end
 

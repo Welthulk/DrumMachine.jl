@@ -29,6 +29,7 @@ function djson_track(sound::AbstractString, variant::Integer)
         return "Crash"
     if contains(s, "tom")
         (contains(s, "lo") || contains(s, "floor")) && return "FloorTom"
+        contains(s, "mid") && return "Tom2"
         return "Tom"
     end
     return nothing

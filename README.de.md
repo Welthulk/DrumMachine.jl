@@ -74,8 +74,8 @@ Julia-Update (z. B. per juliaup) von selbst nach einem Neubau. Direkt bauen:
 `./start_drum.sh --build`; ohne Image starten: `./start_drum.sh --no-image`; nur den Setup-Player
 (für die Bühne, immer mit `--prio`): `./start_drum.sh --player`; alle Optionen: `./start_drum.sh --help`.
 
-55 Grooves (Rock, Pop, Country, Funk, Shuffle, Blues, Jazz, Latin, Reggae, Hip-Hop, R&B, Drum and
-Bass, Jungle, Marsch, ungerade Takte) liegen unter *Preset laden*. Ausgearbeitete Beispiel-Songs
+56 Grooves (Rock, Pop, Country, Funk, Shuffle, Blues, Jazz, Latin, Reggae, Hip-Hop, R&B, Drum and
+Bass, Jungle, Marsch, ungerade Takte, einer zum *Einmessen*) liegen unter *Preset laden*. Ausgearbeitete Beispiel-Songs
 mit Form, Fills und Spur-Effekten liegen in `songs/` (*Eigenen Song laden*).
 
 ### Gegen Knackser und Aussetzer
@@ -97,7 +97,9 @@ mit Form, Fills und Spur-Effekten liegen in `songs/` (*Eigenen Song laden*).
 ### Aufnahme vom E-Drum
 
 Das Modul per USB anschließen, im Menü *MIDI* (Transportleiste) wählen und *● Aufnahme* drücken:
-jeder Schlag landet im laufenden Pattern auf dem nächsten Step. Die Notentabelle ist für das
+ein Fenster geht auf, ein Klick läuft, und ab deinem ersten Schlag wird Takt für Takt in einen
+neuen Song aufgenommen. *Einmessen* stellt die Grenzen
+für laut und leise pro Pad nach einem mitgespielten Groove ein. Die Notentabelle ist für das
 Roland TD-27 gemacht; unter Linux muss es im USB-Treibermodus GENERIC laufen. Einzelheiten,
 Notentabelle und Einstellungen: [docs/midi.md](docs/midi.md) (englisch). Der Button *MIDI* in der
 Export-Zeile schreibt den Song als MIDI-Datei, z. B. für eine DAW oder MuseScore. Der
@@ -134,11 +136,18 @@ Größen, der Gain pro Kit, der automatische Download (`auto_kits = true`) und K
 
 `~/.config/DrumMachine/settings.toml` speichert die in der Kopfzeile gewählte Sprache
 (`language = "en"` oder `"de"`), `auto_kits` (siehe [KITS.md](KITS.md)), den Gain pro Kit
-(`[kit_gain]`), `audio_latency` (siehe oben), die GC-Pause in Minuten (`gc_pause`), die MIDI-Aufnahme
-(`midi_device`, `[midi_map]`, `midi_ghost`, `midi_accent`, `midi_offset_ms`, siehe
+(`[kit_gain]`), `audio_latency` (siehe oben), die GC-Pause in Minuten (`gc_pause`), einen eigenen Ordner für Songs und Exporte (`song_dir`), die MIDI-Aufnahme
+(`midi_device`, `[midi_map]`, `midi_ghost`, `midi_accent`, `[midi_levels]`, `midi_offset_ms`, siehe
 [docs/midi.md](docs/midi.md), englisch), beim Setup-Player das letzte Setup, den Modus, die
 Master-Einstellungen und den MIDI-Ausgang (`[player]`), das Metronom (`[metronome]`) und die letzte
 Sitzung (`[session]`).
+
+## Log
+
+Hauptfenster und Setup-Player schreiben `~/.local/state/DrumMachine/drummachine.log`: Warnungen
+und Fehler, dazu Start, Audio, Kit, MIDI, Aufnahme, Einmessen und Export mit Zeitstempel. Ab 1 MB
+wird daraus `drummachine.log.1` (ein älteres wird gelöscht). Das *Info*-Fenster zeigt den Pfad.
+Bitte das Log an Fehlermeldungen anhängen.
 
 ## Lizenz
 

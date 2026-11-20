@@ -365,7 +365,7 @@ function player_figure(ctx)
     end
     on(editbtn.clicks) do _
         w = ctx.editor[]
-        w !== nothing && isopen(w) && return
+        w !== nothing && isopen(w) && return raise_window!(w)
         ctx.editor[] = show_setlist_editor(copy_setlist(sl); on_saved = player_reload!)
     end
 
@@ -608,6 +608,7 @@ Starts only the setup player (for the stage), without the main window.
 function player(; block::Bool = true)
     GLMakie.activate!(title = "DrumMachine.jl")
     set_lang!(initial_lang())
+    start_log!(what = "setup player")
     eng = Engine(Song(), synth_kit())                       # no GC pause: the player only plays finished audio
     start_audio!(eng; latency = max(audio_latency(), 0.15))   # no live input: a larger buffer is safer
     screen = show_player(eng; standalone = true)

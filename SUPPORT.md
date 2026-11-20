@@ -12,7 +12,8 @@ I only test on Linux (KDE Plasma, Wayland). Reports from other setups are very u
 - Long sessions on stage with the setup player (`./start_drum.sh --prio --player`).
 
 Please open an [issue](https://github.com/Welthulk/DrumMachine.jl/issues) with your system,
-Julia version, audio device and the steps that lead to the problem.
+Julia version, audio device and the steps that lead to the problem, and attach the log
+`~/.local/state/DrumMachine/drummachine.log` (path also in the *Info* window).
 
 ## Porting to Windows and macOS
 

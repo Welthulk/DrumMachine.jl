@@ -30,6 +30,7 @@ still plays and exports. A minimal song is just:
 | `steps_per_beat` | integer | `4` | Grid: `4` = 16ths, `3` = 8th triplets, `6` = 16th triplets, `2` = 8ths, `8` = 32nds. Any other value gives `4` |
 | `swing` | number | `0.5` (`2/3` for triplet grids in files without `swing_version`) | Position of the off-beat note within its group: `0.5` straight, `0.667` triplet, `0.75` dotted (used range 0.5–0.8). The bar length does not change: an incomplete pair (or triplet group) at the end of an odd bar, e.g. the 7th 8th of a 7/8 bar, is played straight |
 | `swing_on` | integer | `0` | What swings in a straight grid: `0` auto, `8` 8ths, `16` 16ths |
+| `human` | number | `0.0` | Random variation per hit, 0–1: at `1` up to ±3 dB in level and ±10 ms in time (also early). `0` plays exactly on the grid |
 | `swing_version` | integer | `1` | Written as `2` by current versions. Files without it that use a triplet grid and `swing = 0.5` are read as exact triplets (compatibility with v0.1) |
 | `chain` | array of integers | `[1]` | Pattern order for song mode and export, 1-based. Invalid numbers are dropped |
 | `kit` | string | `"CrocellKit"` | Kit name: a folder in `kits/` (e.g. `BlackPearl`) or `808 (Synth)` / `909 (Synth)`. If the kit is not installed, the program keeps the current kit |
@@ -137,7 +138,8 @@ grace = 0.8
 | `HiHat` | closed hi-hat |
 | `HHOpen` | open hi-hat |
 | `HHPedal` | hi-hat pedal |
-| `Tom` | tom |
+| `Tom` | tom 1 (high tom) |
+| `Tom2` | tom 2 (middle tom) |
 | `FloorTom` | floor tom |
 | `Ride` | ride |
 | `RideBell` | ride bell |

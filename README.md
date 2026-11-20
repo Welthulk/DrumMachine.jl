@@ -73,8 +73,8 @@ update (e.g. by juliaup). Build directly: `./start_drum.sh --build`; start witho
 `./start_drum.sh --no-image`; only the setup player (for the stage, always with `--prio`):
 `./start_drum.sh --player`; all options: `./start_drum.sh --help`.
 
-55 grooves (rock, pop, country, funk, shuffle, blues, jazz, latin, reggae, hip-hop, R&B, drum and
-bass, jungle, march, odd meters) are available under *Preset laden*. Worked-out example songs with
+56 grooves (rock, pop, country, funk, shuffle, blues, jazz, latin, reggae, hip-hop, R&B, drum and
+bass, jungle, march, odd meters, one for *Einmessen*) are available under *Preset laden*. Worked-out example songs with
 form, fills and track effects are in `songs/` (*Eigenen Song laden*).
 
 ### Against crackles and dropouts
@@ -95,7 +95,9 @@ form, fills and track effects are in `songs/` (*Eigenen Song laden*).
 ### Recording from an e-drum kit
 
 Connect the drum module by USB, choose it in the *MIDI* menu (transport panel) and press
-*● Aufnahme*: every hit goes into the playing pattern, on the nearest step. The note table is made
+*● Aufnahme*: a window opens, a click plays, and from your first hit on every bar is recorded
+into a new song. *Einmessen* sets the
+loud and soft thresholds per pad from a groove you play along with. The note table is made
 for the Roland TD-27; on Linux it has to be in USB driver mode GENERIC. Details, note table and
 settings: [docs/midi.md](docs/midi.md). The *MIDI* button in the export row writes the song as a MIDI
 file, e.g. for a DAW or MuseScore. The setup player plays MIDI files through a MIDI output, e.g.
@@ -129,10 +131,17 @@ kits with sources, licenses and sizes, the gain per kit, the automatic download
 
 `~/.config/DrumMachine/settings.toml` stores the language chosen in the header
 (`language = "en"` or `"de"`), `auto_kits` (see [KITS.md](KITS.md)), the gain per kit
-(`[kit_gain]`), `audio_latency` (see above), the GC pause in minutes (`gc_pause`), the MIDI recording
-(`midi_device`, `[midi_map]`, `midi_ghost`, `midi_accent`, `midi_offset_ms`, see
+(`[kit_gain]`), `audio_latency` (see above), the GC pause in minutes (`gc_pause`), an own folder for songs and exports (`song_dir`), the MIDI recording
+(`midi_device`, `[midi_map]`, `midi_ghost`, `midi_accent`, `[midi_levels]`, `midi_offset_ms`, see
 [docs/midi.md](docs/midi.md)), the setup player's last setup, mode, master settings and MIDI output
 (`[player]`), the metronome (`[metronome]`) and the last session (`[session]`).
+
+## Log
+
+The main window and the setup player write `~/.local/state/DrumMachine/drummachine.log`:
+warnings and errors, and the start, audio, kit, MIDI, recording, calibration and export with
+time stamps. At 1 MB it becomes `drummachine.log.1` (an older one is deleted). The *Info* window
+shows the path. Please attach the log to bug reports.
 
 ## License
 

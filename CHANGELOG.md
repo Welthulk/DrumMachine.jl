@@ -1,10 +1,17 @@
 # Changelog
 
-## Unreleased (1.1.1)
+## 1.2.0 (2026-11-20)
 
-- Fixed the beat display of the metronome window: the dots were drawn on top of each other.
-- Fixed the *Song-Tempo* button of the metronome reaching past the panel.
-- Removed the TagBot workflow and the Codecov upload, which need repository secrets. Tags are set after registration.
+- Changed *● Aufnahme*: records into a new song, bar by bar. Window with tempo, grid, time signature and length (free or 2 to 32 bars). A click plays, recording starts with the first hit and a free take ends after 8 s without a hit. The result is loaded as a song, *Rückgängig* brings the previous one back.
+- Added *Einmessen*: you play an 80 BPM pattern along, a window shows the take, the result sets the velocity thresholds per track (`[midi_levels]`) and `midi_offset_ms`.
+- Added track *Tom 2* (`Tom2`), 12 tracks. The TD-27 toms 1 to 3 go to three tracks. Kits with two recorded toms play tom 1 three semitones lower.
+- Added *Human* per song (0 to 100 %): up to ±3 dB and ±10 ms per hit.
+- Added log file `~/.local/state/DrumMachine/drummachine.log` for bug reports, replaced at 1 MB. Path in the *Info* window.
+- Added `song_dir` in `settings.toml` for own songs and exports.
+- Changed: an open window comes to the front when its button is pressed again.
+- Fixed uneven loudness within a level in kits with many recordings. Accent at least 6 dB above normal, ghost note at least 8 dB below.
+- Fixed the beat display and the *Song-Tempo* button of the metronome window.
+- Removed the TagBot workflow and the Codecov upload.
 
 ## 1.1.0 (2026-11-19)
 

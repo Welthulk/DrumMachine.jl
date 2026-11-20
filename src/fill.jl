@@ -16,10 +16,10 @@ function fill_wirbel(n, spb)
     hits
 end
 
-"Snare → tom → floor tom, spread evenly across the span."
+"Snare → tom 1 → tom 2 → floor tom, spread evenly across the span."
 function fill_abgang(n, spb)
-    drums = ("Snare", "Tom", "FloorTom")
-    hits = [(i, drums[cld(3i, n)], beatstart(i, spb) ? _A : _N) for i in 1:n]
+    drums = ("Snare", "Tom", "Tom2", "FloorTom")
+    hits = [(i, drums[cld(4i, n)], beatstart(i, spb) ? _A : _N) for i in 1:n]
     push!(hits, (n, "Kick", _N))
     hits
 end
@@ -52,13 +52,17 @@ function fill_crescendo(n, _)
     hits
 end
 
-"Full bar around the kit: snare, snare, tom, floor tom (one per beat), bass drum on the beats."
+"""
+Full bar around the kit, one drum per beat: snare, tom 1, tom 2, floor tom (with 4 beats or more,
+spread evenly); with fewer beats snare, then tom 1, floor tom on the last beat. Bass drum on the beats.
+"""
 function fill_rundlauf(n, spb)
     nb = cld(n, spb)
+    drums = ("Snare", "Tom", "Tom2", "FloorTom")
     hits = Tuple{Int,String,UInt8}[]
     for i in 1:n
         b = cld(i, spb)                         # beat within the span
-        d = b <= nb ÷ 2 ? "Snare" : b < nb ? "Tom" : "FloorTom"
+        d = nb >= 4 ? drums[cld(4b, nb)] : b <= nb ÷ 2 ? "Snare" : b < nb ? "Tom" : "FloorTom"
         push!(hits, (i, d, beatstart(i, spb) ? _A : _N))
         beatstart(i, spb) && push!(hits, (i, "Kick", _N))
     end

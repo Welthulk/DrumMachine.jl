@@ -1,6 +1,6 @@
 name = "DrumMachine"
 uuid = "d7327aa8-29c9-46ee-884d-493085bbc330"
-version = "1.1.1"
+version = "1.2.0"
 authors = ["Udo Schmitz"]
 
 [deps]

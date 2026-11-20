@@ -38,6 +38,6 @@ are very welcome: issues and pull requests are appreciated.
 - MIDI recording uses PortMidi, which exists for all three systems; only Linux (ALSA) is tested.
 - `start_drum.sh --prio` and the realtime audio thread use Linux scheduling (`nice`, SCHED_FIFO);
   on other systems the program runs with normal priority.
-- Settings, built kits and the songs of an installed package are stored in `~/.config` and
-  `~/.local/share` (XDG) on every system; the usual places would be `%APPDATA%` on Windows and
+- Settings, built kits, the songs of an installed package and the log are stored in `~/.config`,
+  `~/.local/share` and `~/.local/state` (XDG) on every system; the usual places would be `%APPDATA%` on Windows and
   `~/Library/Application Support` on macOS.

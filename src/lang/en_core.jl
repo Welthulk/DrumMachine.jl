@@ -43,6 +43,8 @@ add_translations!(Dict{String,String}(
         "Downloading kit {1} ({2}, runs in the background) …",
     "Dateien fehlen in {1}" => "Files missing in {1}",
     "Instrument {1} fehlt in {2}" => "Instrument {1} missing in {2}",
+    "{1}: kein Tom 2 in {2}, wird beim Laden aus Tom 1 erzeugt" =>
+        "{1}: no tom 2 in {2}, made from tom 1 when loaded",
     "{1} (laden, {2})" => "{1} (download, {2})",
     "Kit {1} wird schon geladen." => "Kit {1} is already being downloaded.",
     "Kit {1} wird schon von einem anderen DrumMachine-Prozess geladen." =>

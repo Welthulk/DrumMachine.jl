@@ -7,18 +7,19 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 
 - Grid in 16ths, 8th triplets, 16th triplets, 8ths or 32nds.
 - 1 to 32 steps per pattern, so odd meters work (12 steps for 3/4, 20 for 5/4, 28 for 7/4).
-- Three dynamics per note: ghost (`o`), normal (`x`), accent (`X`).
+- Three dynamics per note: ghost (`o`), normal (`x`), accent (`X`). Each level plays at one loudness, the accent at least 6 dB above normal, the ghost note at least 8 dB below.
+- *Human* per song (0 to 100 %): random level (up to ±3 dB) and timing (up to ±10 ms, also early) per hit.
 - Ornaments per note: double stroke, buzz roll, flam, drag. Timing per song in ms, volume of the grace notes adjustable.
 - Swing from straight to dotted (50 to 80 %), on 8ths or 16ths or automatic. The bar length stays the same: an incomplete swing pair or triplet group at the end of an odd bar is played straight.
 - Up to 24 patterns per song, played in a chain (`1x3 2` = 1 1 1 2).
 - Own tempo per pattern, so the tempo can change within a song.
 - *+ Fill* creates a fill pattern from the current groove, 7 styles. In odd meters kick and accents fall on the beats of the bar.
-- 55 presets: rock, pop, country, funk, shuffle, blues, jazz, latin, reggae, hip-hop, R&B, drum and bass, jungle, march, odd meters.
+- 56 presets: rock, pop, country, funk, shuffle, blues, jazz, latin, reggae, hip-hop, R&B, drum and bass, jungle, march, odd meters, one for *Einmessen*.
 - Example songs with form, fills and track effects in `songs/`.
 
 ## Sound
 
-- 11 tracks: kick, snare, side stick, hi-hat closed, open and pedal, tom, floor tom, ride, ride bell, crash.
+- 12 tracks: kick, snare, side stick, hi-hat closed, open and pedal, tom 1, tom 2, floor tom, ride, ride bell, crash. Kits recorded with two toms get tom 2 from tom 1, 3 semitones lower.
 - Kits from sample libraries (AVL, DrumGizmo, Virtuosity), several velocity layers and round robins, plus 808 and 909 synth kits. BlackPearl is included, the others are downloaded when chosen in the kit menu or with `auto_kits = true` (see [KITS.md](KITS.md)). A failed download stays in the menu for another try; a lock file keeps two DrumMachine processes from building the same kit.
 - Gain per kit.
 - Per track: volume in dB (off, −30 to +12 dB), mute, solo, left/right swap, 3-band EQ, chorus or flanger. Pan and pitch in the song file.
@@ -33,10 +34,12 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 
 ## Recording from an e-drum kit and MIDI export
 
-- Hits from an e-drum module go into the patterns, connected by USB, no MIDI interface needed. Note table for the Roland TD-27, General MIDI as fallback, own assignments in `[midi_map]`.
-- *● Aufnahme* when stopped plays the pattern in a loop after one count-in bar; while playing it records at once, also in song mode.
-- Hits land on the nearest step with swing, pattern tempo and grid taken into account. A hit just before the bar end goes to step 1 of the next bar. Overdub: the louder hit stays.
-- Velocity sets ghost note, normal or accent (thresholds `midi_ghost`, `midi_accent`).
+- Hits from an e-drum module are recorded into a new song, connected by USB, no MIDI interface needed. Note table for the Roland TD-27, General MIDI as fallback, own assignments in `[midi_map]`.
+- *● Aufnahme* opens a recording window (tempo, grid, bar length 2/4 to 7/4, Start/Stop) readable from the kit. A click plays; recording begins with the first hit, so there is time to get to the kit, and ends after 8 s without a hit. The window shows the bar number and the bar being played.
+- Every bar played becomes a chain entry, equal bars share a pattern (at most 24, further bars take the most similar). A hit just before a bar line goes to step 1 of the next bar; two hits on one step keep the louder level.
+- Result window with all bars and their patterns; *Übernehmen* loads the recording as a new song and backs up the previous one (`vor_aufnahme.toml`).
+- Velocity sets ghost note, normal or accent (thresholds `midi_ghost`, `midi_accent`, per track in `[midi_levels]`).
+- *Einmessen*: loads a calibration pattern (80 BPM, hi-hat loud and soft, snare backbeat with ghost notes, kick) and opens a live window readable from the kit: waiting for the first hit, 8 bars warm-up, measuring until a 6 s pause. The result window shows per track the hits along the velocity axis with old and new thresholds and the share recognized, plus a timing histogram; *Übernehmen* saves the thresholds (`[midi_levels]`) and the timing offset (`midi_offset_ms`). The song comes back afterwards.
 - Audio output latency is compensated, `midi_offset_ms` for fine tuning; the status line shows each hit's offset in ms.
 - MIDI input menu, opened again at the next start. *↻* searches for devices again and rereads the MIDI settings. Notes without a track show their number in the status line.
 - *Mithören* plays the kit sound of each hit, delayed by the audio buffer.
@@ -80,7 +83,7 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 ## Files and import
 
 - Songs are plain TOML files, readable and editable by hand ([docs/song-format.md](docs/song-format.md)). Invalid values (tempo, grid, repeats, count-in) are corrected on load.
-- Songs and exports go to `~/.local/share/DrumMachine/songs` for a package installed with Pkg, to `songs/` for a git checkout or `Pkg.develop`. A read-only song (e.g. an example song of an installed package) does not turn on edit mode; *Speichern* then writes a new file.
+- Songs and exports go to `~/.local/share/DrumMachine/songs` for a package installed with Pkg, to `songs/` for a git checkout or `Pkg.develop`. `song_dir` in the settings file (or `DRUMMACHINE_SONG_DIR`) sets another folder; the example songs are listed as well. A read-only song (e.g. an example song of an installed package) does not turn on edit mode; *Speichern* then writes a new file.
 - Edit mode: *Speichern* overwrites the loaded song without asking; an error shows in the status line.
 - Drum-JSON import from browser drum machines (OneMotion), several files at once or from the clipboard.
 - The last session is restored at start.
@@ -90,7 +93,8 @@ Changes per version: [CHANGELOG.md](CHANGELOG.md).
 
 - Interface in English and German, follows the system language.
 - Built-in help (`?`) and documentation viewer (*Docs*): one button per document, sections longer than 40 lines split into pages, ◀ ▶ and the arrow keys turn pages.
-- *Info* window with version, author, date of the last change and the kit licenses.
+- *Info* window with version, author, date of the last change, the kit licenses and the path of the log.
+- Log file `~/.local/state/DrumMachine/drummachine.log` for bug reports: warnings and errors with backtrace, start (version, Julia, system, threads), audio (buffer, reported latency, realtime priority), kits, MIDI devices, recording, calibration, exports, songs. At 1 MB it becomes `drummachine.log.1`, so at most about 2 MB are kept. Scripts using the package write no log.
 - Closing the main window also closes the player and the metronome and saves their settings.
 - Optional sysimage for a fast start (`start_drum.sh --build`). The script offers a rebuild after package updates or a Julia update.
 - Developed and tested on Linux. Windows and macOS are untested, see [PLATFORMS.md](PLATFORMS.md).
