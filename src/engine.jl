@@ -794,7 +794,7 @@ endlessly, with no gap and no cut-off reverb.
 
 Without loop and without count-in, a flam or drag on step 1 starts the file with a pickup of a
 16th before beat 1 (longer for a long flam or drag at a fast tempo), the same as in the MIDI
-export (see [`export_pickup`](@ref)).
+export (see `DrumMachine.export_pickup`).
 
 `tail` is the decay in seconds after the last step (silence below -70 dB is trimmed); with the
 Echo effect it is at least as long as the repeats need (one 8th per repeat).
